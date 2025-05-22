@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { Auth } from 'aws-amplify'
+import { Auth } from '@aws-amplify/auth'
 
 export const useAuth = () => {
   const isAuthenticated = ref(false)
