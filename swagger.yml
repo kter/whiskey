@@ -1,0 +1,418 @@
+openapi: 3.0.0
+info:
+  title: Whiskey Log API
+  version: 1.0.0
+  description: ウイスキー記録アプリのAPI仕様
+servers:
+  - url: https://api.example.com
+security:
+  - bearerAuth: []
+paths:
+  /reviews:
+    get:
+      summary: 自分のウイスキー記録を取得
+      parameters:
+        - name: page
+          in: query
+          description: ページ番号（1から開始）
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: per_page
+          in: query
+          description: 1ページあたりの件数
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: start_date
+          in: query
+          description: 開始日（YYYY-MM-DD）
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          description: 終了日（YYYY-MM-DD）
+          schema:
+            type: string
+            format: date
+        - name: min_rating
+          in: query
+          description: 最小評価
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 5
+        - name: style
+          in: query
+          description: 飲み方（複数指定可）
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [Neat, Rock, Twice Up, High Ball, On the Rocks, Water, Hot, Cocktail]
+      responses:
+        '200':
+          description: 記録一覧
+          headers:
+            X-Total-Count:
+              description: 全件数
+              schema:
+                type: integer
+            X-Rate-Limit-Remaining:
+              description: 残りのAPI呼び出し回数
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Review'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    post:
+      summary: 新しいウイスキー記録を作成
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewInput'
+      responses:
+        '201':
+          description: 作成成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /reviews/{id}:
+    get:
+      summary: 特定の記録を取得
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 記録の詳細
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      summary: 記録を更新
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewInput'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      summary: 記録を削除
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: 削除成功
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /whiskeys/suggest:
+    get:
+      summary: ウイスキー名のサジェスト検索
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+      responses:
+        '200':
+          description: 候補一覧
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /whiskeys/ranking:
+    get:
+      summary: 評価が高いウイスキーのランキング取得
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: min_reviews
+          in: query
+          description: 最小レビュー数
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: ランキング一覧
+          headers:
+            X-Total-Count:
+              description: 全件数
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RankingItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /stats/alcohol:
+    get:
+      summary: アルコール摂取量の統計（要ユーザー認証）
+      parameters:
+        - name: period
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [daily, weekly, monthly]
+            default: monthly
+        - name: start_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: 集計結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlcoholStats'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    BadRequest:
+      description: リクエストが不正です
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: 認証が必要です
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: リソースが見つかりません
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    TooManyRequests:
+      description: リクエスト制限を超過しました
+      headers:
+        X-Rate-Limit-Reset:
+          description: 制限がリセットされる時刻（Unix timestamp）
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+    Review:
+      type: object
+      properties:
+        id:
+          type: integer
+        whiskey_name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        distillery:
+          type: string
+          maxLength: 200
+        notes:
+          type: string
+          maxLength: 2000
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: 評価（1-5）
+        style:
+          type: array
+          items:
+            type: string
+            enum: [Neat, Rock, Twice Up, High Ball, On the Rocks, Water, Hot, Cocktail]
+          description: 飲み方（複数指定可）
+        date:
+          type: string
+          format: date
+        image_url:
+          type: string
+          format: uri
+          maxLength: 2083
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ReviewInput:
+      type: object
+      required: [whiskey_name, rating, date]
+      properties:
+        whiskey_name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        distillery:
+          type: string
+          maxLength: 200
+        notes:
+          type: string
+          maxLength: 2000
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: 評価（1-5）
+        style:
+          type: array
+          items:
+            type: string
+            enum: [Neat, Rock, Twice Up, High Ball, On the Rocks, Water, Hot, Cocktail]
+          description: 飲み方（複数指定可）
+        date:
+          type: string
+          format: date
+        image_url:
+          type: string
+          format: uri
+          maxLength: 2083
+    RankingItem:
+      type: object
+      required:
+        - whiskey_name
+        - avg_rating
+        - review_count
+      properties:
+        whiskey_name:
+          type: string
+        avg_rating:
+          type: number
+          format: float
+          minimum: 1
+          maximum: 5
+        review_count:
+          type: integer
+          minimum: 1
+    AlcoholStats:
+      type: object
+      required:
+        - period
+        - total_volume_ml
+        - total_reviews
+      properties:
+        period:
+          type: string
+          enum: [daily, weekly, monthly]
+        total_volume_ml:
+          type: number
+          minimum: 0
+        total_reviews:
+          type: integer
+          minimum: 0
+        daily_average_ml:
+          type: number
+          minimum: 0
+        max_daily_volume_ml:
+          type: number
+          minimum: 0
