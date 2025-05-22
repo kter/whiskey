@@ -11,9 +11,9 @@ services:
     environment:
       - HOST=0.0.0.0
       - NUXT_PUBLIC_API_BASE=http://localhost:8000
-      - NUXT_PUBLIC_AWS_REGION=${AWS_REGION}
-      - NUXT_PUBLIC_COGNITO_USER_POOL_ID=${COGNITO_USER_POOL_ID}
-      - NUXT_PUBLIC_COGNITO_CLIENT_ID=${COGNITO_CLIENT_ID}
+      - NUXT_PUBLIC_AWS_REGION=ap-northeast-1
+      - NUXT_PUBLIC_COGNITO_USER_POOL_ID=ap-northeast-1_xxxxxxxx
+      - NUXT_PUBLIC_COGNITO_CLIENT_ID=xxxxxxxxxxxxxxxxxxxxxxxxxx
     depends_on:
       - backend
 
@@ -24,21 +24,21 @@ services:
     volumes:
       - ./backend:/app
     environment:
-      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
-      - DJANGO_DEBUG=${DJANGO_DEBUG}
-      - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS}
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - DB_HOST=${DB_HOST}
-      - DB_PORT=${DB_PORT}
-      - AWS_REGION=${AWS_REGION}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_S3_BUCKET=${AWS_S3_BUCKET}
-      - AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL}
-      - COGNITO_USER_POOL_ID=${COGNITO_USER_POOL_ID}
-      - COGNITO_CLIENT_ID=${COGNITO_CLIENT_ID}
+      - DJANGO_SECRET_KEY=django-insecure-development-key
+      - DJANGO_DEBUG=True
+      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,backend
+      - POSTGRES_DB=whiskey
+      - POSTGRES_USER=whiskey
+      - POSTGRES_PASSWORD=whiskey123
+      - DB_HOST=db
+      - DB_PORT=5432
+      - AWS_REGION=ap-northeast-1
+      - AWS_ACCESS_KEY_ID=dummy
+      - AWS_SECRET_ACCESS_KEY=dummy
+      - AWS_S3_BUCKET=whiskey-reviews
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - COGNITO_USER_POOL_ID=ap-northeast-1_xxxxxxxx
+      - COGNITO_CLIENT_ID=xxxxxxxxxxxxxxxxxxxxxxxxxx
     depends_on:
       - db
       - localstack
@@ -50,9 +50,9 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=whiskey
+      - POSTGRES_USER=whiskey
+      - POSTGRES_PASSWORD=whiskey123
 
   localstack:
     image: localstack/localstack:latest
@@ -60,9 +60,9 @@ services:
       - "4566:4566"
     environment:
       - SERVICES=s3
-      - DEFAULT_REGION=${AWS_REGION}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - DEFAULT_REGION=ap-northeast-1
+      - AWS_ACCESS_KEY_ID=dummy
+      - AWS_SECRET_ACCESS_KEY=dummy
     volumes:
       - ./localstack:/docker-entrypoint-initaws.d
       - localstack_data:/var/lib/localstack

@@ -10,7 +10,11 @@ export default defineNuxtConfig({
   },
   runtimeConfig: {
     public: {
+      apiBase: process.env.NUXT_PUBLIC_API_BASE || 'http://localhost:8000',
       apiBaseUrl: process.env.API_BASE_URL || 'http://localhost:8000',
+      awsRegion: process.env.NUXT_PUBLIC_AWS_REGION || 'ap-northeast-1',
+      cognitoUserPoolId: process.env.NUXT_PUBLIC_COGNITO_USER_POOL_ID,
+      cognitoClientId: process.env.NUXT_PUBLIC_COGNITO_CLIENT_ID,
       aws: {
         region: process.env.AWS_REGION || 'ap-northeast-1',
         userPoolId: process.env.AWS_USER_POOL_ID || '',
