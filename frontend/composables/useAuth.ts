@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { Auth } from '@aws-amplify/auth'
+import { signIn, signOut, getCurrentUser, fetchUserAttributes, resetPassword, confirmResetPassword } from '@aws-amplify/auth'
 
 export const useAuth = () => {
   const isAuthenticated = ref(false)
@@ -10,8 +10,9 @@ export const useAuth = () => {
   const initialize = async () => {
     try {
       loading.value = true
-      const currentUser = await Auth.currentAuthenticatedUser()
-      user.value = currentUser
+      const currentUser = await getCurrentUser()
+      const attributes = await fetchUserAttributes()
+      user.value = { ...currentUser, attributes }
       isAuthenticated.value = true
     } catch (err) {
       user.value = null
@@ -22,20 +23,20 @@ export const useAuth = () => {
   }
 
   // サインイン
-  const signIn = async (username: string, password: string) => {
+  const handleSignIn = async (username: string, password: string) => {
     try {
-      const user = await Auth.signIn(username, password)
+      const result = await signIn({ username, password })
       isAuthenticated.value = true
-      return user
+      return result
     } catch (err) {
       throw new Error('ログインに失敗しました')
     }
   }
 
   // サインアウト
-  const signOut = async () => {
+  const handleSignOut = async () => {
     try {
-      await Auth.signOut()
+      await signOut()
       isAuthenticated.value = false
       user.value = null
     } catch (err) {
@@ -44,22 +45,22 @@ export const useAuth = () => {
   }
 
   // パスワードリセット
-  const resetPassword = async (username: string) => {
+  const handleResetPassword = async (username: string) => {
     try {
-      await Auth.forgotPassword(username)
+      await resetPassword({ username })
     } catch (err) {
       throw new Error('パスワードリセットに失敗しました')
     }
   }
 
   // パスワードリセットの確認
-  const confirmResetPassword = async (
+  const handleConfirmResetPassword = async (
     username: string,
     code: string,
     newPassword: string
   ) => {
     try {
-      await Auth.forgotPasswordSubmit(username, code, newPassword)
+      await confirmResetPassword({ username, confirmationCode: code, newPassword })
     } catch (err) {
       throw new Error('パスワードの更新に失敗しました')
     }
@@ -70,9 +71,9 @@ export const useAuth = () => {
     user,
     loading,
     initialize,
-    signIn,
-    signOut,
-    resetPassword,
-    confirmResetPassword
+    signIn: handleSignIn,
+    signOut: handleSignOut,
+    resetPassword: handleResetPassword,
+    confirmResetPassword: handleConfirmResetPassword
   }
 } 
