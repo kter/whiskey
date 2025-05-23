@@ -31,8 +31,8 @@ class Command(BaseCommand):
             if created:
                 self.stdout.write(f'Created whiskey: {name}')
 
-        # Create test reviews
-        test_user_id = 'test-user-123'
+        # Create test reviews - use the same user_id as the middleware sets in development
+        test_user_id = 'development-user'
         serving_styles = [choice[0] for choice in Review.ServingStyle.choices]
         
         # Create reviews for the last 30 days
@@ -44,8 +44,8 @@ class Command(BaseCommand):
                 Review.objects.create(
                     whiskey=whiskey,
                     user_id=test_user_id,
-                    notes=f'Test review for {whiskey.name}',
-                    rating=random.randint(1, 5),
+                    notes=f'{whiskey.name}の素晴らしいテイスティングでした。複雑で豊かな風味があり、とても満足しています。',
+                    rating=random.randint(3, 5),  # Better ratings for demo
                     serving_style=random.choice(serving_styles),
                     date=review_date
                 )
