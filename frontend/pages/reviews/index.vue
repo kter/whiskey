@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import type { ReviewSearchParams } from '~/types/whiskey'
-import { useWhiskeys } from '~/composables/useWhiskeys'
+import { ref, onMounted } from 'vue'
+import type { ReviewSearchParams, Review } from '~/types/whiskey'
 
-const { reviews, loading, error, totalCount, fetchReviews, deleteReview } = useWhiskeys()
+const config = useRuntimeConfig()
+const reviews = ref<Review[]>([])
+const loading = ref(false)
+const error = ref<string | null>(null)
+const totalCount = ref(0)
 
 // 検索パラメータ
 const searchParams = ref<ReviewSearchParams>({
@@ -11,36 +14,55 @@ const searchParams = ref<ReviewSearchParams>({
   per_page: 10,
 })
 
+// パブリックレビュー一覧の取得
+const fetchPublicReviews = async () => {
+  try {
+    loading.value = true
+    error.value = null
+
+    const response = await fetch(
+      `${config.public.apiBase}/api/reviews/public/?page=${searchParams.value.page}&per_page=${searchParams.value.per_page}`
+    )
+
+    if (!response.ok) {
+      throw new Error('レビューの取得に失敗しました')
+    }
+
+    const data = await response.json()
+    console.log('API Response:', data) // デバッグ用
+    
+    reviews.value = data.results || []
+    totalCount.value = data.count || 0
+  } catch (err) {
+    error.value = 'レビューの取得に失敗しました'
+    console.error('Fetch Reviews Error:', err)
+  } finally {
+    loading.value = false
+  }
+}
+
 // 初期データ取得
 onMounted(async () => {
-  await fetchReviews(searchParams.value)
+  await fetchPublicReviews()
 })
 
 // ページ変更
 const handlePageChange = async (page: number) => {
   searchParams.value.page = page
-  await fetchReviews(searchParams.value)
+  await fetchPublicReviews()
 }
 
-// 削除確認モーダル
+// 削除機能は認証が必要なため、一時的に無効化
 const showDeleteModal = ref(false)
-const targetReviewId = ref<number | null>(null)
+const targetReviewId = ref<string | null>(null)
 
-const handleDeleteClick = (id: number) => {
-  targetReviewId.value = id
-  showDeleteModal.value = true
+const handleDeleteClick = (id: string) => {
+  // 認証が必要なため、この機能は一時的に無効
+  alert('削除機能は認証後に利用できます')
 }
 
 const handleDeleteConfirm = async () => {
-  if (!targetReviewId.value) return
-  
-  try {
-    await deleteReview(targetReviewId.value)
-    showDeleteModal.value = false
-    await fetchReviews(searchParams.value)
-  } catch (err) {
-    console.error('削除に失敗しました:', err)
-  }
+  // 認証が必要なため、この機能は一時的に無効
 }
 </script>
 

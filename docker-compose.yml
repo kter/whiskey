@@ -27,11 +27,6 @@ services:
       - DJANGO_SECRET_KEY=django-insecure-development-key
       - DJANGO_DEBUG=True
       - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,backend
-      - POSTGRES_DB=whiskey
-      - POSTGRES_USER=whiskey
-      - POSTGRES_PASSWORD=whiskey123
-      - DB_HOST=db
-      - DB_PORT=5432
       - AWS_REGION=ap-northeast-1
       - AWS_ACCESS_KEY_ID=dummy
       - AWS_SECRET_ACCESS_KEY=dummy
@@ -40,34 +35,22 @@ services:
       - COGNITO_USER_POOL_ID=ap-northeast-1_xxxxxxxx
       - COGNITO_CLIENT_ID=xxxxxxxxxxxxxxxxxxxxxxxxxx
     depends_on:
-      - db
       - localstack
-
-  db:
-    image: postgres:15-alpine
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_DB=whiskey
-      - POSTGRES_USER=whiskey
-      - POSTGRES_PASSWORD=whiskey123
 
   localstack:
     image: localstack/localstack:latest
     ports:
       - "4566:4566"
     environment:
-      - SERVICES=s3
+      - SERVICES=s3,dynamodb
       - DEFAULT_REGION=ap-northeast-1
       - AWS_ACCESS_KEY_ID=dummy
       - AWS_SECRET_ACCESS_KEY=dummy
+      - DEBUG=1
     volumes:
       - ./localstack:/docker-entrypoint-initaws.d
       - localstack_data:/var/lib/localstack
 
 volumes:
-  postgres_data:
   localstack_data:
   frontend_node_modules: 

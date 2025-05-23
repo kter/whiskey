@@ -8,7 +8,10 @@
       読み込み中...
     </div>
     <div v-else>
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div v-if="whiskeys.length === 0" class="text-amber-300 text-center py-8">
+        ウィスキーデータがありません
+      </div>
+      <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <div v-for="whiskey in whiskeys" :key="whiskey.id" class="bg-stone-800 border border-amber-700 p-6 rounded-lg shadow-lg hover:shadow-xl transition-all hover:border-amber-500">
           <h2 class="text-xl font-semibold text-amber-200 mb-2">{{ whiskey.name }}</h2>
           <p class="text-amber-100 mb-3">{{ whiskey.distillery }}</p>
@@ -30,12 +33,29 @@ const error = ref(null)
 
 onMounted(async () => {
   try {
-    const response = await fetch(`${config.public.apiBase}/api/whiskeys/ranking/`)
+    console.log('API Base URL:', config.public.apiBase)
+    const apiUrl = `${config.public.apiBase}/api/whiskeys/ranking/`
+    console.log('Fetching from:', apiUrl)
+    
+    const response = await fetch(apiUrl)
+    console.log('Response status:', response.status)
+    console.log('Response ok:', response.ok)
+    
     if (!response.ok) {
-      throw new Error('APIの呼び出しに失敗しました')
+      throw new Error(`APIの呼び出しに失敗しました (${response.status}: ${response.statusText})`)
     }
-    whiskeys.value = await response.json()
+    
+    const data = await response.json()
+    console.log('Received data:', data)
+    whiskeys.value = data
+    
+    if (data.length === 0) {
+      console.log('No whiskeys found in the response')
+    } else {
+      console.log(`Loaded ${data.length} whiskeys`)
+    }
   } catch (e) {
+    console.error('API Error:', e)
     error.value = e.message
   } finally {
     loading.value = false

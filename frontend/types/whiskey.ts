@@ -9,22 +9,36 @@ export type ServingStyle =
   | 'Cocktail'
 
 export interface Review {
-  id: number
-  whiskey_name: string
-  distillery?: string
+  id: string
+  whiskey_id?: string
+  whiskey?: string
+  whiskey_name?: string
+  whiskey_distillery?: string
   notes?: string
   rating: number
-  style: ServingStyle[]
+  style?: ServingStyle[]
+  serving_style?: string
   date: string
   image_url?: string
   created_at: string
   updated_at: string
+  user_id?: string
 }
 
-export type ReviewInput = Omit<Review, 'id' | 'created_at' | 'updated_at'>
+export type ReviewInput = Omit<Review, 'id' | 'created_at' | 'updated_at' | 'whiskey_name' | 'whiskey_distillery' | 'user_id'>
+
+export interface Whiskey {
+  id: string
+  name: string
+  distillery: string
+  avg_rating?: number
+  review_count?: number
+  created_at?: string
+  updated_at?: string
+}
 
 export interface RankingItem {
-  id: number
+  id: string
   name: string
   distillery: string
   avg_rating: number
