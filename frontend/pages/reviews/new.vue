@@ -74,14 +74,14 @@ const handleSubmit = async () => {
 <template>
   <div class="max-w-2xl mx-auto">
     <h1 class="text-3xl font-semibold text-amber-200 mb-6">
-      ✍️ 新規レビュー
+      新規レビュー
     </h1>
 
     <form @submit.prevent="handleSubmit" class="mt-6 space-y-6 bg-stone-800 p-6 rounded-lg shadow-lg border border-amber-700">
       <!-- ウイスキー名 -->
       <div class="relative">
         <label for="whiskey_name" class="block text-sm font-medium text-amber-200">
-          🥃 ウイスキー名 *
+          ウイスキー名 *
         </label>
         <input
           id="whiskey_name"
@@ -113,7 +113,7 @@ const handleSubmit = async () => {
       <!-- 蒸留所 -->
       <div>
         <label for="distillery" class="block text-sm font-medium text-amber-200">
-          🏭 蒸留所
+          蒸留所
         </label>
         <input
           id="distillery"
@@ -127,7 +127,7 @@ const handleSubmit = async () => {
       <!-- 評価 -->
       <div>
         <label class="block text-sm font-medium text-amber-200">
-          ⭐ 評価 *
+          評価 *
         </label>
         <div class="mt-1 flex items-center">
           <div class="flex">
@@ -159,7 +159,7 @@ const handleSubmit = async () => {
       <!-- 飲み方 -->
       <div>
         <label class="block text-sm font-medium text-amber-200">
-          🍹 飲み方 *
+          飲み方 *
         </label>
         <div class="mt-2 flex flex-wrap gap-2">
           <button
@@ -182,7 +182,7 @@ const handleSubmit = async () => {
       <!-- 日付 -->
       <div>
         <label for="date" class="block text-sm font-medium text-amber-200">
-          📅 日付 *
+          日付 *
         </label>
         <input
           id="date"
@@ -196,7 +196,7 @@ const handleSubmit = async () => {
       <!-- ノート -->
       <div>
         <label for="notes" class="block text-sm font-medium text-amber-200">
-          📝 ノート
+          ノート
         </label>
         <textarea
           id="notes"
@@ -218,13 +218,13 @@ const handleSubmit = async () => {
           to="/reviews"
           class="inline-flex justify-center py-2 px-4 border border-stone-600 shadow-sm text-sm font-medium rounded-md text-amber-200 bg-stone-700 hover:bg-stone-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 transition-colors"
         >
-          ❌ キャンセル
+          キャンセル
         </NuxtLink>
         <button
           type="submit"
           class="inline-flex justify-center py-2 px-4 border border-amber-700 shadow-sm text-sm font-medium rounded-md text-amber-100 bg-amber-800 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 transition-colors"
         >
-          💾 保存
+          保存
         </button>
       </div>
     </form>

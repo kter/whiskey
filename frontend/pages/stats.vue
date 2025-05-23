@@ -103,7 +103,7 @@ const periodText = computed(() => {
 <template>
   <div>
     <h1 class="text-3xl font-semibold text-amber-200 mb-6">
-      📊 アルコール摂取量の統計
+      アルコール摂取量の統計
     </h1>
 
     <!-- 期間選択 -->

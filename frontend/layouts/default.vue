@@ -17,7 +17,7 @@ const handleSignOut = async () => {
         <div class="flex justify-between h-16">
           <div class="flex">
             <NuxtLink to="/" class="flex-shrink-0 flex items-center">
-              <span class="text-xl font-bold text-amber-200">🥃 Whiskey Log</span>
+              <span class="text-xl font-bold text-amber-200">Whiskey Log</span>
             </NuxtLink>
             <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
               <NuxtLink

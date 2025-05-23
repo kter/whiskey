@@ -48,14 +48,14 @@ const handleDeleteConfirm = async () => {
   <div>
     <div class="sm:flex sm:items-center">
       <div class="sm:flex-auto">
-        <h1 class="text-3xl font-semibold text-amber-200 mb-6">📝 レビュー一覧</h1>
+        <h1 class="text-3xl font-semibold text-amber-200 mb-6">レビュー一覧</h1>
       </div>
       <div class="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
         <NuxtLink
           to="/reviews/new"
           class="inline-flex items-center justify-center px-4 py-2 border border-amber-700 text-sm font-medium rounded-md text-amber-100 bg-amber-800 hover:bg-amber-700 transition-colors"
         >
-          ✍️ 新規レビュー
+          新規レビュー
         </NuxtLink>
       </div>
     </div>
@@ -96,7 +96,7 @@ const handleDeleteConfirm = async () => {
               {{ review.whiskey_name }}
             </h3>
             <p v-if="review.whiskey_distillery" class="mt-1 text-sm text-amber-100">
-              🏭 {{ review.whiskey_distillery }}
+              {{ review.whiskey_distillery }}
             </p>
             <div class="mt-2 flex items-center">
               <div class="flex items-center">
@@ -114,7 +114,7 @@ const handleDeleteConfirm = async () => {
                 </template>
               </div>
               <span class="ml-2 text-sm text-amber-300">
-                📅 {{ review.date }}
+                {{ review.date }}
               </span>
             </div>
             <div v-if="review.serving_style" class="mt-2 flex flex-wrap gap-2">
@@ -132,19 +132,19 @@ const handleDeleteConfirm = async () => {
                 :to="`/reviews/${review.id}`"
                 class="inline-flex items-center px-3 py-1.5 border border-amber-600 text-sm font-medium rounded-md text-amber-200 bg-stone-700 hover:bg-stone-600 transition-colors"
               >
-                👁️ 詳細
+                詳細
               </NuxtLink>
               <NuxtLink
                 :to="`/reviews/${review.id}/edit`"
                 class="inline-flex items-center px-3 py-1.5 border border-amber-600 text-sm font-medium rounded-md text-amber-200 bg-stone-700 hover:bg-stone-600 transition-colors"
               >
-                ✏️ 編集
+                編集
               </NuxtLink>
               <button
                 @click="handleDeleteClick(review.id)"
                 class="inline-flex items-center px-3 py-1.5 border border-red-800 text-sm font-medium rounded-md text-red-200 bg-red-900 hover:bg-red-800 transition-colors"
               >
-                🗑️ 削除
+                削除
               </button>
             </div>
           </div>
@@ -190,7 +190,7 @@ const handleDeleteConfirm = async () => {
           <div class="sm:flex sm:items-start">
             <div class="mt-3 text-center sm:mt-0 sm:text-left">
               <h3 class="text-lg leading-6 font-medium text-amber-200" id="modal-title">
-                🗑️ レビューを削除
+                レビューを削除
               </h3>
               <div class="mt-2">
                 <p class="text-sm text-amber-100">

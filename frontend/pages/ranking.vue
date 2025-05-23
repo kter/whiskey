@@ -25,7 +25,7 @@ onMounted(async () => {
 <template>
   <div>
     <h1 class="text-3xl font-semibold text-amber-200 mb-6">
-      🏆 人気ウイスキーランキング
+      人気ウイスキーランキング
     </h1>
 
     <!-- ローディング -->
@@ -64,7 +64,7 @@ onMounted(async () => {
                     {{ item.name }}
                   </div>
                   <div class="text-xs text-amber-100 mt-1">
-                    🏭 {{ item.distillery }}
+                    {{ item.distillery }}
                   </div>
                   <div class="flex items-center mt-1">
                     <div class="flex">

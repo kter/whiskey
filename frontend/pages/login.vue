@@ -23,7 +23,6 @@ const handleSubmit = async () => {
   <div class="min-h-[calc(100vh-4rem)] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
     <div class="max-w-md w-full space-y-8">
       <div class="text-center">
-        <div class="text-6xl mb-4">🥃</div>
         <h2 class="mt-6 text-center text-3xl font-extrabold text-amber-200">
           ログイン
         </h2>
@@ -68,7 +67,7 @@ const handleSubmit = async () => {
             type="submit"
             class="group relative w-full flex justify-center py-3 px-4 border border-amber-700 text-sm font-medium rounded-md text-amber-100 bg-amber-800 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 transition-colors"
           >
-            🔓 ログイン
+            ログイン
           </button>
         </div>
       </form>
