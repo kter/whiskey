@@ -1,0 +1,13 @@
+FROM node:20-slim
+
+WORKDIR /app
+
+# 依存関係のみをコピーしてインストール
+COPY package*.json ./
+RUN npm install --legacy-peer-deps
+
+# 開発サーバー用ポートを公開
+EXPOSE 3000
+
+# 開発サーバーを起動
+CMD ["npm", "run", "dev"] 
