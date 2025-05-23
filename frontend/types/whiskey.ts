@@ -31,17 +31,6 @@ export interface RankingItem {
   review_count: number
 }
 
-export interface AlcoholStats {
-  total_volume_ml: number
-  daily_average_ml: number
-  max_daily_volume_ml: number
-}
-
-export interface ChartDataPoint {
-  date: string
-  volume_ml: number
-}
-
 export interface PaginationParams {
   page?: number
   per_page?: number

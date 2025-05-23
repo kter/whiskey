@@ -1,8 +1,7 @@
 from django.shortcuts import render
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from django.db.models import Avg, Count
-from django.db.models.functions import TruncDate, TruncWeek, TruncMonth
 from rest_framework import viewsets, generics, status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -36,42 +35,6 @@ class WhiskeyRankingView(APIView):
         ).filter(review_count__gt=0).order_by('-avg_rating')[:10]
         
         return Response(WhiskeySerializer(whiskeys, many=True).data)
-
-class AlcoholStatsView(APIView):
-    SERVING_SIZE_ML = 30  # 1杯 = 30ml
-
-    def get(self, request):
-        period = request.query_params.get('period', 'daily')
-        user_id = request.user_id
-        
-        if period == 'daily':
-            trunc_func = TruncDate
-            days = 30
-        elif period == 'weekly':
-            trunc_func = TruncWeek
-            days = 90
-        else:  # monthly
-            trunc_func = TruncMonth
-            days = 365
-            
-        start_date = datetime.now() - timedelta(days=days)
-        
-        stats = Review.objects.filter(
-            user_id=user_id,
-            date__gte=start_date
-        ).annotate(
-            period_date=trunc_func('date')
-        ).values('period_date').annotate(
-            count=Count('id')
-        ).order_by('period_date')
-        
-        result = [{
-            'date': item['period_date'],
-            'servings': item['count'],
-            'total_ml': item['count'] * self.SERVING_SIZE_ML
-        } for item in stats]
-        
-        return Response(result)
 
 class S3UploadUrlView(APIView):
     def get(self, request):

@@ -9,6 +9,5 @@ urlpatterns = [
     path('', include(router.urls)),
     path('whiskeys/suggest/', views.WhiskeySuggestView.as_view(), name='whiskey-suggest'),
     path('whiskeys/ranking/', views.WhiskeyRankingView.as_view(), name='whiskey-ranking'),
-    path('stats/alcohol/', views.AlcoholStatsView.as_view(), name='alcohol-stats'),
     path('s3/upload-url/', views.S3UploadUrlView.as_view(), name='s3-upload-url'),
 ] 

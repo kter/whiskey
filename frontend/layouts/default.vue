@@ -32,12 +32,6 @@ const handleSignOut = async () => {
               >
                 ランキング
               </NuxtLink>
-              <NuxtLink
-                to="/stats"
-                class="inline-flex items-center px-1 pt-1 text-amber-100 hover:text-amber-300 transition-colors"
-              >
-                統計
-              </NuxtLink>
             </div>
           </div>
           <div class="flex items-center">
