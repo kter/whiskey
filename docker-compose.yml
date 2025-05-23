@@ -47,9 +47,12 @@ services:
       - AWS_ACCESS_KEY_ID=dummy
       - AWS_SECRET_ACCESS_KEY=dummy
       - DEBUG=1
+      - PERSISTENCE=1
+      - DATA_DIR=/tmp/localstack/data
     volumes:
       - ./localstack:/docker-entrypoint-initaws.d
-      - localstack_data:/var/lib/localstack
+      - ./data/localstack:/tmp/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
 
 volumes:
   localstack_data:

@@ -1,157 +1,173 @@
 # Whiskey Log Application
 
-ウィスキーのテイスティング記録を管理するWebアプリケーションです。
+ウィスキーのテイスティング記録とレビューを管理するWebアプリケーションです。
+
+## 特徴
+
+- **ウィスキー一覧表示**: 評価順にソートされたウィスキーの表示
+- **レビュー機能**: ウィスキーのテイスティングノートと評価の記録
+- **ランキング機能**: 平均評価によるウィスキーランキング
+- **認証システム**: ユーザー管理機能（予定）
+- **データ永続化**: LocalStackのボリュームマウントによるデータ保存
 
 ## 技術スタック
 
-### Frontend
-- **Nuxt.js 3** - Vue.js フレームワーク
-- **TypeScript** - 型安全性
-- **Tailwind CSS** - スタイリング
-- **Pinia** - 状態管理
+### フロントエンド
+- **Nuxt.js 3**: Vue.js 3ベースのフレームワーク
+- **Tailwind CSS**: ユーティリティファーストのCSSフレームワーク
+- **TypeScript**: 静的型付けによる開発効率向上
 
-### Backend
-- **Django** - Pythonウェブフレームワーク
-- **Django REST Framework** - REST API
-- **DynamoDB** - NoSQLデータベース
-- **AWS Cognito** - 認証
-- **AWS S3** - 画像ストレージ
+### バックエンド
+- **Django 5.2**: Python Webフレームワーク
+- **Django REST Framework**: RESTful API構築
+- **DynamoDB**: NoSQLデータベース（AWS DynamoDB互換）
 
-### Infrastructure
-- **Docker & Docker Compose** - 開発環境
-- **LocalStack** - ローカルAWS環境
+### インフラ
+- **Docker & Docker Compose**: コンテナ化とオーケストレーション
+- **LocalStack**: AWS DynamoDBのローカル環境エミュレーション
+- **永続化ボリューム**: データの永続保存
 
-## 機能
-
-- ウィスキーレビューの作成・編集・削除
-- ウィスキー検索
-- レビューランキング
-- 画像アップロード
-- ユーザー認証（AWS Cognito）
-
-## ローカル開発環境のセットアップ
+## セットアップ
 
 ### 前提条件
 - Docker
 - Docker Compose
 
-### 起動手順
+### 起動方法
 
-1. リポジトリをクローン
+1. **リポジトリのクローン**
 ```bash
 git clone <repository-url>
 cd whiskey
 ```
 
-2. Docker Composeで起動
+2. **コンテナの起動**
 ```bash
-docker-compose up --build
+docker-compose up -d
 ```
 
-3. アプリケーションにアクセス
-- フロントエンド: http://localhost:3000
-- バックエンドAPI: http://localhost:8000
-
-### DynamoDBテーブル
-
-LocalStackが起動時に以下のテーブルを自動作成します：
-
-#### Whiskeys テーブル
-- **id** (パーティションキー): ウィスキーID
-- **name**: ウィスキー名
-- **distillery**: 蒸留所
-- **NameIndex** (GSI): 名前での検索用
-
-#### Reviews テーブル
-- **id** (パーティションキー): レビューID
-- **whiskey_id**: ウィスキーID
-- **user_id**: ユーザーID
-- **rating**: 評価 (1-5)
-- **notes**: レビューノート
-- **serving_style**: 飲み方
-- **date**: レビュー日
-- **UserDateIndex** (GSI): ユーザーごとの日付順表示用
-
-## 本番環境への展開
-
-### 必要なAWSリソース
-
-1. **DynamoDB**
-   - Whiskeysテーブル
-   - Reviewsテーブル
-
-2. **AWS Cognito**
-   - ユーザープール
-   - アプリクライアント
-
-3. **S3**
-   - 画像ストレージ用バケット
-
-### 環境変数
-
+3. **DynamoDBテーブルの作成**
 ```bash
-# Django設定
-DJANGO_SECRET_KEY=your-secret-key
-DJANGO_DEBUG=False
-DJANGO_ALLOWED_HOSTS=your-domain.com
+# Whiskeysテーブル
+docker-compose exec localstack awslocal dynamodb create-table \
+  --table-name Whiskeys \
+  --attribute-definitions AttributeName=id,AttributeType=S AttributeName=name,AttributeType=S \
+  --key-schema AttributeName=id,KeyType=HASH \
+  --global-secondary-indexes "IndexName=NameIndex,KeySchema=[{AttributeName=name,KeyType=HASH}],Projection={ProjectionType=ALL}" \
+  --billing-mode PAY_PER_REQUEST \
+  --region ap-northeast-1
 
-# AWS設定
-AWS_REGION=ap-northeast-1
-AWS_S3_BUCKET=your-bucket-name
-COGNITO_USER_POOL_ID=your-user-pool-id
-COGNITO_CLIENT_ID=your-client-id
-
-# フロントエンド設定
-NUXT_PUBLIC_API_BASE=https://your-api-domain.com
-NUXT_PUBLIC_AWS_REGION=ap-northeast-1
-NUXT_PUBLIC_COGNITO_USER_POOL_ID=your-user-pool-id
-NUXT_PUBLIC_COGNITO_CLIENT_ID=your-client-id
+# Reviewsテーブル  
+docker-compose exec localstack awslocal dynamodb create-table \
+  --table-name Reviews \
+  --attribute-definitions AttributeName=id,AttributeType=S AttributeName=user_id,AttributeType=S AttributeName=date,AttributeType=S \
+  --key-schema AttributeName=id,KeyType=HASH \
+  --global-secondary-indexes "IndexName=UserDateIndex,KeySchema=[{AttributeName=user_id,KeyType=HASH},{AttributeName=date,KeyType=RANGE}],Projection={ProjectionType=ALL}" \
+  --billing-mode PAY_PER_REQUEST \
+  --region ap-northeast-1
 ```
 
-## API仕様
-
-### Reviews API
-- `GET /api/reviews/` - レビュー一覧取得
-- `POST /api/reviews/` - レビュー作成
-- `GET /api/reviews/{id}/` - レビュー詳細取得
-- `PUT /api/reviews/{id}/` - レビュー更新
-- `DELETE /api/reviews/{id}/` - レビュー削除
-
-### Whiskeys API
-- `GET /api/whiskeys/suggest/?q={query}` - ウィスキー検索
-- `GET /api/whiskeys/ranking/` - ランキング取得
-
-### Upload API
-- `GET /api/s3/upload-url/` - S3アップロードURL取得
-
-## 開発ツール
-
-### テスト実行
+4. **サンプルデータの投入**
 ```bash
-# バックエンドテスト
-docker-compose exec backend python manage.py test
-
-# フロントエンドテスト
-docker-compose exec frontend npm test
+./scripts/init_data.sh
 ```
 
-### リンター実行
-```bash
-# フロントエンド
-docker-compose exec frontend npm run lint
+### アクセス
+- **フロントエンド**: http://localhost:3000
+- **バックエンドAPI**: http://localhost:8000/api/
 
-# バックエンド
-docker-compose exec backend flake8 .
+## データ永続化
+
+このアプリケーションはLocalStackのボリュームマウント機能を使用してデータを永続化しています。
+
+### 永続化の仕組み
+- LocalStackのデータは `./data/localstack` ディレクトリにマウントされます
+- コンテナの再起動後もデータが保持されます
+- `PERSISTENCE=1` 環境変数により永続化が有効になります
+
+### 永続化のテスト
+```bash
+# データの確認
+curl http://localhost:8000/api/whiskeys/ranking/
+
+# LocalStackの再起動
+docker-compose restart localstack
+
+# データが保持されているか確認（5秒後）
+sleep 5 && curl http://localhost:8000/api/whiskeys/ranking/
 ```
 
-## コスト最適化
+## API エンドポイント
 
-PostgreSQLのRDSからDynamoDBに移行することで、以下のコスト削減を実現：
+### ウィスキー関連
+- `GET /api/whiskeys/ranking/` - ウィスキーランキング取得
+- `GET /api/whiskeys/suggest/?q=<query>` - ウィスキー検索
 
-- RDS固定コストの削除
-- オンデマンド課金（使用した分のみ）
-- 小規模アプリケーションではほぼ無料
-- サーバーレスアーキテクチャでスケーラブル
+### レビュー関連
+- `GET /api/reviews/public/` - パブリックレビュー一覧（認証不要）
+- `GET /api/reviews/` - ユーザーのレビュー一覧（認証必要）
+- `POST /api/reviews/` - レビュー作成（認証必要）
+- `GET /api/reviews/<id>/` - レビュー詳細取得
+- `PUT /api/reviews/<id>/` - レビュー更新（認証必要）
+- `DELETE /api/reviews/<id>/` - レビュー削除（認証必要）
+
+## サンプルデータ
+
+初期化スクリプトには以下のデータが含まれています：
+
+### ウィスキー（8件）
+- 山崎12年, 白州12年, 余市15年
+- 響21年, 宮城峡15年, 知多
+- 竹鶴17年, 富士山麓
+
+### レビュー（10件）
+- 各ウィスキーに対する詳細なテイスティングノート
+- 評価（1-5段階）と飲み方の記録
+
+## 開発者向け情報
+
+### ディレクトリ構造
+```
+whiskey/
+├── frontend/          # Nuxt.js アプリケーション
+├── backend/           # Django アプリケーション
+├── localstack/        # LocalStack初期化スクリプト
+├── scripts/           # ユーティリティスクリプト
+├── data/              # 永続化データディレクトリ
+└── docker-compose.yml # Docker Compose設定
+```
+
+### ログの確認
+```bash
+# 全サービスのログ
+docker-compose logs -f
+
+# 特定のサービスのログ
+docker-compose logs -f frontend
+docker-compose logs -f backend
+docker-compose logs -f localstack
+```
+
+### コンテナの状態確認
+```bash
+docker-compose ps
+```
+
+## トラブルシューティング
+
+### データが表示されない場合
+1. コンテナが正常に起動しているか確認
+2. DynamoDBテーブルが作成されているか確認
+3. サンプルデータが投入されているか確認
+
+### LocalStackの問題
+```bash
+# LocalStackの再起動
+docker-compose restart localstack
+
+# LocalStackのヘルスチェック
+curl http://localhost:4566/_localstack/health
+```
 
 ## ライセンス
 
