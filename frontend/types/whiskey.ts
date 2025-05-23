@@ -24,7 +24,9 @@ export interface Review {
 export type ReviewInput = Omit<Review, 'id' | 'created_at' | 'updated_at'>
 
 export interface RankingItem {
-  whiskey_name: string
+  id: number
+  name: string
+  distillery: string
   avg_rating: number
   review_count: number
 }

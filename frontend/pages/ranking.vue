@@ -46,7 +46,7 @@ onMounted(async () => {
         <ul role="list" class="divide-y divide-gray-200">
           <li
             v-for="(item, index) in rankings"
-            :key="item.whiskey_name"
+            :key="item.name"
             class="px-4 py-4 sm:px-6 hover:bg-gray-50"
           >
             <div class="flex items-center justify-between">
@@ -61,7 +61,10 @@ onMounted(async () => {
                 </div>
                 <div class="ml-4">
                   <div class="text-sm font-medium text-gray-900">
-                    {{ item.whiskey_name }}
+                    {{ item.name }}
+                  </div>
+                  <div class="text-xs text-gray-500 mt-1">
+                    {{ item.distillery }}
                   </div>
                   <div class="flex items-center mt-1">
                     <div class="flex">
