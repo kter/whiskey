@@ -97,6 +97,41 @@ docker-compose restart localstack
 sleep 5 && curl http://localhost:8000/api/whiskeys/ranking/
 ```
 
+## セッション管理
+
+### 開発環境
+- **SQLiteデータベースセッション**: 開発環境では軽量なSQLiteを使用
+- **永続化**: コンテナ再起動時もセッションが保持される
+
+### 本番環境での推奨設定
+
+#### 1. ElastiCache (Redis) セッション (推奨)
+```python
+SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
+SESSION_CACHE_ALIAS = 'default'
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': 'redis://your-elasticache-endpoint:6379/1',
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        }
+    }
+}
+```
+
+#### 2. RDS データベースセッション
+```python
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'
+# RDSデータベース設定と組み合わせて使用
+```
+
+### セッション設定の利点
+- **スケーラビリティ**: 複数のサーバーインスタンス間でセッション共有
+- **永続性**: サーバー再起動時もセッションが保持
+- **パフォーマンス**: Redisを使用した高速セッションアクセス
+
 ## API エンドポイント
 
 ### ウィスキー関連

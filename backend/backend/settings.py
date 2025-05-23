@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'corsheaders',
+    'dynamodb_sessions',
     'api',
 ]
 
@@ -83,6 +84,16 @@ DATABASES = {
     }
 }
 
+# Session Configuration - デフォルトのデータベースセッション使用
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'
+SESSION_COOKIE_AGE = 86400  # 24 hours
+SESSION_SAVE_EVERY_REQUEST = True
+
+# DynamoDB Session Settings
+DYNAMODB_SESSIONS_TABLE_NAME = 'django_session'
+DYNAMODB_SESSIONS_TABLE_HASH_ATTRIB_NAME = 'session_key'
+DYNAMODB_SESSIONS_ALWAYS_CONSISTENT = True
+
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
@@ -118,6 +129,17 @@ AWS_S3_BUCKET = os.getenv('AWS_S3_BUCKET', 'whiskey-reviews')
 AWS_ENDPOINT_URL = os.getenv('AWS_ENDPOINT_URL')  # LocalStack用
 COGNITO_USER_POOL_ID = os.getenv('COGNITO_USER_POOL_ID', 'ap-northeast-1_xxxxxxxx')
 COGNITO_CLIENT_ID = os.getenv('COGNITO_CLIENT_ID', 'xxxxxxxxxxxxxxxxxxxxxxxxxx')
+
+# DynamoDB Session Settings (AWS設定の後に配置)
+DYNAMODB_SESSIONS_AWS_REGION = AWS_REGION
+if AWS_ENDPOINT_URL:
+    # LocalStack環境
+    DYNAMODB_SESSIONS_AWS_ACCESS_KEY_ID = 'dummy'
+    DYNAMODB_SESSIONS_AWS_SECRET_ACCESS_KEY = 'dummy'
+    DYNAMODB_SESSIONS_AWS_DYNAMODB_ENDPOINT_URL = AWS_ENDPOINT_URL
+else:
+    # 本番AWS環境では環境変数やIAMロールから認証情報を取得
+    pass
 
 # REST Framework settings
 REST_FRAMEWORK = {

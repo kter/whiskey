@@ -1,5 +1,17 @@
 #!/bin/bash
 
+echo "Creating DynamoDB session table..."
+
+# Create Django session table
+docker-compose exec -T localstack awslocal dynamodb create-table \
+  --table-name django_session \
+  --attribute-definitions AttributeName=session_key,AttributeType=S \
+  --key-schema AttributeName=session_key,KeyType=HASH \
+  --billing-mode PAY_PER_REQUEST \
+  --region ap-northeast-1 > /dev/null
+
+echo "Session table created."
+
 echo "Adding sample whiskey data to DynamoDB..."
 
 # Whiskeys data
