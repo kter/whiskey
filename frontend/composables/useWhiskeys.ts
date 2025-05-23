@@ -32,10 +32,14 @@ export const useWhiskeys = () => {
       }
 
       const data = await response.json()
-      reviews.value = data.reviews
-      totalCount.value = data.total_count
+      console.log('API Response:', data) // デバッグ用
+      
+      // Django REST Frameworkのページネーション形式に対応
+      reviews.value = data.results || data.reviews || []
+      totalCount.value = data.count || data.total_count || 0
     } catch (err) {
       error.value = 'レビューの取得に失敗しました'
+      console.error('Fetch Reviews Error:', err)
       throw err
     } finally {
       loading.value = false

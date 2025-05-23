@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import type { ReviewSearchParams } from '~/types/whiskey'
 import { useWhiskeys } from '~/composables/useWhiskeys'
 
-const { reviews, loading, error, totalCount, fetchReviews } = useWhiskeys()
+const { reviews, loading, error, totalCount, fetchReviews, deleteReview } = useWhiskeys()
 
 // 検索パラメータ
 const searchParams = ref<ReviewSearchParams>({
@@ -74,7 +74,7 @@ const handleDeleteConfirm = async () => {
 
     <!-- レビュー一覧 -->
     <div v-else class="mt-6">
-      <div v-if="reviews.length === 0" class="text-center text-gray-500">
+      <div v-if="!reviews || reviews.length === 0" class="text-center text-gray-500">
         レビューがありません
       </div>
       <div v-else class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -95,8 +95,8 @@ const handleDeleteConfirm = async () => {
             <h3 class="text-lg font-medium text-gray-900">
               {{ review.whiskey_name }}
             </h3>
-            <p v-if="review.distillery" class="mt-1 text-sm text-gray-500">
-              {{ review.distillery }}
+            <p v-if="review.whiskey_distillery" class="mt-1 text-sm text-gray-500">
+              {{ review.whiskey_distillery }}
             </p>
             <div class="mt-2 flex items-center">
               <div class="flex items-center">
@@ -117,13 +117,11 @@ const handleDeleteConfirm = async () => {
                 {{ review.date }}
               </span>
             </div>
-            <div class="mt-2 flex flex-wrap gap-2">
+            <div v-if="review.serving_style" class="mt-2 flex flex-wrap gap-2">
               <span
-                v-for="style in review.style"
-                :key="style"
                 class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800"
               >
-                {{ style }}
+                {{ review.serving_style }}
               </span>
             </div>
             <p v-if="review.notes" class="mt-2 text-sm text-gray-600 line-clamp-3">

@@ -24,6 +24,11 @@ class CognitoAuthMiddleware:
         if any(request.path.startswith(endpoint) for endpoint in public_endpoints):
             return self.get_response(request)
 
+        # 開発環境用: ダミーのuser_idを設定
+        if os.getenv('DJANGO_DEBUG', 'False').lower() == 'true':
+            request.user_id = 'development-user'
+            return self.get_response(request)
+
         auth_header = request.headers.get('Authorization')
         if not auth_header or not auth_header.startswith('Bearer '):
             return JsonResponse({'error': 'No valid authorization token provided'}, status=401)
