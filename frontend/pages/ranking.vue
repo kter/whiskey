@@ -24,47 +24,47 @@ onMounted(async () => {
 
 <template>
   <div>
-    <h1 class="text-2xl font-semibold text-gray-900">
-      人気ウイスキーランキング
+    <h1 class="text-3xl font-semibold text-amber-200 mb-6">
+      🏆 人気ウイスキーランキング
     </h1>
 
     <!-- ローディング -->
     <div v-if="loading" class="mt-6 text-center">
-      <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-500 border-t-transparent"></div>
+      <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-amber-500 border-t-transparent"></div>
     </div>
 
     <!-- エラー -->
-    <div v-else-if="error" class="mt-6 bg-red-50 p-4 rounded-md">
-      <div class="text-red-700">
+    <div v-else-if="error" class="mt-6 bg-red-900/50 p-4 rounded-md border border-red-800">
+      <div class="text-red-300">
         {{ error }}
       </div>
     </div>
 
     <!-- ランキング一覧 -->
     <div v-else class="mt-6">
-      <div class="bg-white shadow overflow-hidden sm:rounded-md">
-        <ul role="list" class="divide-y divide-gray-200">
+      <div class="bg-stone-800 shadow-lg overflow-hidden sm:rounded-lg border border-amber-700">
+        <ul role="list" class="divide-y divide-amber-700">
           <li
             v-for="(item, index) in rankings"
             :key="item.name"
-            class="px-4 py-4 sm:px-6 hover:bg-gray-50"
+            class="px-4 py-4 sm:px-6 hover:bg-stone-700 transition-colors"
           >
             <div class="flex items-center justify-between">
               <div class="flex items-center">
                 <div
                   :class="[
-                    index < 3 ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800',
+                    index < 3 ? 'bg-amber-600 text-amber-100' : 'bg-stone-600 text-stone-200',
                     'flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-lg font-bold'
                   ]"
                 >
                   {{ index + 1 }}
                 </div>
                 <div class="ml-4">
-                  <div class="text-sm font-medium text-gray-900">
+                  <div class="text-sm font-medium text-amber-200">
                     {{ item.name }}
                   </div>
-                  <div class="text-xs text-gray-500 mt-1">
-                    {{ item.distillery }}
+                  <div class="text-xs text-amber-100 mt-1">
+                    🏭 {{ item.distillery }}
                   </div>
                   <div class="flex items-center mt-1">
                     <div class="flex">
@@ -72,8 +72,8 @@ onMounted(async () => {
                         <svg
                           :class="[
                             i <= Math.round(item.avg_rating)
-                              ? 'text-yellow-400'
-                              : 'text-gray-300',
+                              ? 'text-amber-400'
+                              : 'text-stone-500',
                             'h-4 w-4 flex-shrink-0'
                           ]"
                           viewBox="0 0 20 20"
@@ -83,7 +83,7 @@ onMounted(async () => {
                         </svg>
                       </template>
                     </div>
-                    <span class="ml-2 text-sm text-gray-500">
+                    <span class="ml-2 text-sm text-amber-300">
                       {{ item.avg_rating.toFixed(1) }} ({{ item.review_count }}件のレビュー)
                     </span>
                   </div>

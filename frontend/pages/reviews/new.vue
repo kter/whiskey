@@ -73,15 +73,15 @@ const handleSubmit = async () => {
 
 <template>
   <div class="max-w-2xl mx-auto">
-    <h1 class="text-2xl font-semibold text-gray-900">
-      新規レビュー
+    <h1 class="text-3xl font-semibold text-amber-200 mb-6">
+      ✍️ 新規レビュー
     </h1>
 
-    <form @submit.prevent="handleSubmit" class="mt-6 space-y-6">
+    <form @submit.prevent="handleSubmit" class="mt-6 space-y-6 bg-stone-800 p-6 rounded-lg shadow-lg border border-amber-700">
       <!-- ウイスキー名 -->
       <div class="relative">
-        <label for="whiskey_name" class="block text-sm font-medium text-gray-700">
-          ウイスキー名 *
+        <label for="whiskey_name" class="block text-sm font-medium text-amber-200">
+          🥃 ウイスキー名 *
         </label>
         <input
           id="whiskey_name"
@@ -89,19 +89,20 @@ const handleSubmit = async () => {
           required
           :value="review.whiskey_name"
           @input="handleWhiskeyNameInput"
-          class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+          class="mt-1 block w-full rounded-md border-amber-700 bg-stone-700 text-amber-100 shadow-sm focus:border-amber-500 focus:ring-amber-500 sm:text-sm placeholder-amber-400"
+          placeholder="ウイスキー名を入力"
         >
         <!-- サジェスト -->
         <div
           v-if="showSuggestions && suggestions.length > 0"
-          class="absolute z-10 mt-1 w-full bg-white shadow-lg rounded-md border border-gray-300"
+          class="absolute z-10 mt-1 w-full bg-stone-700 shadow-lg rounded-md border border-amber-600"
         >
           <ul class="py-1">
             <li
               v-for="suggestion in suggestions"
               :key="suggestion"
               @click="selectSuggestion(suggestion)"
-              class="px-3 py-2 hover:bg-gray-100 cursor-pointer"
+              class="px-3 py-2 hover:bg-stone-600 cursor-pointer text-amber-100"
             >
               {{ suggestion }}
             </li>
@@ -111,21 +112,22 @@ const handleSubmit = async () => {
 
       <!-- 蒸留所 -->
       <div>
-        <label for="distillery" class="block text-sm font-medium text-gray-700">
-          蒸留所
+        <label for="distillery" class="block text-sm font-medium text-amber-200">
+          🏭 蒸留所
         </label>
         <input
           id="distillery"
           v-model="review.distillery"
           type="text"
-          class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+          class="mt-1 block w-full rounded-md border-amber-700 bg-stone-700 text-amber-100 shadow-sm focus:border-amber-500 focus:ring-amber-500 sm:text-sm placeholder-amber-400"
+          placeholder="蒸留所名を入力"
         >
       </div>
 
       <!-- 評価 -->
       <div>
-        <label class="block text-sm font-medium text-gray-700">
-          評価 *
+        <label class="block text-sm font-medium text-amber-200">
+          ⭐ 評価 *
         </label>
         <div class="mt-1 flex items-center">
           <div class="flex">
@@ -137,7 +139,7 @@ const handleSubmit = async () => {
               >
                 <svg
                   :class="[
-                    i <= review.rating ? 'text-yellow-400' : 'text-gray-300',
+                    i <= review.rating ? 'text-amber-400' : 'text-stone-500',
                     'h-6 w-6 flex-shrink-0'
                   ]"
                   viewBox="0 0 20 20"
@@ -148,7 +150,7 @@ const handleSubmit = async () => {
               </button>
             </template>
           </div>
-          <span class="ml-2 text-sm text-gray-500">
+          <span class="ml-2 text-sm text-amber-300">
             {{ review.rating }} / 5
           </span>
         </div>
@@ -156,8 +158,8 @@ const handleSubmit = async () => {
 
       <!-- 飲み方 -->
       <div>
-        <label class="block text-sm font-medium text-gray-700">
-          飲み方 *
+        <label class="block text-sm font-medium text-amber-200">
+          🍹 飲み方 *
         </label>
         <div class="mt-2 flex flex-wrap gap-2">
           <button
@@ -167,9 +169,9 @@ const handleSubmit = async () => {
             @click="toggleStyle(style)"
             :class="[
               review.style.includes(style)
-                ? 'bg-indigo-100 text-indigo-800'
-                : 'bg-gray-100 text-gray-800',
-              'inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium'
+                ? 'bg-amber-700 text-amber-100 border-amber-500'
+                : 'bg-stone-600 text-amber-300 border-stone-500',
+              'inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium border transition-colors hover:bg-amber-600'
             ]"
           >
             {{ style }}
@@ -179,33 +181,34 @@ const handleSubmit = async () => {
 
       <!-- 日付 -->
       <div>
-        <label for="date" class="block text-sm font-medium text-gray-700">
-          日付 *
+        <label for="date" class="block text-sm font-medium text-amber-200">
+          📅 日付 *
         </label>
         <input
           id="date"
           v-model="review.date"
           type="date"
           required
-          class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+          class="mt-1 block w-full rounded-md border-amber-700 bg-stone-700 text-amber-100 shadow-sm focus:border-amber-500 focus:ring-amber-500 sm:text-sm"
         >
       </div>
 
       <!-- ノート -->
       <div>
-        <label for="notes" class="block text-sm font-medium text-gray-700">
-          ノート
+        <label for="notes" class="block text-sm font-medium text-amber-200">
+          📝 ノート
         </label>
         <textarea
           id="notes"
           v-model="review.notes"
           rows="4"
-          class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+          class="mt-1 block w-full rounded-md border-amber-700 bg-stone-700 text-amber-100 shadow-sm focus:border-amber-500 focus:ring-amber-500 sm:text-sm placeholder-amber-400"
+          placeholder="テイスティングノートを記録してください..."
         ></textarea>
       </div>
 
       <!-- エラー -->
-      <div v-if="error" class="text-red-600 text-sm">
+      <div v-if="error" class="text-red-300 bg-red-900/50 p-3 rounded-md border border-red-800 text-sm">
         {{ error }}
       </div>
 
@@ -213,15 +216,15 @@ const handleSubmit = async () => {
       <div class="flex justify-end space-x-3">
         <NuxtLink
           to="/reviews"
-          class="inline-flex justify-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          class="inline-flex justify-center py-2 px-4 border border-stone-600 shadow-sm text-sm font-medium rounded-md text-amber-200 bg-stone-700 hover:bg-stone-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 transition-colors"
         >
-          キャンセル
+          ❌ キャンセル
         </NuxtLink>
         <button
           type="submit"
-          class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          class="inline-flex justify-center py-2 px-4 border border-amber-700 shadow-sm text-sm font-medium rounded-md text-amber-100 bg-amber-800 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 transition-colors"
         >
-          保存
+          💾 保存
         </button>
       </div>
     </form>
