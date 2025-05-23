@@ -132,7 +132,7 @@ export const useWhiskeys = () => {
       error.value = null
 
       const token = await getToken()
-      const response = await fetch(`${config.public.apiBaseUrl}/api/reviews/ranking`, {
+      const response = await fetch(`${config.public.apiBaseUrl}/api/whiskeys/ranking/`, {
         headers: {
           Authorization: `Bearer ${token}`
         }
