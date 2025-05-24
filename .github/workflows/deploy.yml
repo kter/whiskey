@@ -16,6 +16,7 @@ env:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    environment: ${{ github.ref == 'refs/heads/production' && 'prd' || 'dev' }}
     permissions:
       id-token: write   # OIDCトークン取得に必要
       contents: read    # コードの読み取りに必要
@@ -42,11 +43,11 @@ jobs:
         id: env
         run: |
           if [[ "${{ github.ref }}" == "refs/heads/production" ]]; then
-            echo "environment=prod" >> $GITHUB_OUTPUT
+            echo "environment=prd" >> $GITHUB_OUTPUT
           else
             echo "environment=dev" >> $GITHUB_OUTPUT
           fi
-          echo "Detected environment: ${{ github.ref }} -> $(if [[ "${{ github.ref }}" == "refs/heads/production" ]]; then echo "prod"; else echo "dev"; fi)"
+          echo "Detected environment: ${{ github.ref }} -> $(if [[ "${{ github.ref }}" == "refs/heads/production" ]]; then echo "prd"; else echo "dev"; fi)"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -61,8 +62,15 @@ jobs:
           ENV=${{ steps.env.outputs.environment }}
           echo "Getting outputs for environment: $ENV"
           
-          # スタック名を確認
-          STACK_NAME="WhiskeyApp-$(echo $ENV | sed 's/./\U&/')"
+          # スタック名を確認（dev->Dev, prd->Prd に変換）
+          if [[ "$ENV" == "dev" ]]; then
+            STACK_NAME="WhiskeyApp-Dev"
+          elif [[ "$ENV" == "prd" ]]; then
+            STACK_NAME="WhiskeyApp-Prd"
+          else
+            echo "Error: Unknown environment $ENV"
+            exit 1
+          fi
           echo "Stack name: $STACK_NAME"
           
           # スタックの存在を確認
@@ -128,7 +136,7 @@ jobs:
           NUXT_PUBLIC_USER_POOL_CLIENT_ID=${{ steps.infra.outputs.user_pool_client_id }}
           NUXT_PUBLIC_REGION=ap-northeast-1
           NUXT_PUBLIC_IMAGES_BUCKET=${{ steps.infra.outputs.images_bucket }}
-          NUXT_PUBLIC_API_BASE_URL=${{ steps.env.outputs.environment == 'prod' && 'https://api.your-domain.com' || 'https://api-dev.your-domain.com' }}
+          NUXT_PUBLIC_API_BASE_URL=${{ steps.env.outputs.environment == 'prd' && 'https://api.your-domain.com' || 'https://api-dev.your-domain.com' }}
           NUXT_PUBLIC_ENVIRONMENT=${{ steps.env.outputs.environment }}
           EOF
           echo "Environment file created:"
