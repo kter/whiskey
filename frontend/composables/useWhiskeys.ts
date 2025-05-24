@@ -11,7 +11,7 @@ export const useWhiskeys = () => {
   const error = ref<string | null>(null)
   const totalCount = ref(0)
 
-  // レビュー一覧の取得
+  // レビュー一覧の取得（認証必要）
   const fetchReviews = async (params: ReviewSearchParams) => {
     try {
       loading.value = true
@@ -46,7 +46,7 @@ export const useWhiskeys = () => {
     }
   }
 
-  // レビューの作成
+  // レビューの作成（認証必要）
   const createReview = async (review: ReviewInput) => {
     try {
       loading.value = true
@@ -75,7 +75,7 @@ export const useWhiskeys = () => {
     }
   }
 
-  // レビューの更新
+  // レビューの更新（認証必要）
   const updateReview = async (id: number, review: ReviewInput) => {
     try {
       loading.value = true
@@ -104,7 +104,7 @@ export const useWhiskeys = () => {
     }
   }
 
-  // レビューの削除
+  // レビューの削除（認証必要）
   const deleteReview = async (id: number) => {
     try {
       loading.value = true
@@ -129,18 +129,14 @@ export const useWhiskeys = () => {
     }
   }
 
-  // ランキングの取得
+  // ランキングの取得（認証不要）
   const fetchRanking = async (): Promise<RankingItem[]> => {
     try {
       loading.value = true
       error.value = null
 
-      const token = await getToken()
-      const response = await fetch(`${config.public.apiBaseUrl}/api/whiskeys/ranking/`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      })
+      // ランキングAPIは認証不要のパブリックエンドポイント
+      const response = await fetch(`${config.public.apiBaseUrl}/api/whiskeys/ranking/`)
 
       if (!response.ok) {
         throw new Error('ランキングの取得に失敗しました')
@@ -149,6 +145,35 @@ export const useWhiskeys = () => {
       return await response.json()
     } catch (err) {
       error.value = 'ランキングの取得に失敗しました'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  // パブリックレビュー取得（認証不要）
+  const fetchPublicReviews = async (params: ReviewSearchParams) => {
+    try {
+      loading.value = true
+      error.value = null
+
+      // パブリックレビューAPIは認証不要
+      const response = await fetch(
+        `${config.public.apiBaseUrl}/api/reviews/public/?${new URLSearchParams(params as any)}`
+      )
+
+      if (!response.ok) {
+        throw new Error('パブリックレビューの取得に失敗しました')
+      }
+
+      const data = await response.json()
+      
+      // Django REST Frameworkのページネーション形式に対応
+      reviews.value = data.results || data.reviews || []
+      totalCount.value = data.count || data.total_count || 0
+    } catch (err) {
+      error.value = 'パブリックレビューの取得に失敗しました'
+      console.error('Fetch Public Reviews Error:', err)
       throw err
     } finally {
       loading.value = false
@@ -164,6 +189,7 @@ export const useWhiskeys = () => {
     createReview,
     updateReview,
     deleteReview,
-    fetchRanking
+    fetchRanking,
+    fetchPublicReviews
   }
 } 

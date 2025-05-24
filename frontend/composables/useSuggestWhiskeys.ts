@@ -1,15 +1,13 @@
 import { ref } from 'vue'
-import { useAuth } from '~/composables/useAuth'
 
 export const useSuggestWhiskeys = () => {
-  const { getToken } = useAuth()
   const config = useRuntimeConfig()
 
   const suggestions = ref<string[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
 
-  // サジェスト検索
+  // サジェスト検索（認証不要）
   const searchWhiskeys = async (query: string) => {
     if (query.length < 2) {
       suggestions.value = []
@@ -20,14 +18,9 @@ export const useSuggestWhiskeys = () => {
       loading.value = true
       error.value = null
 
-      const token = await getToken()
+      // サジェストAPIは認証不要のパブリックエンドポイント
       const response = await fetch(
-        `${config.public.apiBaseUrl}/api/whiskeys/suggest?q=${encodeURIComponent(query)}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        }
+        `${config.public.apiBaseUrl}/api/whiskeys/suggest?q=${encodeURIComponent(query)}`
       )
 
       if (!response.ok) {
@@ -35,10 +28,12 @@ export const useSuggestWhiskeys = () => {
       }
 
       const data = await response.json()
-      suggestions.value = data.suggestions
+      // バックエンドのレスポンス形式に応じて調整
+      suggestions.value = Array.isArray(data) ? data.map(item => typeof item === 'string' ? item : item.name) : data.suggestions || []
     } catch (err) {
       error.value = 'サジェストの取得に失敗しました'
       suggestions.value = []
+      console.error('Search whiskeys error:', err)
     } finally {
       loading.value = false
     }
