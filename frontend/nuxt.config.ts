@@ -5,9 +5,16 @@ export default defineNuxtConfig({
   typescript: {
     strict: true
   },
+  // S3静的サイトホスティング用のSSG設定
   nitro: {
-    compatibilityDate: '2025-05-22'
+    compatibilityDate: '2025-05-22',
+    prerender: {
+      routes: ['/'], // ルートページを事前生成
+      crawlLinks: true // リンクを自動で辿って生成
+    }
   },
+  // 静的サイト生成モード
+  ssr: false, // SPAモード
   runtimeConfig: {
     public: {
       // API設定（CDKのGitHub Actionsと統一）

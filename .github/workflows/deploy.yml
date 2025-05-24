@@ -145,12 +145,14 @@ jobs:
       - name: Build Nuxt.js application
         run: |
           cd frontend
-          echo "Building Nuxt.js application..."
-          npm run build
+          echo "Building Nuxt.js application for static hosting..."
+          npm run generate
           echo "Build completed successfully"
           echo "Output directory contents:"
           ls -la .output/ || echo "Output directory not found"
           ls -la .output/public/ || echo "Public directory not found"
+          echo "Checking for index.html:"
+          find .output -name "index.html" -type f || echo "No index.html found"
 
       - name: Deploy to S3
         run: |
