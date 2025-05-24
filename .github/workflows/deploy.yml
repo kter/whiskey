@@ -3,12 +3,12 @@ name: Deploy Whiskey App
 on:
   push:
     branches:
-      - main      # prod環境へのデプロイ
-      - develop   # dev環境へのデプロイ
+      - main        # dev環境へのデプロイ
+      - production  # prod環境へのデプロイ
   pull_request:
     branches:
       - main
-      - develop
+      - production
 
 env:
   NODE_VERSION: '18'
@@ -24,21 +24,29 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Debug - List files
+        run: |
+          echo "Repository root contents:"
+          ls -la
+          echo "Frontend directory contents:"
+          ls -la frontend/ || echo "Frontend directory not found"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: frontend/package.json  # package.jsonに変更
 
       - name: Determine environment
         id: env
         run: |
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          if [[ "${{ github.ref }}" == "refs/heads/production" ]]; then
             echo "environment=prod" >> $GITHUB_OUTPUT
           else
             echo "environment=dev" >> $GITHUB_OUTPUT
           fi
+          echo "Detected environment: ${{ github.ref }} -> $(if [[ "${{ github.ref }}" == "refs/heads/production" ]]; then echo "prod"; else echo "dev"; fi)"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -51,26 +59,52 @@ jobs:
         id: infra
         run: |
           ENV=${{ steps.env.outputs.environment }}
+          echo "Getting outputs for environment: $ENV"
+          
+          # スタック名を確認
+          STACK_NAME="WhiskeyApp-$(echo $ENV | sed 's/./\U&/')"
+          echo "Stack name: $STACK_NAME"
+          
+          # スタックの存在を確認
+          if ! aws cloudformation describe-stacks --stack-name "$STACK_NAME" >/dev/null 2>&1; then
+            echo "Error: Stack $STACK_NAME not found"
+            echo "Available stacks:"
+            aws cloudformation list-stacks --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE --query 'StackSummaries[].StackName' --output text
+            exit 1
+          fi
+          
           BUCKET_NAME=$(aws cloudformation describe-stacks \
-            --stack-name WhiskeyApp-$(echo $ENV | sed 's/./\U&/') \
+            --stack-name "$STACK_NAME" \
             --query "Stacks[0].Outputs[?OutputKey=='WebAppBucketName'].OutputValue" \
             --output text)
           DISTRIBUTION_ID=$(aws cloudformation describe-stacks \
-            --stack-name WhiskeyApp-$(echo $ENV | sed 's/./\U&/') \
+            --stack-name "$STACK_NAME" \
             --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDistributionId'].OutputValue" \
             --output text)
           USER_POOL_ID=$(aws cloudformation describe-stacks \
-            --stack-name WhiskeyApp-$(echo $ENV | sed 's/./\U&/') \
+            --stack-name "$STACK_NAME" \
             --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" \
             --output text)
           USER_POOL_CLIENT_ID=$(aws cloudformation describe-stacks \
-            --stack-name WhiskeyApp-$(echo $ENV | sed 's/./\U&/') \
+            --stack-name "$STACK_NAME" \
             --query "Stacks[0].Outputs[?OutputKey=='UserPoolClientId'].OutputValue" \
             --output text)
           IMAGES_BUCKET=$(aws cloudformation describe-stacks \
-            --stack-name WhiskeyApp-$(echo $ENV | sed 's/./\U&/') \
+            --stack-name "$STACK_NAME" \
             --query "Stacks[0].Outputs[?OutputKey=='ImagesBucketName'].OutputValue" \
             --output text)
+          
+          echo "Retrieved values:"
+          echo "Bucket: $BUCKET_NAME"
+          echo "Distribution: $DISTRIBUTION_ID"
+          echo "User Pool: $USER_POOL_ID"
+          echo "Client ID: $USER_POOL_CLIENT_ID"
+          echo "Images Bucket: $IMAGES_BUCKET"
+          
+          if [[ -z "$BUCKET_NAME" || "$BUCKET_NAME" == "None" ]]; then
+            echo "Error: Could not retrieve bucket name"
+            exit 1
+          fi
           
           echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
           echo "distribution_id=$DISTRIBUTION_ID" >> $GITHUB_OUTPUT
@@ -88,6 +122,7 @@ jobs:
       - name: Create environment file
         run: |
           cd frontend
+          echo "Creating environment file for ${{ steps.env.outputs.environment }} environment..."
           cat > .env << EOF
           NUXT_PUBLIC_USER_POOL_ID=${{ steps.infra.outputs.user_pool_id }}
           NUXT_PUBLIC_USER_POOL_CLIENT_ID=${{ steps.infra.outputs.user_pool_client_id }}
@@ -96,22 +131,33 @@ jobs:
           NUXT_PUBLIC_API_BASE_URL=${{ steps.env.outputs.environment == 'prod' && 'https://api.your-domain.com' || 'https://api-dev.your-domain.com' }}
           NUXT_PUBLIC_ENVIRONMENT=${{ steps.env.outputs.environment }}
           EOF
+          echo "Environment file created:"
+          cat .env
 
       - name: Build Nuxt.js application
         run: |
           cd frontend
+          echo "Building Nuxt.js application..."
           npm run build
+          echo "Build completed successfully"
+          echo "Output directory contents:"
+          ls -la .output/ || echo "Output directory not found"
+          ls -la .output/public/ || echo "Public directory not found"
 
       - name: Deploy to S3
         run: |
           cd frontend
+          echo "Deploying to S3 bucket: ${{ steps.infra.outputs.bucket_name }}"
           aws s3 sync .output/public/ s3://${{ steps.infra.outputs.bucket_name }}/ --delete
+          echo "S3 deployment completed"
 
       - name: Invalidate CloudFront
         run: |
+          echo "Invalidating CloudFront distribution: ${{ steps.infra.outputs.distribution_id }}"
           aws cloudfront create-invalidation \
             --distribution-id ${{ steps.infra.outputs.distribution_id }} \
             --paths "/*"
+          echo "CloudFront invalidation completed"
 
       - name: Notify deployment status
         if: always()
