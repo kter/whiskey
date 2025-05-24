@@ -10,16 +10,21 @@ export default defineNuxtConfig({
   },
   runtimeConfig: {
     public: {
-      apiBase: process.env.NUXT_PUBLIC_API_BASE || 'http://localhost:8000',
-      apiBaseUrl: process.env.API_BASE_URL || 'http://localhost:8000',
-      awsRegion: process.env.NUXT_PUBLIC_AWS_REGION || 'ap-northeast-1',
-      cognitoUserPoolId: process.env.NUXT_PUBLIC_COGNITO_USER_POOL_ID,
-      cognitoClientId: process.env.NUXT_PUBLIC_COGNITO_CLIENT_ID,
-      aws: {
-        region: process.env.AWS_REGION || 'ap-northeast-1',
-        userPoolId: process.env.AWS_USER_POOL_ID || '',
-        userPoolWebClientId: process.env.AWS_USER_POOL_CLIENT_ID || '',
-      }
+      // API設定（CDKのGitHub Actionsと統一）
+      apiBaseUrl: process.env.NUXT_PUBLIC_API_BASE_URL || 'http://localhost:8000',
+      
+      // AWS & Cognito設定（CDKのOutputsと統一）
+      userPoolId: process.env.NUXT_PUBLIC_USER_POOL_ID || 'ap-northeast-1_xxxxxxxx',
+      userPoolClientId: process.env.NUXT_PUBLIC_USER_POOL_CLIENT_ID || 'xxxxxxxxxxxxxxxxxxxxxxxxxx',
+      region: process.env.NUXT_PUBLIC_REGION || 'ap-northeast-1',
+      imagesBucket: process.env.NUXT_PUBLIC_IMAGES_BUCKET || 'whiskey-images-dev',
+      environment: process.env.NUXT_PUBLIC_ENVIRONMENT || 'local',
+      
+      // 後方互換性のため残す
+      apiBase: process.env.NUXT_PUBLIC_API_BASE || process.env.NUXT_PUBLIC_API_BASE_URL || 'http://localhost:8000',
+      awsRegion: process.env.NUXT_PUBLIC_AWS_REGION || process.env.NUXT_PUBLIC_REGION || 'ap-northeast-1',
+      cognitoUserPoolId: process.env.NUXT_PUBLIC_COGNITO_USER_POOL_ID || process.env.NUXT_PUBLIC_USER_POOL_ID || 'ap-northeast-1_xxxxxxxx',
+      cognitoClientId: process.env.NUXT_PUBLIC_COGNITO_CLIENT_ID || process.env.NUXT_PUBLIC_USER_POOL_CLIENT_ID || 'xxxxxxxxxxxxxxxxxxxxxxxxxx',
     }
   },
   app: {

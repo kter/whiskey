@@ -1,20 +1,40 @@
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib';
-import { InfraStack } from '../lib/infra-stack';
+import { WhiskeyInfraStack } from '../lib/whiskey-infra-stack';
 
 const app = new cdk.App();
-new InfraStack(app, 'InfraStack', {
-  /* If you don't specify 'env', this stack will be environment-agnostic.
-   * Account/Region-dependent features and context lookups will not work,
-   * but a single synthesized template can be deployed anywhere. */
 
-  /* Uncomment the next line to specialize this stack for the AWS Account
-   * and Region that are implied by the current CLI configuration. */
-  // env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION },
+// 環境変数から環境を取得（デフォルトはdev）
+const env = app.node.tryGetContext('env') || process.env.ENV || 'dev';
 
-  /* Uncomment the next line if you know exactly what Account and Region you
-   * want to deploy the stack to. */
-  // env: { account: '123456789012', region: 'us-east-1' },
+// 環境ごとのスタック設定
+const stackConfig = {
+  dev: {
+    stackName: 'WhiskeyApp-Dev',
+    env: { 
+      account: process.env.CDK_DEFAULT_ACCOUNT, 
+      region: process.env.CDK_DEFAULT_REGION || 'ap-northeast-1' 
+    }
+  },
+  prod: {
+    stackName: 'WhiskeyApp-Prod',
+    env: { 
+      account: process.env.CDK_DEFAULT_ACCOUNT, 
+      region: process.env.CDK_DEFAULT_REGION || 'ap-northeast-1' 
+    }
+  }
+};
 
-  /* For more information, see https://docs.aws.amazon.com/cdk/latest/guide/environments.html */
+const config = stackConfig[env as keyof typeof stackConfig];
+if (!config) {
+  throw new Error(`Invalid environment: ${env}. Must be 'dev' or 'prod'.`);
+}
+
+new WhiskeyInfraStack(app, config.stackName, {
+  env: config.env,
+  environment: env,
+  tags: {
+    Project: 'WhiskeyApp',
+    Environment: env
+  }
 });

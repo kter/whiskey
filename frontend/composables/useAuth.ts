@@ -1,49 +1,104 @@
 import { ref } from 'vue'
-// import { signIn, signOut, getCurrentUser, fetchUserAttributes, resetPassword, confirmResetPassword } from '@aws-amplify/auth'
+import { signIn, signOut, getCurrentUser, fetchUserAttributes, resetPassword, confirmResetPassword } from '@aws-amplify/auth'
 
 export const useAuth = () => {
   const isAuthenticated = ref(false)
   const user = ref(null)
   const loading = ref(false)
+  const config = useRuntimeConfig()
 
   // 認証状態の初期化
   const initialize = async () => {
-    console.log('Auth initialize called (disabled for debugging)')
-    loading.value = false
+    try {
+      loading.value = true
+      const currentUser = await getCurrentUser()
+      if (currentUser) {
+        user.value = currentUser
+        isAuthenticated.value = true
+      }
+    } catch (error) {
+      console.log('No authenticated user')
+      isAuthenticated.value = false
+      user.value = null
+    } finally {
+      loading.value = false
+    }
   }
 
-  // トークン取得（ダミー実装）
+  // アクセストークン取得
   const getToken = async () => {
-    console.log('getToken called (disabled for debugging)')
-    return 'dummy-token'
+    try {
+      const { tokens } = await getCurrentUser()
+      return tokens?.accessToken.toString() || ''
+    } catch (error) {
+      console.error('Error getting token:', error)
+      throw error
+    }
   }
 
   // サインイン
   const handleSignIn = async (username: string, password: string) => {
-    console.log('SignIn called (disabled for debugging)', username)
-    isAuthenticated.value = true
-    return { isSignedIn: true }
+    try {
+      loading.value = true
+      const { isSignedIn, nextStep } = await signIn({ username, password })
+      
+      if (isSignedIn) {
+        const currentUser = await getCurrentUser()
+        user.value = currentUser
+        isAuthenticated.value = true
+      }
+      
+      return { isSignedIn, nextStep }
+    } catch (error) {
+      console.error('Sign in error:', error)
+      throw error
+    } finally {
+      loading.value = false
+    }
   }
 
   // サインアウト
   const handleSignOut = async () => {
-    console.log('SignOut called (disabled for debugging)')
-    isAuthenticated.value = false
-    user.value = null
+    try {
+      loading.value = true
+      await signOut()
+      isAuthenticated.value = false
+      user.value = null
+    } catch (error) {
+      console.error('Sign out error:', error)
+      throw error
+    } finally {
+      loading.value = false
+    }
   }
 
   // パスワードリセット
   const handleResetPassword = async (username: string) => {
-    console.log('Reset password called (disabled for debugging)', username)
+    try {
+      const output = await resetPassword({ username })
+      return output
+    } catch (error) {
+      console.error('Reset password error:', error)
+      throw error
+    }
   }
 
   // パスワードリセットの確認
   const handleConfirmResetPassword = async (
     username: string,
-    code: string,
+    confirmationCode: string,
     newPassword: string
   ) => {
-    console.log('Confirm reset password called (disabled for debugging)', username)
+    try {
+      await confirmResetPassword({
+        username,
+        confirmationCode,
+        newPassword
+      })
+    } catch (error) {
+      console.error('Confirm reset password error:', error)
+      throw error
+    }
   }
 
   return {

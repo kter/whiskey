@@ -1,0 +1,121 @@
+name: Deploy Whiskey App
+
+on:
+  push:
+    branches:
+      - main      # prod環境へのデプロイ
+      - develop   # dev環境へのデプロイ
+  pull_request:
+    branches:
+      - main
+      - develop
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # OIDCトークン取得に必要
+      contents: read    # コードの読み取りに必要
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Determine environment
+        id: env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "environment=prod" >> $GITHUB_OUTPUT
+          else
+            echo "environment=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ap-northeast-1
+          role-session-name: GitHubActions-${{ github.run_id }}
+
+      - name: Get infrastructure outputs
+        id: infra
+        run: |
+          ENV=${{ steps.env.outputs.environment }}
+          BUCKET_NAME=$(aws cloudformation describe-stacks \
+            --stack-name WhiskeyApp-$(echo $ENV | sed 's/./\U&/') \
+            --query "Stacks[0].Outputs[?OutputKey=='WebAppBucketName'].OutputValue" \
+            --output text)
+          DISTRIBUTION_ID=$(aws cloudformation describe-stacks \
+            --stack-name WhiskeyApp-$(echo $ENV | sed 's/./\U&/') \
+            --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDistributionId'].OutputValue" \
+            --output text)
+          USER_POOL_ID=$(aws cloudformation describe-stacks \
+            --stack-name WhiskeyApp-$(echo $ENV | sed 's/./\U&/') \
+            --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" \
+            --output text)
+          USER_POOL_CLIENT_ID=$(aws cloudformation describe-stacks \
+            --stack-name WhiskeyApp-$(echo $ENV | sed 's/./\U&/') \
+            --query "Stacks[0].Outputs[?OutputKey=='UserPoolClientId'].OutputValue" \
+            --output text)
+          IMAGES_BUCKET=$(aws cloudformation describe-stacks \
+            --stack-name WhiskeyApp-$(echo $ENV | sed 's/./\U&/') \
+            --query "Stacks[0].Outputs[?OutputKey=='ImagesBucketName'].OutputValue" \
+            --output text)
+          
+          echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
+          echo "distribution_id=$DISTRIBUTION_ID" >> $GITHUB_OUTPUT
+          echo "user_pool_id=$USER_POOL_ID" >> $GITHUB_OUTPUT
+          echo "user_pool_client_id=$USER_POOL_CLIENT_ID" >> $GITHUB_OUTPUT
+          echo "images_bucket=$IMAGES_BUCKET" >> $GITHUB_OUTPUT
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Create environment file
+        run: |
+          cd frontend
+          cat > .env << EOF
+          NUXT_PUBLIC_USER_POOL_ID=${{ steps.infra.outputs.user_pool_id }}
+          NUXT_PUBLIC_USER_POOL_CLIENT_ID=${{ steps.infra.outputs.user_pool_client_id }}
+          NUXT_PUBLIC_REGION=ap-northeast-1
+          NUXT_PUBLIC_IMAGES_BUCKET=${{ steps.infra.outputs.images_bucket }}
+          NUXT_PUBLIC_API_BASE_URL=${{ steps.env.outputs.environment == 'prod' && 'https://api.your-domain.com' || 'https://api-dev.your-domain.com' }}
+          NUXT_PUBLIC_ENVIRONMENT=${{ steps.env.outputs.environment }}
+          EOF
+
+      - name: Build Nuxt.js application
+        run: |
+          cd frontend
+          npm run build
+
+      - name: Deploy to S3
+        run: |
+          cd frontend
+          aws s3 sync .output/public/ s3://${{ steps.infra.outputs.bucket_name }}/ --delete
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ steps.infra.outputs.distribution_id }} \
+            --paths "/*"
+
+      - name: Notify deployment status
+        if: always()
+        run: |
+          if [[ "${{ job.status }}" == "success" ]]; then
+            echo "✅ Deployment to ${{ steps.env.outputs.environment }} environment successful!"
+          else
+            echo "❌ Deployment to ${{ steps.env.outputs.environment }} environment failed!"
+          fi 
