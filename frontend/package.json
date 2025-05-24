@@ -24,7 +24,7 @@
   },
   "dependencies": {
     "@aws-amplify/auth": "^6.0.17",
-    "@aws-amplify/ui-vue": "^3.1.29",
+    "@aws-amplify/ui-vue": "^4.3.3",
     "aws-amplify": "^6.0.17",
     "axios": "^1.6.7",
     "chart.js": "^4.4.1",

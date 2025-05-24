@@ -81,7 +81,9 @@ jobs:
       - name: Install frontend dependencies
         run: |
           cd frontend
-          npm ci
+          echo "Installing dependencies..."
+          npm install
+          echo "Dependencies installed successfully"
 
       - name: Create environment file
         run: |
