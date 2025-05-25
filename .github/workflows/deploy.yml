@@ -136,7 +136,7 @@ jobs:
           NUXT_PUBLIC_USER_POOL_CLIENT_ID=${{ steps.infra.outputs.user_pool_client_id }}
           NUXT_PUBLIC_REGION=ap-northeast-1
           NUXT_PUBLIC_IMAGES_BUCKET=${{ steps.infra.outputs.images_bucket }}
-          NUXT_PUBLIC_API_BASE_URL=${{ steps.env.outputs.environment == 'prd' && 'https://api.your-domain.com' || 'https://api-dev.your-domain.com' }}
+          NUXT_PUBLIC_API_BASE_URL=${{ steps.env.outputs.environment == 'prd' && 'https://api.whiskeybar.site' || 'https://api.dev.whiskeybar.site' }}
           NUXT_PUBLIC_ENVIRONMENT=${{ steps.env.outputs.environment }}
           EOF
           echo "Environment file created:"
