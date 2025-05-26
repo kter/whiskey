@@ -304,12 +304,23 @@ cd infra && npm run deploy:dev
 
 ## 🚨 トラブルシューティング
 
+### 緊急時の対応
+
+#### ECR認証エラー
+GitHub ActionsでECR権限エラーが発生した場合：
+```bash
+# 緊急修正スクリプトを実行
+./deploy-fix.sh
+```
+
+詳細なトラブルシューティングについては [`TROUBLESHOOTING.md`](./TROUBLESHOOTING.md) を参照してください。
+
 ### 一般的な問題
 
 #### 1. ECS タスクが起動しない
 ```bash
 # ログ確認
-aws logs get-log-events --log-group-name /ecs/whiskey-api-dev
+aws logs tail /ecs/whiskey-api-dev --follow
 
 # タスク定義確認
 aws ecs describe-task-definition --task-definition whiskey-api-dev
