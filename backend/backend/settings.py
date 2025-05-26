@@ -16,6 +16,11 @@ import os
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Environment detection
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'local')
+IS_PRODUCTION = ENVIRONMENT in ['prod', 'production']
+IS_DEVELOPMENT = ENVIRONMENT in ['dev', 'development']
+IS_LOCAL = ENVIRONMENT == 'local'
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
@@ -24,13 +29,29 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-r^x0v^(0vr@aegvw$083blf1z1x+^5=2jh8s(64ucq9f1&gtvu')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DJANGO_DEBUG', 'True').lower() == 'true'
+DEBUG = os.getenv('DJANGO_DEBUG', str(not IS_PRODUCTION)).lower() == 'true'
 
-ALLOWED_HOSTS = os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+# Allowed hosts - environment based
+if IS_LOCAL:
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0']
+else:
+    # Production/Development environments
+    ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'api.whiskeybar.site,api.dev.whiskeybar.site').split(',')
 
+# Security settings for production
+if IS_PRODUCTION:
+    SECURE_SSL_REDIRECT = True
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_BROWSER_XSS_FILTER = True
+    X_FRAME_OPTIONS = 'DENY'
 
 # Application definition
-
 INSTALLED_APPS = [
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -64,6 +85,7 @@ TEMPLATES = [
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
+                'django.template.context_processors.debug',
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
@@ -73,7 +95,6 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'backend.wsgi.application'
-
 
 # Database - DynamoDBを使用するためDatabasesは最小設定
 # セッション用の最小限のデータベース設定
@@ -98,37 +119,55 @@ DYNAMODB_SESSIONS_ALWAYS_CONSISTENT = True
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
 LANGUAGE_CODE = 'en-us'
-
 TIME_ZONE = 'UTC'
-
 USE_I18N = True
-
 USE_TZ = True
-
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
-
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'static')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
-
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# CORS settings
-CORS_ALLOW_ALL_ORIGINS = True  # For development only
+# CORS settings - Environment based
+if IS_LOCAL:
+    CORS_ALLOW_ALL_ORIGINS = True
+    CORS_ALLOWED_ORIGINS = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+else:
+    CORS_ALLOW_ALL_ORIGINS = False
+    # Get allowed origins from environment variable
+    cors_origins = os.getenv('CORS_ALLOWED_ORIGINS', 'https://whiskeybar.site,https://dev.whiskeybar.site')
+    CORS_ALLOWED_ORIGINS = cors_origins.split(',')
+
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
+CORS_ALLOWED_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
 ]
 
 # AWS Settings
 AWS_REGION = os.getenv('AWS_REGION', 'ap-northeast-1')
-AWS_S3_BUCKET = os.getenv('AWS_S3_BUCKET', 'whiskey-reviews')
+AWS_S3_BUCKET = os.getenv('S3_IMAGES_BUCKET', 'whiskey-images-dev')
 AWS_ENDPOINT_URL = os.getenv('AWS_ENDPOINT_URL')  # LocalStack用
 COGNITO_USER_POOL_ID = os.getenv('COGNITO_USER_POOL_ID', 'ap-northeast-1_xxxxxxxx')
 COGNITO_CLIENT_ID = os.getenv('COGNITO_CLIENT_ID', 'xxxxxxxxxxxxxxxxxxxxxxxxxx')
+
+# DynamoDB Table Names
+DYNAMODB_WHISKEYS_TABLE = os.getenv('DYNAMODB_WHISKEYS_TABLE', 'Whiskeys-local')
+DYNAMODB_REVIEWS_TABLE = os.getenv('DYNAMODB_REVIEWS_TABLE', 'Reviews-local')
 
 # DynamoDB Session Settings (AWS設定の後に配置)
 DYNAMODB_SESSIONS_AWS_REGION = AWS_REGION
@@ -154,4 +193,42 @@ REST_FRAMEWORK = {
 DYNAMODB_SETTINGS = {
     'region_name': AWS_REGION,
     'endpoint_url': AWS_ENDPOINT_URL,  # LocalStack環境では設定される
+}
+
+# Logging configuration
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '[{levelname}] {asctime} {name} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '[{levelname}] {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose' if not IS_LOCAL else 'simple',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'api': {
+            'handlers': ['console'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+            'propagate': False,
+        },
+    },
 }

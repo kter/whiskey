@@ -1,209 +1,364 @@
-# Whiskey Log Application
+# Whiskey Tasting App
 
-ウィスキーのテイスティング記録とレビューを管理するWebアプリケーションです。
+ウイスキーテイスティング記録アプリケーション
 
-## 特徴
+## 🏗️ アーキテクチャ
 
-- **ウィスキー一覧表示**: 評価順にソートされたウィスキーの表示
-- **レビュー機能**: ウィスキーのテイスティングノートと評価の記録
-- **ランキング機能**: 平均評価によるウィスキーランキング
-- **認証システム**: ユーザー管理機能（予定）
-- **データ永続化**: LocalStackのボリュームマウントによるデータ保存
+### インフラストラクチャ概要
 
-## 技術スタック
+```
+┌─────────────────┐    ┌─────────────────┐
+│   CloudFront    │    │      ALB        │
+│   (Frontend)    │    │     (API)       │
+└─────────┬───────┘    └─────────┬───────┘
+          │                      │
+          │                      │
+┌─────────▼───────┐    ┌─────────▼───────┐
+│       S3        │    │   ECS Fargate   │
+│  (Static Files) │    │   (Django API)  │
+└─────────────────┘    └─────────────────┘
+          │                      │
+          └──────────┬───────────┘
+                     │
+       ┌─────────────▼──────────────┐
+       │         DynamoDB           │
+       │     (Whiskeys/Reviews)     │
+       └────────────────────────────┘
+```
 
-### フロントエンド
-- **Nuxt.js 3**: Vue.js 3ベースのフレームワーク
-- **Tailwind CSS**: ユーティリティファーストのCSSフレームワーク
-- **TypeScript**: 静的型付けによる開発効率向上
+### ドメイン構成
 
-### バックエンド
-- **Django 5.2**: Python Webフレームワーク
-- **Django REST Framework**: RESTful API構築
-- **DynamoDB**: NoSQLデータベース（AWS DynamoDB互換）
+**dev環境:**
+- フロントエンド: `https://dev.whiskeybar.site`
+- API: `https://api.dev.whiskeybar.site`
 
-### インフラ
-- **Docker & Docker Compose**: コンテナ化とオーケストレーション
-- **LocalStack**: AWS DynamoDBのローカル環境エミュレーション
-- **永続化ボリューム**: データの永続保存
+**prod環境:**
+- フロントエンド: `https://whiskeybar.site`
+- API: `https://api.whiskeybar.site`
 
-## セットアップ
+### 主要AWSサービス
+
+#### フロントエンド
+- **S3**: 静的サイトホスティング
+- **CloudFront**: CDN・SSL終端
+- **Route53**: DNS・ドメイン管理
+
+#### API
+- **ECR**: Dockerイメージリポジトリ
+- **ECS Fargate**: コンテナ実行環境
+- **ALB**: ロードバランサー・SSL終端
+- **Route53**: APIドメイン管理
+
+#### 共通
+- **DynamoDB**: NoSQLデータベース
+- **Cognito**: ユーザー認証
+- **VPC**: ネットワーク分離
+- **IAM**: アクセス制御
+- **Secrets Manager**: 機密情報管理
+
+## 🚀 デプロイ手順
+
+### 1. インフラストラクチャのデプロイ
+
+```bash
+# 開発環境
+cd infra
+npm run deploy:dev
+
+# 本番環境（productionブランチから）
+npm run deploy:prod
+```
+
+### 2. フロントエンドのデプロイ
+
+GitHub Actionsで自動デプロイされます：
+- `main`ブランチ → dev環境
+- `production`ブランチ → prod環境
+
+手動デプロイ：
+```bash
+./scripts/deploy.sh dev    # 開発環境
+./scripts/deploy.sh prod   # 本番環境
+```
+
+### 3. APIのデプロイ
+
+GitHub Actionsで自動デプロイされます：
+- フロントエンドと並行して実行
+- DockerイメージのビルドとECRプッシュ
+- ECSサービスの更新
+
+手動デプロイ：
+```bash
+./scripts/deploy-api.sh dev    # 開発環境
+./scripts/deploy-api.sh prod   # 本番環境
+```
+
+## 📁 プロジェクト構成
+
+```
+whiskey/
+├── frontend/          # Nuxt.js SPA
+│   ├── components/    # Vueコンポーネント
+│   ├── composables/   # Composition API
+│   ├── pages/         # ページコンポーネント
+│   └── plugins/       # プラグイン
+├── backend/           # Django REST API
+│   ├── api/           # APIアプリケーション
+│   ├── backend/       # Django設定
+│   └── Dockerfile     # 本番用Dockerファイル
+├── infra/             # AWS CDK
+│   ├── lib/           # CDKスタック定義
+│   ├── config/        # 環境設定
+│   └── scripts/       # デプロイスクリプト
+├── scripts/           # 運用スクリプト
+└── .github/
+    └── workflows/     # GitHub Actions
+```
+
+## 🔧 開発環境
 
 ### 前提条件
-- Docker
-- Docker Compose
 
-### 起動方法
+- Node.js 18+
+- Python 3.11+
+- Docker & Docker Compose
+- AWS CLI v2
+- AWS CDK
 
-1. **リポジトリのクローン**
+### ローカル開発
+
 ```bash
+# リポジトリクローン
 git clone <repository-url>
 cd whiskey
-```
 
-2. **コンテナの起動**
-```bash
+# 依存関係インストール
+cd frontend && npm install
+cd ../backend && pip install -r requirements.txt
+cd ../infra && npm install
+
+# ローカル環境起動
 docker-compose up -d
+
+# フロントエンド開発サーバー
+cd frontend && npm run dev
+
+# 別ターミナルでAPIサーバー
+cd backend && python manage.py runserver
 ```
 
-3. **DynamoDBテーブルの作成**
+### 環境変数
+
+#### フロントエンド (`frontend/.env`)
 ```bash
-# Whiskeysテーブル
-docker-compose exec localstack awslocal dynamodb create-table \
-  --table-name Whiskeys \
-  --attribute-definitions AttributeName=id,AttributeType=S AttributeName=name,AttributeType=S \
-  --key-schema AttributeName=id,KeyType=HASH \
-  --global-secondary-indexes "IndexName=NameIndex,KeySchema=[{AttributeName=name,KeyType=HASH}],Projection={ProjectionType=ALL}" \
-  --billing-mode PAY_PER_REQUEST \
-  --region ap-northeast-1
-
-# Reviewsテーブル  
-docker-compose exec localstack awslocal dynamodb create-table \
-  --table-name Reviews \
-  --attribute-definitions AttributeName=id,AttributeType=S AttributeName=user_id,AttributeType=S AttributeName=date,AttributeType=S \
-  --key-schema AttributeName=id,KeyType=HASH \
-  --global-secondary-indexes "IndexName=UserDateIndex,KeySchema=[{AttributeName=user_id,KeyType=HASH},{AttributeName=date,KeyType=RANGE}],Projection={ProjectionType=ALL}" \
-  --billing-mode PAY_PER_REQUEST \
-  --region ap-northeast-1
+NUXT_PUBLIC_API_BASE_URL=http://localhost:8000
+NUXT_PUBLIC_USER_POOL_ID=ap-northeast-1_xxxxxxxx
+NUXT_PUBLIC_USER_POOL_CLIENT_ID=xxxxxxxxxxxxxxxxxxxxxxxxxx
+NUXT_PUBLIC_REGION=ap-northeast-1
+NUXT_PUBLIC_IMAGES_BUCKET=whiskey-images-dev
+NUXT_PUBLIC_ENVIRONMENT=local
 ```
 
-4. **サンプルデータの投入**
+#### バックエンド (`backend/.env`)
 ```bash
-./scripts/init_data.sh
+ENVIRONMENT=local
+DJANGO_DEBUG=True
+AWS_ENDPOINT_URL=http://localhost:4566
+DYNAMODB_WHISKEYS_TABLE=Whiskeys-local
+DYNAMODB_REVIEWS_TABLE=Reviews-local
+S3_IMAGES_BUCKET=whiskey-images-local
+COGNITO_USER_POOL_ID=ap-northeast-1_xxxxxxxx
 ```
 
-### アクセス
-- **フロントエンド**: http://localhost:3000
-- **バックエンドAPI**: http://localhost:8000/api/
+## 🔐 認証
 
-## データ永続化
+### AWS Cognito + Amplify
 
-このアプリケーションはLocalStackのボリュームマウント機能を使用してデータを永続化しています。
+- **ユーザープール**: メール/ユーザー名でのサインアップ
+- **認証フロー**: SRP (Secure Remote Password)
+- **トークン**: JWT（アクセス・ID・リフレッシュトークン）
+- **セッション管理**: ローカルストレージ + 自動リフレッシュ
 
-### 永続化の仕組み
-- LocalStackのデータは `./data/localstack` ディレクトリにマウントされます
-- コンテナの再起動後もデータが保持されます
-- `PERSISTENCE=1` 環境変数により永続化が有効になります
+### 認証フロー
 
-### 永続化のテスト
-```bash
-# データの確認
-curl http://localhost:8000/api/whiskeys/ranking/
+1. **サインアップ**: メール検証必須
+2. **サインイン**: JWT トークン取得
+3. **API呼び出し**: Authorization ヘッダーにアクセストークン
+4. **自動リフレッシュ**: リフレッシュトークンで自動更新
 
-# LocalStackの再起動
-docker-compose restart localstack
+## 📊 データモデル
 
-# データが保持されているか確認（5秒後）
-sleep 5 && curl http://localhost:8000/api/whiskeys/ranking/
-```
+### DynamoDB テーブル
 
-## セッション管理
-
-### 開発環境
-- **SQLiteデータベースセッション**: 開発環境では軽量なSQLiteを使用
-- **永続化**: コンテナ再起動時もセッションが保持される
-
-### 本番環境での推奨設定
-
-#### 1. ElastiCache (Redis) セッション (推奨)
-```python
-SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
-SESSION_CACHE_ALIAS = 'default'
-
-CACHES = {
-    'default': {
-        'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': 'redis://your-elasticache-endpoint:6379/1',
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-        }
-    }
+#### Whiskeys テーブル
+```json
+{
+  "id": "whiskey-uuid",
+  "name": "Macallan 12",
+  "distillery": "Macallan",
+  "region": "Speyside",
+  "created_at": "2024-01-01T00:00:00Z"
 }
 ```
 
-#### 2. RDS データベースセッション
-```python
-SESSION_ENGINE = 'django.contrib.sessions.backends.db'
-# RDSデータベース設定と組み合わせて使用
+#### Reviews テーブル
+```json
+{
+  "id": "review-uuid",
+  "whiskey_id": "whiskey-uuid",
+  "user_id": "user-uuid",
+  "rating": 4.5,
+  "notes": "テイスティングノート",
+  "serving_style": "neat",
+  "date": "2024-01-01",
+  "image_url": "https://...",
+  "created_at": "2024-01-01T00:00:00Z"
+}
 ```
 
-### セッション設定の利点
-- **スケーラビリティ**: 複数のサーバーインスタンス間でセッション共有
-- **永続性**: サーバー再起動時もセッションが保持
-- **パフォーマンス**: Redisを使用した高速セッションアクセス
+### GSI (Global Secondary Index)
 
-## API エンドポイント
+- **WhiskeysTable**: `NameIndex` (name)
+- **ReviewsTable**: `UserDateIndex` (user_id, date)
 
-### ウィスキー関連
-- `GET /api/whiskeys/ranking/` - ウィスキーランキング取得
-- `GET /api/whiskeys/suggest/?q=<query>` - ウィスキー検索
+## 🎯 主な機能
 
-### レビュー関連
-- `GET /api/reviews/public/` - パブリックレビュー一覧（認証不要）
-- `GET /api/reviews/` - ユーザーのレビュー一覧（認証必要）
-- `POST /api/reviews/` - レビュー作成（認証必要）
-- `GET /api/reviews/<id>/` - レビュー詳細取得
-- `PUT /api/reviews/<id>/` - レビュー更新（認証必要）
-- `DELETE /api/reviews/<id>/` - レビュー削除（認証必要）
+### フロントエンド
+- ✅ ウイスキー検索・選択
+- ✅ レビュー記録（評価・ノート・写真）
+- ✅ マイレビュー一覧
+- ✅ ウイスキーランキング
+- ✅ パブリックレビュー表示
+- ✅ レスポンシブデザイン
 
-## サンプルデータ
+### バックエンド API
+- ✅ RESTful API (Django REST Framework)
+- ✅ Cognito JWT認証
+- ✅ DynamoDB操作
+- ✅ S3画像アップロード
+- ✅ ヘルスチェックエンドポイント
+- ✅ CORS設定
 
-初期化スクリプトには以下のデータが含まれています：
+### インフラ
+- ✅ AWS CDK (TypeScript)
+- ✅ 環境別デプロイ (dev/prod)
+- ✅ カスタムドメイン・SSL
+- ✅ CI/CD (GitHub Actions)
+- ✅ セキュリティベストプラクティス
 
-### ウィスキー（8件）
-- 山崎12年, 白州12年, 余市15年
-- 響21年, 宮城峡15年, 知多
-- 竹鶴17年, 富士山麓
+## 📈 モニタリング・ログ
 
-### レビュー（10件）
-- 各ウィスキーに対する詳細なテイスティングノート
-- 評価（1-5段階）と飲み方の記録
+### CloudWatch
+- **ECS**: タスク・サービスメトリクス
+- **ALB**: ヘルスチェック・レスポンス時間
+- **DynamoDB**: リクエスト数・エラー率
+- **CloudFront**: キャッシュヒット率
 
-## 開発者向け情報
+### ログ
+- **Django**: 構造化ログ (JSON)
+- **ECS**: コンテナログ
+- **ALB**: アクセスログ
 
-### ディレクトリ構造
-```
-whiskey/
-├── frontend/          # Nuxt.js アプリケーション
-├── backend/           # Django アプリケーション
-├── localstack/        # LocalStack初期化スクリプト
-├── scripts/           # ユーティリティスクリプト
-├── data/              # 永続化データディレクトリ
-└── docker-compose.yml # Docker Compose設定
-```
+## 🛡️ セキュリティ
 
-### ログの確認
+### HTTPS強制
+- CloudFront・ALBでSSL終端
+- HTTP → HTTPS リダイレクト
+- HSTS ヘッダー設定
+
+### CORS設定
+- 環境別許可オリジン
+- 資格情報付きリクエスト対応
+
+### IAM最小権限
+- ECSタスク用ロール
+- GitHub Actions用ロール
+- リソース別アクセス制御
+
+## 🔄 CI/CD
+
+### GitHub Actions ワークフロー
+
+#### トリガー
+- `main`ブランチ → dev環境
+- `production`ブランチ → prod環境
+
+#### 並行デプロイ
+1. **Setup**: インフラ情報取得
+2. **Frontend**: Nuxt.js ビルド・S3デプロイ
+3. **API**: Docker ビルド・ECRプッシュ・ECS更新
+4. **Notify**: デプロイ結果通知
+
+### 手動デプロイ
 ```bash
-# 全サービスのログ
-docker-compose logs -f
+# インフラ
+cd infra && npm run deploy:dev
 
-# 特定のサービスのログ
-docker-compose logs -f frontend
-docker-compose logs -f backend
-docker-compose logs -f localstack
+# フロントエンド
+./scripts/deploy.sh dev
+
+# API
+./scripts/deploy-api.sh dev
 ```
 
-### コンテナの状態確認
+## 🚨 トラブルシューティング
+
+### 一般的な問題
+
+#### 1. ECS タスクが起動しない
 ```bash
-docker-compose ps
+# ログ確認
+aws logs get-log-events --log-group-name /ecs/whiskey-api-dev
+
+# タスク定義確認
+aws ecs describe-task-definition --task-definition whiskey-api-dev
 ```
 
-## トラブルシューティング
-
-### データが表示されない場合
-1. コンテナが正常に起動しているか確認
-2. DynamoDBテーブルが作成されているか確認
-3. サンプルデータが投入されているか確認
-
-### LocalStackの問題
+#### 2. API が応答しない
 ```bash
-# LocalStackの再起動
-docker-compose restart localstack
+# ヘルスチェック
+curl https://api.dev.whiskeybar.site/health/
 
-# LocalStackのヘルスチェック
-curl http://localhost:4566/_localstack/health
+# ALB ターゲットグループ確認
+aws elbv2 describe-target-health --target-group-arn <target-group-arn>
 ```
 
-## ライセンス
+#### 3. 認証エラー
+- Cognito ユーザープール設定確認
+- JWT トークン期限確認
+- CORS 設定確認
 
-MIT License
+### ログ確認コマンド
+```bash
+# ECS ログ
+aws logs tail /ecs/whiskey-api-dev --follow
+
+# CloudFormation イベント
+aws cloudformation describe-stack-events --stack-name WhiskeyApp-Dev
+
+# ECS サービス状態
+aws ecs describe-services --cluster whiskey-api-cluster-dev --services whiskey-api-service-dev
+```
+
+## 📋 今後の拡張予定
+
+- [ ] ウイスキー詳細情報の充実
+- [ ] ソーシャル機能（フォロー・いいね）
+- [ ] 検索・フィルター機能の強化
+- [ ] プッシュ通知
+- [ ] モバイルアプリ（PWA）
+- [ ] 管理者機能
+- [ ] 分析・レポート機能
+
+## 🤝 コントリビューション
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📄 ライセンス
+
+This project is licensed under the MIT License.

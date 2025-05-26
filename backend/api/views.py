@@ -1,4 +1,7 @@
 from django.shortcuts import render
+from django.http import JsonResponse
+from django.views import View
+from django.utils import timezone
 import os
 from datetime import datetime
 from rest_framework import viewsets, generics, status
@@ -219,4 +222,17 @@ class S3UploadUrlView(APIView):
         return Response({
             'upload_url': url,
             'image_url': f'https://{bucket}.s3.amazonaws.com/{key}'
+        })
+
+
+class HealthCheckView(View):
+    """
+    ヘルスチェック用のエンドポイント
+    ALB/ECSのヘルスチェックで使用される
+    """
+    def get(self, request):
+        return JsonResponse({
+            'status': 'healthy',
+            'service': 'whiskey-api',
+            'timestamp': timezone.now().isoformat()
         })
