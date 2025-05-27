@@ -143,7 +143,15 @@ else:
     CORS_ALLOW_ALL_ORIGINS = False
     # Get allowed origins from environment variable
     cors_origins = os.getenv('CORS_ALLOWED_ORIGINS', 'https://whiskeybar.site,https://dev.whiskeybar.site')
-    CORS_ALLOWED_ORIGINS = cors_origins.split(',')
+    CORS_ALLOWED_ORIGINS = [origin.strip() for origin in cors_origins.split(',') if origin.strip()]
+
+# デバッグ用ログ出力
+import logging
+logger = logging.getLogger(__name__)
+logger.info(f"CORS Configuration - Environment: {ENVIRONMENT}")
+logger.info(f"CORS Configuration - IS_LOCAL: {IS_LOCAL}")
+logger.info(f"CORS Configuration - CORS_ALLOWED_ORIGINS env var: {os.getenv('CORS_ALLOWED_ORIGINS')}")
+logger.info(f"CORS Configuration - Final CORS_ALLOWED_ORIGINS: {CORS_ALLOWED_ORIGINS}")
 
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_HEADERS = [
@@ -157,6 +165,26 @@ CORS_ALLOWED_HEADERS = [
     'x-csrftoken',
     'x-requested-with',
 ]
+
+# 一時的にすべてのメソッドを許可（開発環境用）
+CORS_ALLOWED_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
+# より詳細なCORSログ出力
+CORS_ALLOW_ALL_ORIGINS = False  # セキュリティのため明示的にFalse
+
+# CORSエラーの詳細ログを有効化
+if DEBUG:
+    CORS_REPLACE_HTTPS_REFERER = True
+    
+# CORS preflight maximum age
+CORS_PREFLIGHT_MAX_AGE = 86400
 
 # AWS Settings
 AWS_REGION = os.getenv('AWS_REGION', 'ap-northeast-1')

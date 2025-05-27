@@ -9,6 +9,9 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.decorators import api_view
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 import boto3
 from .dynamodb_service import DynamoDBService
 from .serializers import WhiskeySerializer, ReviewSerializer
@@ -173,12 +176,22 @@ class WhiskeyRankingView(APIView):
         serializer = WhiskeySerializer(whiskeys, many=True)
         return Response(serializer.data)
 
+@method_decorator(csrf_exempt, name='dispatch')
 class PublicReviewsView(APIView):
     """パブリックレビュー一覧API（認証不要）"""
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.db_service = DynamoDBService()
+    
+    def options(self, request, *args, **kwargs):
+        """CORS preflight request handling"""
+        response = Response()
+        response['Access-Control-Allow-Origin'] = request.META.get('HTTP_ORIGIN', '*')
+        response['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        response['Access-Control-Allow-Credentials'] = 'true'
+        return response
     
     def get(self, request):
         page = int(request.query_params.get('page', 1))
@@ -231,8 +244,13 @@ class HealthCheckView(View):
     ALB/ECSのヘルスチェックで使用される
     """
     def get(self, request):
-        return JsonResponse({
+        response = JsonResponse({
             'status': 'healthy',
             'service': 'whiskey-api',
             'timestamp': timezone.now().isoformat()
         })
+        # CORSヘッダーを明示的に追加
+        response['Access-Control-Allow-Origin'] = '*'
+        response['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response['Access-Control-Allow-Headers'] = 'Content-Type'
+        return response
