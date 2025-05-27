@@ -13,6 +13,11 @@ class DynamoDBService:
         self.region = os.getenv('AWS_REGION', 'ap-northeast-1')
         endpoint_url = os.getenv('AWS_ENDPOINT_URL')
         
+        # 環境に応じたテーブル名を設定
+        environment = os.getenv('ENVIRONMENT', 'dev')
+        self.whiskey_table_name = f'Whiskeys-{environment}'
+        self.review_table_name = f'Reviews-{environment}'
+        
         if endpoint_url:
             # LocalStack環境
             self.dynamodb = boto3.resource(
@@ -34,37 +39,37 @@ class DynamoDBService:
     def whiskey_table(self):
         if self._whiskey_table is None:
             try:
-                self._whiskey_table = self.dynamodb.Table('Whiskeys')
+                self._whiskey_table = self.dynamodb.Table(self.whiskey_table_name)
                 # テーブルの存在確認
                 self._whiskey_table.load()
             except Exception as e:
-                print(f"Whiskeys table not found, creating: {e}")
+                print(f"Whiskeys table {self.whiskey_table_name} not found, creating: {e}")
                 self._create_whiskey_table()
                 # 作成後に少し待機
                 time.sleep(2)
-                self._whiskey_table = self.dynamodb.Table('Whiskeys')
+                self._whiskey_table = self.dynamodb.Table(self.whiskey_table_name)
         return self._whiskey_table
     
     @property
     def review_table(self):
         if self._review_table is None:
             try:
-                self._review_table = self.dynamodb.Table('Reviews')
+                self._review_table = self.dynamodb.Table(self.review_table_name)
                 # テーブルの存在確認
                 self._review_table.load()
             except Exception as e:
-                print(f"Reviews table not found, creating: {e}")
+                print(f"Reviews table {self.review_table_name} not found, creating: {e}")
                 self._create_review_table()
                 # 作成後に少し待機
                 time.sleep(2)
-                self._review_table = self.dynamodb.Table('Reviews')
+                self._review_table = self.dynamodb.Table(self.review_table_name)
         return self._review_table
     
     def _create_whiskey_table(self):
         """Whiskeysテーブルを作成"""
         try:
             table = self.dynamodb.create_table(
-                TableName='Whiskeys',
+                TableName=self.whiskey_table_name,
                 KeySchema=[
                     {'AttributeName': 'id', 'KeyType': 'HASH'}
                 ],
@@ -94,7 +99,7 @@ class DynamoDBService:
         """Reviewsテーブルを作成"""
         try:
             table = self.dynamodb.create_table(
-                TableName='Reviews',
+                TableName=self.review_table_name,
                 KeySchema=[
                     {'AttributeName': 'id', 'KeyType': 'HASH'}
                 ],
