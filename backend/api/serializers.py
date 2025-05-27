@@ -12,10 +12,10 @@ class WhiskeySerializer(serializers.Serializer):
 
 class ReviewSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
-    whiskey_id = serializers.CharField(source='whiskey')  # フロントエンドとの互換性のため
+    whiskey_id = serializers.CharField(required=False, read_only=True)  # レスポンス用
     whiskey = serializers.CharField(write_only=True)  # 作成時のみ使用
-    whiskey_name = serializers.CharField(read_only=True)
-    whiskey_distillery = serializers.CharField(read_only=True)
+    whiskey_name = serializers.CharField(required=False, read_only=True)
+    whiskey_distillery = serializers.CharField(required=False, read_only=True)
     notes = serializers.CharField()
     rating = serializers.IntegerField(min_value=1, max_value=5)
     serving_style = serializers.ChoiceField(choices=Review.ServingStyle.CHOICES)
