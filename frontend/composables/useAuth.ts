@@ -1,9 +1,9 @@
 import { ref } from 'vue'
-import { signIn, signOut, getCurrentUser, fetchUserAttributes, resetPassword, confirmResetPassword } from '@aws-amplify/auth'
+import { signIn, signOut, signUp, confirmSignUp, getCurrentUser, fetchUserAttributes, resetPassword, confirmResetPassword, type AuthUser } from '@aws-amplify/auth'
 
 export const useAuth = () => {
   const isAuthenticated = ref(false)
-  const user = ref(null)
+  const user = ref<AuthUser | null>(null)
   const loading = ref(false)
   const config = useRuntimeConfig()
 
@@ -115,6 +115,47 @@ export const useAuth = () => {
     }
   }
 
+  // サインアップ
+  const handleSignUp = async (email: string, password: string) => {
+    try {
+      loading.value = true
+      const { isSignUpComplete, userId, nextStep } = await signUp({
+        username: email,
+        password,
+        options: {
+          userAttributes: {
+            email,
+          },
+        },
+      })
+      
+      return { isSignUpComplete, userId, nextStep }
+    } catch (error) {
+      console.error('Sign up error:', error)
+      throw error
+    } finally {
+      loading.value = false
+    }
+  }
+
+  // メール確認コードの検証
+  const handleConfirmSignUp = async (email: string, confirmationCode: string) => {
+    try {
+      loading.value = true
+      const { isSignUpComplete, nextStep } = await confirmSignUp({
+        username: email,
+        confirmationCode,
+      })
+
+      return { isSignUpComplete, nextStep }
+    } catch (error) {
+      console.error('Confirm sign up error:', error)
+      throw error
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     isAuthenticated,
     user,
@@ -124,6 +165,8 @@ export const useAuth = () => {
     getTokenSafely,
     signIn: handleSignIn,
     signOut: handleSignOut,
+    signUp: handleSignUp,
+    confirmSignUp: handleConfirmSignUp,
     resetPassword: handleResetPassword,
     confirmResetPassword: handleConfirmResetPassword
   }

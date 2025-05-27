@@ -70,6 +70,16 @@ const handleSubmit = async () => {
             ログイン
           </button>
         </div>
+
+        <!-- サインアップリンク -->
+        <div class="text-center">
+          <p class="text-sm text-amber-200">
+            アカウントをお持ちでない方は
+            <NuxtLink to="/signup" class="font-medium text-amber-400 hover:text-amber-300 transition-colors">
+              新規登録
+            </NuxtLink>
+          </p>
+        </div>
       </form>
     </div>
   </div>
