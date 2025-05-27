@@ -181,6 +181,25 @@ export class WhiskeyInfraStack extends cdk.Stack {
     });
 
     // ====================
+    // Secrets Manager (moved before Cognito to support Google provider)
+    // ====================
+    const appSecrets = new secretsmanager.Secret(this, 'WhiskeyAppSecrets', {
+      secretName: `whiskey-app-secrets-${environment}`,
+      description: `Whiskey app secrets for ${environment} environment`,
+      generateSecretString: {
+        secretStringTemplate: JSON.stringify({
+          DATABASE_URL: '', // RDS接続文字列（将来の拡張用）
+          JWT_SECRET: '',
+          API_KEY: '',
+          GOOGLE_CLIENT_ID: '', // Google OAuth Client ID
+          GOOGLE_CLIENT_SECRET: '', // Google OAuth Client Secret
+        }),
+        generateStringKey: 'JWT_SECRET',
+        excludeCharacters: '"@/\\',
+      },
+    });
+
+    // ====================
     // Cognito User Pool
     // ====================
     const userPool = new cognito.UserPool(this, 'WhiskeyUserPool', {
@@ -218,6 +237,29 @@ export class WhiskeyInfraStack extends cdk.Stack {
       removalPolicy: environment === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
     });
 
+    // User Pool Domain for hosted UI
+    const userPoolDomain = new cognito.UserPoolDomain(this, 'WhiskeyUserPoolDomain', {
+      userPool,
+      cognitoDomain: {
+        domainPrefix: `whiskey-users-${environment}`,
+      },
+    });
+
+    // Google Identity Provider (will be configured later when Google credentials are set)
+    // For now, we'll create the provider structure but it won't be active until credentials are configured
+    const googleProvider = new cognito.UserPoolIdentityProviderGoogle(this, 'GoogleProvider', {
+      userPool,
+      clientId: appSecrets.secretValueFromJson('GOOGLE_CLIENT_ID').unsafeUnwrap() || 'placeholder',
+      clientSecret: appSecrets.secretValueFromJson('GOOGLE_CLIENT_SECRET').unsafeUnwrap() || 'placeholder',
+      scopes: ['email', 'profile', 'openid'],
+      attributeMapping: {
+        email: cognito.ProviderAttribute.GOOGLE_EMAIL,
+        givenName: cognito.ProviderAttribute.GOOGLE_GIVEN_NAME,
+        familyName: cognito.ProviderAttribute.GOOGLE_FAMILY_NAME,
+        profilePicture: cognito.ProviderAttribute.GOOGLE_PICTURE,
+      },
+    });
+
     // User Pool Client
     const userPoolClient = new cognito.UserPoolClient(this, 'WhiskeyUserPoolClient', {
       userPool,
@@ -227,11 +269,37 @@ export class WhiskeyInfraStack extends cdk.Stack {
         userSrp: true,
         userPassword: true,
       },
-      supportedIdentityProviders: [cognito.UserPoolClientIdentityProvider.COGNITO],
+      supportedIdentityProviders: [
+        cognito.UserPoolClientIdentityProvider.COGNITO,
+        cognito.UserPoolClientIdentityProvider.GOOGLE,
+      ],
+      oAuth: {
+        flows: {
+          authorizationCodeGrant: true,
+        },
+        scopes: [
+          cognito.OAuthScope.EMAIL,
+          cognito.OAuthScope.PROFILE,
+          cognito.OAuthScope.OPENID,
+        ],
+        callbackUrls: [
+          `https://${envConfig.domain || 'dev.whiskeybar.site'}`,
+          `https://${envConfig.domain || 'dev.whiskeybar.site'}/auth/callback`,
+          'http://localhost:3000', // ローカル開発用
+          'http://localhost:3000/auth/callback', // ローカル開発用
+        ],
+        logoutUrls: [
+          `https://${envConfig.domain || 'dev.whiskeybar.site'}`,
+          'http://localhost:3000', // ローカル開発用
+        ],
+      },
       refreshTokenValidity: cdk.Duration.days(30),
       accessTokenValidity: cdk.Duration.hours(1),
       idTokenValidity: cdk.Duration.hours(1),
     });
+
+    // Google Providerの依存関係を明示的に設定
+    userPoolClient.node.addDependency(googleProvider);
 
     // ====================
     // API Infrastructure (ECS Fargate + ALB)
@@ -410,22 +478,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
 
 
 
-    // ====================
-    // Secrets Manager
-    // ====================
-    const appSecrets = new secretsmanager.Secret(this, 'WhiskeyAppSecrets', {
-      secretName: `whiskey-app-secrets-${environment}`,
-      description: `Whiskey app secrets for ${environment} environment`,
-      generateSecretString: {
-        secretStringTemplate: JSON.stringify({
-          DATABASE_URL: '', // RDS接続文字列（将来の拡張用）
-          JWT_SECRET: '',
-          API_KEY: '',
-        }),
-        generateStringKey: 'JWT_SECRET',
-        excludeCharacters: '"@/\\',
-      },
-    });
+    // Secrets Manager is already defined above
 
     // ====================
     // ECS Task Definition & Service

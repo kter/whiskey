@@ -156,6 +156,33 @@ export const useAuth = () => {
     }
   }
 
+  // Google認証 
+  const handleGoogleSignIn = async () => {
+    try {
+      loading.value = true
+      const { isSignedIn, nextStep } = await signIn({
+        username: '', // Google認証では不要
+        password: '', // Google認証では不要
+        options: {
+          authFlowType: 'CUSTOM_WITH_SRP', // Google OAuth flow
+        }
+      })
+
+      if (isSignedIn) {
+        const currentUser = await getCurrentUser()
+        user.value = currentUser
+        isAuthenticated.value = true
+      }
+
+      return { isSignedIn, nextStep }
+    } catch (error) {
+      console.error('Google sign in error:', error)
+      throw error
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     isAuthenticated,
     user,
@@ -167,6 +194,7 @@ export const useAuth = () => {
     signOut: handleSignOut,
     signUp: handleSignUp,
     confirmSignUp: handleConfirmSignUp,
+    googleSignIn: handleGoogleSignIn,
     resetPassword: handleResetPassword,
     confirmResetPassword: handleConfirmResetPassword
   }
