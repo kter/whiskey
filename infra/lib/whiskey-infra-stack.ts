@@ -204,14 +204,12 @@ export class WhiskeyInfraStack extends cdk.Stack {
     // ====================
     const userPool = new cognito.UserPool(this, 'WhiskeyUserPool', {
       userPoolName: `whiskey-users-${environment}`,
-      selfSignUpEnabled: true,
+      selfSignUpEnabled: false, // Google認証のみなので自己登録を無効化
       signInAliases: {
-        email: true,
-        username: true,
+        email: false, // メールサインインを無効化
+        username: false, // ユーザー名サインインを無効化
       },
-      autoVerify: {
-        email: true,
-      },
+      // メール検証も不要（Googleから取得するため）
       standardAttributes: {
         email: {
           required: true,
@@ -226,11 +224,12 @@ export class WhiskeyInfraStack extends cdk.Stack {
           mutable: true,
         },
       },
+      // パスワードポリシーは不要だが、念のため最小限に設定
       passwordPolicy: {
         minLength: 8,
-        requireLowercase: true,
-        requireUppercase: true,
-        requireDigits: true,
+        requireLowercase: false,
+        requireUppercase: false,
+        requireDigits: false,
         requireSymbols: false,
       },
       accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
@@ -266,12 +265,11 @@ export class WhiskeyInfraStack extends cdk.Stack {
       userPoolClientName: `whiskey-app-client-${environment}`,
       generateSecret: false, // SPAの場合はfalse
       authFlows: {
-        userSrp: true,
-        userPassword: true,
+        userSrp: false, // SRP認証を無効化（Google認証のみなので）
+        userPassword: false, // パスワード認証を無効化
       },
       supportedIdentityProviders: [
-        cognito.UserPoolClientIdentityProvider.COGNITO,
-        cognito.UserPoolClientIdentityProvider.GOOGLE,
+        cognito.UserPoolClientIdentityProvider.GOOGLE, // Googleのみ
       ],
       oAuth: {
         flows: {

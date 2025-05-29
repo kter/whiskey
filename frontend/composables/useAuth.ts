@@ -1,9 +1,9 @@
 import { ref } from 'vue'
-import { signIn, signOut, signUp, confirmSignUp, getCurrentUser, fetchUserAttributes, resetPassword, confirmResetPassword, type AuthUser } from '@aws-amplify/auth'
+import { signOut, getCurrentUser, fetchUserAttributes } from '@aws-amplify/auth'
 
 export const useAuth = () => {
   const isAuthenticated = ref(false)
-  const user = ref<AuthUser | null>(null)
+  const user = ref<any>(null)
   const loading = ref(false)
   const config = useRuntimeConfig()
 
@@ -50,27 +50,6 @@ export const useAuth = () => {
     }
   }
 
-  // サインイン
-  const handleSignIn = async (username: string, password: string) => {
-    try {
-      loading.value = true
-      const { isSignedIn, nextStep } = await signIn({ username, password })
-      
-      if (isSignedIn) {
-        const currentUser = await getCurrentUser()
-        user.value = currentUser
-        isAuthenticated.value = true
-      }
-      
-      return { isSignedIn, nextStep }
-    } catch (error) {
-      console.error('Sign in error:', error)
-      throw error
-    } finally {
-      loading.value = false
-    }
-  }
-
   // サインアウト
   const handleSignOut = async () => {
     try {
@@ -86,100 +65,32 @@ export const useAuth = () => {
     }
   }
 
-  // パスワードリセット
-  const handleResetPassword = async (username: string) => {
-    try {
-      const output = await resetPassword({ username })
-      return output
-    } catch (error) {
-      console.error('Reset password error:', error)
-      throw error
-    }
-  }
-
-  // パスワードリセットの確認
-  const handleConfirmResetPassword = async (
-    username: string,
-    confirmationCode: string,
-    newPassword: string
-  ) => {
-    try {
-      await confirmResetPassword({
-        username,
-        confirmationCode,
-        newPassword
-      })
-    } catch (error) {
-      console.error('Confirm reset password error:', error)
-      throw error
-    }
-  }
-
-  // サインアップ
-  const handleSignUp = async (email: string, password: string) => {
-    try {
-      loading.value = true
-      const { isSignUpComplete, userId, nextStep } = await signUp({
-        username: email,
-        password,
-        options: {
-          userAttributes: {
-            email,
-          },
-        },
-      })
-      
-      return { isSignUpComplete, userId, nextStep }
-    } catch (error) {
-      console.error('Sign up error:', error)
-      throw error
-    } finally {
-      loading.value = false
-    }
-  }
-
-  // メール確認コードの検証
-  const handleConfirmSignUp = async (email: string, confirmationCode: string) => {
-    try {
-      loading.value = true
-      const { isSignUpComplete, nextStep } = await confirmSignUp({
-        username: email,
-        confirmationCode,
-      })
-
-      return { isSignUpComplete, nextStep }
-    } catch (error) {
-      console.error('Confirm sign up error:', error)
-      throw error
-    } finally {
-      loading.value = false
-    }
-  }
-
-  // Google認証 
+  // Google認証（Cognito Hosted UIにリダイレクト）
   const handleGoogleSignIn = async () => {
     try {
       loading.value = true
-      const { isSignedIn, nextStep } = await signIn({
-        username: '', // Google認証では不要
-        password: '', // Google認証では不要
-        options: {
-          authFlowType: 'CUSTOM_WITH_SRP', // Google OAuth flow
-        }
-      })
+      
+      // Cognito Hosted UIのGoogle認証URLを構築
+      const userPoolId = config.public.cognitoUserPoolId
+      const clientId = config.public.cognitoClientId
+      const region = config.public.cognitoRegion || 'ap-northeast-1'
+      const domain = `whiskey-users-${config.public.environment || 'dev'}`
+      const redirectUri = encodeURIComponent(window.location.origin + '/auth/callback')
+      
+      const cognitoAuthUrl = `https://${domain}.auth.${region}.amazoncognito.com/oauth2/authorize?` +
+        `identity_provider=Google&` +
+        `redirect_uri=${redirectUri}&` +
+        `response_type=code&` +
+        `client_id=${clientId}&` +
+        `scope=email+profile+openid`
 
-      if (isSignedIn) {
-        const currentUser = await getCurrentUser()
-        user.value = currentUser
-        isAuthenticated.value = true
-      }
-
-      return { isSignedIn, nextStep }
+      // Cognito Hosted UIにリダイレクト
+      window.location.href = cognitoAuthUrl
+      
     } catch (error) {
       console.error('Google sign in error:', error)
-      throw error
-    } finally {
       loading.value = false
+      throw error
     }
   }
 
@@ -190,12 +101,7 @@ export const useAuth = () => {
     initialize,
     getToken,
     getTokenSafely,
-    signIn: handleSignIn,
     signOut: handleSignOut,
-    signUp: handleSignUp,
-    confirmSignUp: handleConfirmSignUp,
     googleSignIn: handleGoogleSignIn,
-    resetPassword: handleResetPassword,
-    confirmResetPassword: handleConfirmResetPassword
   }
 } 

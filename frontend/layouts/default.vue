@@ -46,9 +46,9 @@ const handleSignOut = async () => {
             <template v-else>
               <NuxtLink
                 to="/signup"
-                class="ml-3 inline-flex items-center px-4 py-2 border border-green-700 text-sm font-medium rounded-md text-green-100 bg-green-800 hover:bg-green-700 transition-colors"
+                class="ml-3 inline-flex items-center px-4 py-2 border border-blue-700 text-sm font-medium rounded-md text-blue-100 bg-blue-800 hover:bg-blue-700 transition-colors"
               >
-                新規登録
+                サインイン
               </NuxtLink>
               <NuxtLink
                 to="/login"
