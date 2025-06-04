@@ -183,21 +183,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
     // ====================
     // Secrets Manager (moved before Cognito to support Google provider)
     // ====================
-    const appSecrets = new secretsmanager.Secret(this, 'WhiskeyAppSecrets', {
-      secretName: `whiskey-app-secrets-${environment}`,
-      description: `Whiskey app secrets for ${environment} environment`,
-      generateSecretString: {
-        secretStringTemplate: JSON.stringify({
-          DATABASE_URL: '', // RDS接続文字列（将来の拡張用）
-          JWT_SECRET: '',
-          API_KEY: '',
-          GOOGLE_CLIENT_ID: '', // Google auth credentials
-          GOOGLE_CLIENT_SECRET: '', // Google auth credentials
-        }),
-        generateStringKey: 'JWT_SECRET',
-        excludeCharacters: '"@/\\',
-      },
-    });
+    const appSecrets = secretsmanager.Secret.fromSecretNameV2(this, 'WhiskeyAppSecrets', `whiskey-app-secrets-${environment}`);
 
     // ====================
     // Cognito User Pool
@@ -383,16 +369,26 @@ export class WhiskeyInfraStack extends cdk.Stack {
       });
     }
 
-    // HTTP Listener (redirect to HTTPS)
-    const httpListener = alb.addListener('HttpListener', {
-      port: 80,
-      protocol: elbv2.ApplicationProtocol.HTTP,
-      defaultAction: elbv2.ListenerAction.redirect({
-        protocol: 'HTTPS',
-        port: '443',
-        permanent: true,
-      }),
-    });
+    // HTTP Listener
+    if (envConfig.apiDomain && apiCertificate) {
+      // カスタムドメインがある場合はHTTPSにリダイレクト
+      const httpListener = alb.addListener('HttpListener', {
+        port: 80,
+        protocol: elbv2.ApplicationProtocol.HTTP,
+        defaultAction: elbv2.ListenerAction.redirect({
+          protocol: 'HTTPS',
+          port: '443',
+          permanent: true,
+        }),
+      });
+    } else {
+      // カスタムドメインがない場合は直接Target Groupに転送
+      const httpListener = alb.addListener('HttpListener', {
+        port: 80,
+        protocol: elbv2.ApplicationProtocol.HTTP,
+        defaultTargetGroups: [targetGroup],
+      });
+    }
 
     // ====================
     // IAM Roles
