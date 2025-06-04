@@ -7,5 +7,10 @@
   "hosted-zone:account=031921999648:domainName=dev.whiskeybar.site:region=ap-northeast-1": {
     "Id": "/hostedzone/Z03547543VC0BNSUBD6F5",
     "Name": "dev.whiskeybar.site."
-  }
+  },
+  "availability-zones:account=848738341109:region=ap-northeast-1": [
+    "ap-northeast-1a",
+    "ap-northeast-1c",
+    "ap-northeast-1d"
+  ]
 }

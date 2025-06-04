@@ -191,8 +191,8 @@ export class WhiskeyInfraStack extends cdk.Stack {
           DATABASE_URL: '', // RDS接続文字列（将来の拡張用）
           JWT_SECRET: '',
           API_KEY: '',
-          GOOGLE_CLIENT_ID: '', // Google OAuth Client ID
-          GOOGLE_CLIENT_SECRET: '', // Google OAuth Client Secret
+          GOOGLE_CLIENT_ID: '', // Google auth credentials
+          GOOGLE_CLIENT_SECRET: '', // Google auth credentials
         }),
         generateStringKey: 'JWT_SECRET',
         excludeCharacters: '"@/\\',
@@ -204,12 +204,14 @@ export class WhiskeyInfraStack extends cdk.Stack {
     // ====================
     const userPool = new cognito.UserPool(this, 'WhiskeyUserPool', {
       userPoolName: `whiskey-users-${environment}`,
-      selfSignUpEnabled: false, // Google認証のみなので自己登録を無効化
+      selfSignUpEnabled: true, // 一時的に有効化
       signInAliases: {
-        email: false, // メールサインインを無効化
-        username: false, // ユーザー名サインインを無効化
+        email: true, // 一時的に有効化
+        username: true, // 一時的に有効化
       },
-      // メール検証も不要（Googleから取得するため）
+      autoVerify: {
+        email: true, // メール検証を有効化
+      },
       standardAttributes: {
         email: {
           required: true,
@@ -224,12 +226,11 @@ export class WhiskeyInfraStack extends cdk.Stack {
           mutable: true,
         },
       },
-      // パスワードポリシーは不要だが、念のため最小限に設定
       passwordPolicy: {
         minLength: 8,
-        requireLowercase: false,
-        requireUppercase: false,
-        requireDigits: false,
+        requireLowercase: true,
+        requireUppercase: true,
+        requireDigits: true,
         requireSymbols: false,
       },
       accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
@@ -244,12 +245,13 @@ export class WhiskeyInfraStack extends cdk.Stack {
       },
     });
 
-    // Google Identity Provider (will be configured later when Google credentials are set)
-    // For now, we'll create the provider structure but it won't be active until credentials are configured
+    // Google Identity Provider (temporarily disabled until credentials are configured)
+    // TODO: Enable after setting up Google credentials in Secrets Manager
+    
     const googleProvider = new cognito.UserPoolIdentityProviderGoogle(this, 'GoogleProvider', {
       userPool,
-      clientId: appSecrets.secretValueFromJson('GOOGLE_CLIENT_ID').unsafeUnwrap() || 'placeholder',
-      clientSecret: appSecrets.secretValueFromJson('GOOGLE_CLIENT_SECRET').unsafeUnwrap() || 'placeholder',
+      clientId: appSecrets.secretValueFromJson('GOOGLE_CLIENT_ID').unsafeUnwrap(),
+      clientSecretValue: appSecrets.secretValueFromJson('GOOGLE_CLIENT_SECRET'),
       scopes: ['email', 'profile', 'openid'],
       attributeMapping: {
         email: cognito.ProviderAttribute.GOOGLE_EMAIL,
@@ -265,11 +267,12 @@ export class WhiskeyInfraStack extends cdk.Stack {
       userPoolClientName: `whiskey-app-client-${environment}`,
       generateSecret: false, // SPAの場合はfalse
       authFlows: {
-        userSrp: false, // SRP認証を無効化（Google認証のみなので）
-        userPassword: false, // パスワード認証を無効化
+        userSrp: true, // 一時的に有効化
+        userPassword: true, // 一時的に有効化
       },
       supportedIdentityProviders: [
-        cognito.UserPoolClientIdentityProvider.GOOGLE, // Googleのみ
+        cognito.UserPoolClientIdentityProvider.COGNITO, // 一時的にCognitoも有効化
+        cognito.UserPoolClientIdentityProvider.GOOGLE,
       ],
       oAuth: {
         flows: {
@@ -296,7 +299,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
       idTokenValidity: cdk.Duration.hours(1),
     });
 
-    // Google Providerの依存関係を明示的に設定
+    // Google Providerの依存関係を明示的に設定 (temporarily disabled)
     userPoolClient.node.addDependency(googleProvider);
 
     // ====================
@@ -473,10 +476,6 @@ export class WhiskeyInfraStack extends cdk.Stack {
       ],
       resources: [`arn:aws:cloudformation:${this.region}:${this.account}:stack/WhiskeyApp-*/*`],
     }));
-
-
-
-    // Secrets Manager is already defined above
 
     // ====================
     // ECS Task Definition & Service

@@ -12,8 +12,8 @@ export interface EnvironmentConfig {
 export const environments: Record<string, EnvironmentConfig> = {
   dev: {
     region: 'ap-northeast-1',
-    domain: 'dev.whiskeybar.site',
-    apiDomain: 'api.dev.whiskeybar.site',
+    // domain: 'dev.whiskeybar.site', // 一時的に無効化
+    // apiDomain: 'api.dev.whiskeybar.site', // 一時的に無効化
     allowedOrigins: ['https://dev.whiskeybar.site', 'http://localhost:3000'], // 開発環境では本番ドメインとローカル
     natGateways: 1,
     retainResources: false,
