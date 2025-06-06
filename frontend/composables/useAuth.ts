@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { signIn, signOut, signUp, confirmSignUp, getCurrentUser, fetchUserAttributes, resetPassword, confirmResetPassword, type AuthUser } from '@aws-amplify/auth'
+import { signIn, signOut, signUp, confirmSignUp, getCurrentUser, fetchUserAttributes, resetPassword, confirmResetPassword, signInWithRedirect, type AuthUser } from '@aws-amplify/auth'
 
 export const useAuth = () => {
   const isAuthenticated = ref(false)
@@ -156,6 +156,19 @@ export const useAuth = () => {
     }
   }
 
+  // Google認証
+  const handleGoogleSignIn = async () => {
+    try {
+      loading.value = true
+      await signInWithRedirect({ provider: { custom: 'Google' } })
+    } catch (error) {
+      console.error('Google sign in error:', error)
+      throw error
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     isAuthenticated,
     user,
@@ -168,6 +181,7 @@ export const useAuth = () => {
     signUp: handleSignUp,
     confirmSignUp: handleConfirmSignUp,
     resetPassword: handleResetPassword,
-    confirmResetPassword: handleConfirmResetPassword
+    confirmResetPassword: handleConfirmResetPassword,
+    googleSignIn: handleGoogleSignIn
   }
 } 
