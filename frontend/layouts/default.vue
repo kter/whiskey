@@ -48,13 +48,9 @@ watch(user, (newValue) => {
             <!-- デバッグ情報 （開発環境でのみ表示） -->
             <div v-if="$config.public.environment === 'local'" class="mr-4 text-xs text-gray-400">
               Auth: {{ isAuthenticated ? 'Yes' : 'No' }}
-              <span v-if="user"> | User: {{ user.username || 'Unknown' }}</span>
             </div>
             
             <template v-if="isAuthenticated">
-              <span class="mr-4 text-amber-200 text-sm">
-                こんにちは、{{ user?.username || 'ユーザー' }}さん
-              </span>
               <button
                 @click="handleSignOut"
                 class="ml-3 inline-flex items-center px-4 py-2 border border-red-800 text-sm font-medium rounded-md text-red-200 bg-red-900 hover:bg-red-800 transition-colors"
