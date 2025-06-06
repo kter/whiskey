@@ -1,28 +1,44 @@
-import { ref } from 'vue'
+import { ref, readonly } from 'vue'
 import { signIn, signOut, signUp, confirmSignUp, getCurrentUser, fetchUserAttributes, resetPassword, confirmResetPassword, signInWithRedirect, type AuthUser } from '@aws-amplify/auth'
 
+// グローバルな認証状態（シングルトンパターン）
+const isAuthenticated = ref(false)
+const user = ref<AuthUser | null>(null)
+const loading = ref(false)
+
 export const useAuth = () => {
-  const isAuthenticated = ref(false)
-  const user = ref<AuthUser | null>(null)
-  const loading = ref(false)
   const config = useRuntimeConfig()
 
   // 認証状態の初期化
   const initialize = async () => {
     try {
       loading.value = true
+      console.log('Initializing auth state...')
       const currentUser = await getCurrentUser()
+      console.log('Current user:', currentUser)
+      
       if (currentUser) {
         user.value = currentUser
         isAuthenticated.value = true
+        console.log('User authenticated successfully')
+      } else {
+        console.log('No authenticated user found')
+        isAuthenticated.value = false
+        user.value = null
       }
     } catch (error) {
-      console.log('No authenticated user')
+      console.log('No authenticated user:', error)
       isAuthenticated.value = false
       user.value = null
     } finally {
       loading.value = false
     }
+  }
+
+  // 強制的に認証状態を更新
+  const refreshAuthState = async () => {
+    console.log('Refreshing auth state...')
+    await initialize()
   }
 
   // アクセストークン取得（エラーハンドリング改善）
@@ -78,6 +94,7 @@ export const useAuth = () => {
       await signOut()
       isAuthenticated.value = false
       user.value = null
+      console.log('User signed out successfully')
     } catch (error) {
       console.error('Sign out error:', error)
       throw error
@@ -186,10 +203,12 @@ export const useAuth = () => {
   }
 
   return {
-    isAuthenticated,
-    user,
-    loading,
+    // 読み取り専用の状態を返す
+    isAuthenticated: readonly(isAuthenticated),
+    user: readonly(user),
+    loading: readonly(loading),
     initialize,
+    refreshAuthState,
     getToken,
     getTokenSafely,
     signIn: handleSignIn,
