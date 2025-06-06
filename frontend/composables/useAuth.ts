@@ -160,10 +160,26 @@ export const useAuth = () => {
   const handleGoogleSignIn = async () => {
     try {
       loading.value = true
+      console.log('Starting Google sign in...')
       await signInWithRedirect({ provider: { custom: 'Google' } })
-    } catch (error) {
+    } catch (error: any) {
       console.error('Google sign in error:', error)
-      throw error
+      
+      // エラーの詳細情報をログに出力
+      if (error.message) {
+        console.error('Error message:', error.message)
+      }
+      if (error.code) {
+        console.error('Error code:', error.code)
+      }
+      
+      // ユーザーフレンドリーなエラーメッセージを作成
+      let userMessage = 'Google認証に失敗しました。'
+      if (error.message && error.message.includes('redirect')) {
+        userMessage = 'リダイレクトの設定に問題があります。管理者にお問い合わせください。'
+      }
+      
+      throw new Error(userMessage)
     } finally {
       loading.value = false
     }
