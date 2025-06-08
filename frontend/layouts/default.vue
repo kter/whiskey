@@ -5,8 +5,19 @@ import { watch, onMounted, nextTick } from 'vue'
 const { isAuthenticated, user, signOut, refreshAuthState } = useAuth()
 
 const handleSignOut = async () => {
-  await signOut()
-  navigateTo('/login')
+  try {
+    console.log('Layout: Starting sign out process')
+    await signOut()
+    console.log('Layout: Sign out completed, redirecting to login')
+    
+    // サインアウト後にログインページにリダイレクト
+    await navigateTo('/login')
+  } catch (error) {
+    console.error('Layout: Sign out error:', error)
+    
+    // エラーが発生してもログインページにリダイレクト
+    await navigateTo('/login')
+  }
 }
 
 // コンポーネントマウント時に認証状態を確認
