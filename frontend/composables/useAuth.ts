@@ -1,5 +1,5 @@
 import { ref, readonly, nextTick, type Ref } from 'vue'
-import { signIn, signOut, signUp, confirmSignUp, getCurrentUser, fetchUserAttributes, resetPassword, confirmResetPassword, signInWithRedirect, type AuthUser } from '@aws-amplify/auth'
+import { signIn, signOut, signUp, confirmSignUp, getCurrentUser, fetchUserAttributes, resetPassword, confirmResetPassword, signInWithRedirect, type AuthUser, fetchAuthSession } from '@aws-amplify/auth'
 
 // グローバルな認証状態
 let globalAuthState: {
@@ -24,25 +24,41 @@ export const useAuth = () => {
   const config = useRuntimeConfig()
   const { isAuthenticated, user, loading } = getGlobalAuthState()
 
-  // 認証状態の初期化
+  // 認証状態の初期化（より安全なアプローチ）
   const initialize = async () => {
     try {
       loading.value = true
       console.log('Initializing auth state...')
-      const currentUser = await getCurrentUser()
-      console.log('Current user:', currentUser)
       
-      if (currentUser) {
-        user.value = currentUser
-        isAuthenticated.value = true
-        console.log('User authenticated successfully')
+      // まずセッション状態を確認
+      const session = await fetchAuthSession()
+      console.log('Auth session:', { 
+        tokens: !!session.tokens, 
+        credentials: !!session.credentials 
+      })
+      
+      if (session.tokens) {
+        try {
+          // セッションが有効な場合のみgetCurrentUserを呼び出し
+          const currentUser = await getCurrentUser()
+          console.log('Current user:', currentUser)
+          
+          user.value = currentUser
+          isAuthenticated.value = true
+          console.log('User authenticated successfully')
+        } catch (userError) {
+          console.log('Error getting user info:', userError)
+          // セッションはあるがユーザー情報が取得できない場合
+          isAuthenticated.value = false
+          user.value = null
+        }
       } else {
-        console.log('No authenticated user found')
+        console.log('No valid session found')
         isAuthenticated.value = false
         user.value = null
       }
     } catch (error) {
-      console.log('No authenticated user:', error)
+      console.log('No authenticated session:', error)
       isAuthenticated.value = false
       user.value = null
     } finally {
@@ -59,12 +75,11 @@ export const useAuth = () => {
   // アクセストークン取得（エラーハンドリング改善）
   const getToken = async (): Promise<string> => {
     try {
-      const currentUser = await getCurrentUser()
-      // 現在は開発中なので簡単なトークンを返す
-      if (currentUser) {
-        return 'development-token'
+      const session = await fetchAuthSession()
+      if (session.tokens?.accessToken) {
+        return session.tokens.accessToken.toString()
       }
-      throw new Error('User not authenticated')
+      throw new Error('No access token available')
     } catch (error) {
       console.error('Error getting token:', error)
       throw error
@@ -90,9 +105,7 @@ export const useAuth = () => {
       if (isSignedIn) {
         // サインイン成功後、少し待ってから状態を更新
         await new Promise(resolve => setTimeout(resolve, 500))
-        const currentUser = await getCurrentUser()
-        user.value = currentUser
-        isAuthenticated.value = true
+        await initialize() // initializeを使用して安全にチェック
         console.log('Sign in successful, auth state updated')
       }
       
