@@ -15,6 +15,7 @@ from django.utils.decorators import method_decorator
 import boto3
 from .dynamodb_service import DynamoDBService
 from .serializers import WhiskeySerializer, ReviewSerializer
+import logging
 
 # Create your views here.
 
@@ -47,41 +48,77 @@ class ReviewViewSet(viewsets.ViewSet):
     
     def create(self, request):
         """レビューを作成"""
+        logger = logging.getLogger(__name__)
+        
         user_id = getattr(request, 'user_id', None)
+        logger.info(f"Review creation request - user_id: {user_id}")
+        
         if not user_id:
             return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        logger.info(f"Request data: {request.data}")
         
         serializer = ReviewSerializer(data=request.data)
         if serializer.is_valid():
             validated_data = serializer.validated_data
+            logger.info(f"Validated data: {validated_data}")
             
-            # ウィスキーの存在確認または作成
-            whiskey_id = validated_data.pop('whiskey')
-            whiskey = self.db_service.get_whiskey(whiskey_id)
+            # フロントエンドから受信したウィスキー情報で新しいウィスキーを作成
+            whiskey_name = request.data.get('whiskey_name', 'Unknown')
+            whiskey_distillery = request.data.get('whiskey_distillery', 'Unknown')
+            logger.info(f"Whiskey info - name: {whiskey_name}, distillery: {whiskey_distillery}")
             
+            # 既存のウィスキーを検索（名前と蒸留所が完全一致）
+            existing_whiskeys = self.db_service.search_whiskeys(whiskey_name)
+            whiskey = None
+            logger.info(f"Found {len(existing_whiskeys)} existing whiskeys matching '{whiskey_name}'")
+            
+            for existing_whiskey in existing_whiskeys:
+                if (existing_whiskey['name'].lower() == whiskey_name.lower() and 
+                    existing_whiskey.get('distillery', '').lower() == whiskey_distillery.lower()):
+                    whiskey = existing_whiskey
+                    logger.info(f"Found matching whiskey: {whiskey['id']}")
+                    break
+            
+            # 既存のウィスキーが見つからない場合は新規作成
             if not whiskey:
-                # 新しいウィスキーの場合、フロントエンドから追加情報が必要
-                whiskey_name = request.data.get('whiskey_name', 'Unknown')
-                whiskey_distillery = request.data.get('whiskey_distillery', 'Unknown')
-                whiskey = self.db_service.create_whiskey(whiskey_name, whiskey_distillery)
-                whiskey_id = whiskey['id']
+                logger.info("Creating new whiskey")
+                try:
+                    whiskey = self.db_service.create_whiskey(whiskey_name, whiskey_distillery)
+                    logger.info(f"Created new whiskey: {whiskey['id']}")
+                except Exception as e:
+                    logger.error(f"Error creating whiskey: {e}")
+                    return Response({'error': f'Failed to create whiskey: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            whiskey_id = whiskey['id']
+            
+            # whiskeyフィールドを削除（使わない）
+            validated_data.pop('whiskey', None)
             
             # レビューを作成
-            review = self.db_service.create_review(
-                whiskey_id=whiskey_id,
-                user_id=user_id,
-                notes=validated_data['notes'],
-                rating=validated_data['rating'],
-                serving_style=validated_data['serving_style'],
-                review_date=validated_data['date'],
-                image_url=validated_data.get('image_url')
-            )
+            try:
+                logger.info(f"Creating review for whiskey_id: {whiskey_id}")
+                review = self.db_service.create_review(
+                    whiskey_id=whiskey_id,
+                    user_id=user_id,
+                    notes=validated_data['notes'],
+                    rating=validated_data['rating'],
+                    serving_style=validated_data['serving_style'],
+                    review_date=validated_data['date'],
+                    image_url=validated_data.get('image_url')
+                )
+                logger.info(f"Created review: {review['id']}")
+            except Exception as e:
+                logger.error(f"Error creating review: {e}")
+                return Response({'error': f'Failed to create review: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
             # ウィスキー情報を付加
             review['whiskey_name'] = whiskey['name']
             review['whiskey_distillery'] = whiskey['distillery']
             
             return Response(review, status=status.HTTP_201_CREATED)
+        else:
+            logger.error(f"Serializer validation errors: {serializer.errors}")
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
