@@ -9,22 +9,47 @@ const error = ref('')
 onMounted(async () => {
   try {
     console.log('OAuth callback page mounted')
+    console.log('Current URL:', window.location.href)
+    console.log('URL params:', new URLSearchParams(window.location.search).toString())
     
-    // OAuth認証処理後の待機時間
-    await new Promise(resolve => setTimeout(resolve, 2000))
+    // OAuth認証処理後の待機時間を延長
+    console.log('Waiting for OAuth processing to complete...')
+    await new Promise(resolve => setTimeout(resolve, 3000))
     
-    // 認証状態を更新
-    await refreshAuthState()
+    // 複数回のリトライで認証状態を確認
+    let retryCount = 0
+    const maxRetries = 5
     
-    // 認証に成功した場合
+    while (retryCount < maxRetries) {
+      console.log(`Attempt ${retryCount + 1}/${maxRetries}: Checking auth state`)
+      
+      // 認証状態を更新
+      await refreshAuthState()
+      
+      if (isAuthenticated.value) {
+        console.log('Authentication successful!')
+        break
+      }
+      
+      retryCount++
+      if (retryCount < maxRetries) {
+        console.log(`Auth not ready yet, waiting 2 seconds before retry...`)
+        await new Promise(resolve => setTimeout(resolve, 2000))
+      }
+    }
+    
+    // 最終的な認証状態を確認
     if (isAuthenticated.value) {
       console.log('OAuth authentication successful, redirecting to home')
+      
+      // 成功メッセージを短時間表示してからリダイレクト
+      await new Promise(resolve => setTimeout(resolve, 1000))
       
       // ホームページにリダイレクト
       await navigateTo('/')
     } else {
-      console.log('OAuth authentication failed')
-      error.value = '認証に失敗しました。再度お試しください。'
+      console.log('OAuth authentication failed after all retries')
+      error.value = '認証に失敗しました。ブラウザを更新して再度お試しください。'
     }
   } catch (err: any) {
     console.error('OAuth callback error:', err)
@@ -43,7 +68,10 @@ onMounted(async () => {
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-200 mx-auto mb-4"></div>
         <h2 class="text-2xl font-bold text-amber-200">認証を確認中...</h2>
         <p class="text-amber-100 text-sm mt-2">
-          しばらくお待ちください
+          Googleアカウントでの認証を処理しています
+        </p>
+        <p class="text-amber-300 text-xs mt-4">
+          この処理には数秒かかる場合があります
         </p>
       </div>
 
@@ -58,12 +86,20 @@ onMounted(async () => {
         <p class="text-red-300 text-sm mt-2 mb-4">
           {{ error }}
         </p>
-        <NuxtLink
-          to="/login"
-          class="inline-flex items-center px-4 py-2 border border-amber-700 text-sm font-medium rounded-md text-amber-100 bg-amber-800 hover:bg-amber-700 transition-colors"
-        >
-          ログインページに戻る
-        </NuxtLink>
+        <div class="space-y-3">
+          <NuxtLink
+            to="/login"
+            class="inline-flex items-center px-4 py-2 border border-amber-700 text-sm font-medium rounded-md text-amber-100 bg-amber-800 hover:bg-amber-700 transition-colors"
+          >
+            ログインページに戻る
+          </NuxtLink>
+          <button
+            @click="window.location.reload()"
+            class="block mx-auto text-amber-300 hover:text-amber-200 text-sm"
+          >
+            ページを更新する
+          </button>
+        </div>
       </div>
 
       <!-- 成功状態（リダイレクト前の短時間表示） -->

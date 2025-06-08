@@ -17,16 +17,14 @@ export default defineNuxtPlugin(() => {
               domain: 'whiskey-users-dev.auth.ap-northeast-1.amazoncognito.com',
               scopes: ['email', 'profile', 'openid'],
               redirectSignIn: [
-                'https://dev.whiskeybar.site/',
-                'https://www.dev.whiskeybar.site/',
-                'http://localhost:3000/',
-                `${currentUrl}/auth/callback`
+                'https://dev.whiskeybar.site/auth/callback',
+                'https://www.dev.whiskeybar.site/auth/callback',
+                'http://localhost:3000/auth/callback'
               ],
               redirectSignOut: [
                 'https://dev.whiskeybar.site/',
                 'https://www.dev.whiskeybar.site/',
-                'http://localhost:3000/',
-                `${currentUrl}/`
+                'http://localhost:3000/'
               ],
               responseType: 'code' as const
             },
@@ -34,7 +32,49 @@ export default defineNuxtPlugin(() => {
           },
         },
       },
+      Storage: {
+        // ローカルストレージでセッション情報を永続化
+        region: 'ap-northeast-1',
+        cookieStorage: {
+          domain: process.client ? window.location.hostname : 'localhost',
+          path: '/',
+          expires: 365,
+          sameSite: 'strict',
+          secure: process.client ? window.location.protocol === 'https:' : false
+        }
+      }
     })
+    
+    console.log('Amplify configured successfully')
+    
+    // OAuth認証の状態変更をリスンする
+    if (process.client) {
+      // Hub によるAuth状態の監視
+      import('@aws-amplify/core').then(({ Hub }) => {
+        Hub.listen('auth', (data) => {
+          console.log('Auth Hub event:', data)
+          
+          switch (data.payload.event) {
+            case 'signedIn':
+              console.log('User signed in successfully')
+              break
+            case 'signedOut':
+              console.log('User signed out successfully')
+              break
+            case 'tokenRefresh':
+              console.log('Auth tokens refreshed')
+              break
+            case 'tokenRefresh_failure':
+              console.log('Token refresh failed')
+              break
+            case 'signIn_failure':
+              console.log('Sign in failed:', data.payload.data)
+              break
+          }
+        })
+      })
+    }
+    
   } catch (error) {
     console.error('Amplify configuration error:', error)
   }
