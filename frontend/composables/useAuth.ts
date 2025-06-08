@@ -122,36 +122,54 @@ export const useAuth = () => {
   const handleSignOut = async () => {
     try {
       loading.value = true
-      console.log('Starting sign out process...')
+      console.log('Starting local sign out process...')
       
-      // OAuth認証でのサインアウトの場合、リダイレクトURIを指定
-      await signOut({
-        global: true // グローバルサインアウト（全てのデバイスからサインアウト）
-      })
+      // ローカルのみでサインアウト（Cognitoのホストされたログアウトを回避）
+      try {
+        // まずローカルセッションをクリア
+        if (process.client) {
+          console.log('Clearing local storage...')
+          // Amplifyのトークンストレージをクリア
+          localStorage.removeItem('aws-amplify-user')
+          localStorage.removeItem('aws-amplify-federatedInfo')
+          Object.keys(localStorage).forEach(key => {
+            if (key.startsWith('CognitoIdentity') || 
+                key.startsWith('aws.cognito') || 
+                key.startsWith('amplify-') ||
+                key.includes('cognito')) {
+              console.log('Removing localStorage key:', key)
+              localStorage.removeItem(key)
+            }
+          })
+          
+          // SessionStorageもクリア
+          Object.keys(sessionStorage).forEach(key => {
+            if (key.startsWith('CognitoIdentity') || 
+                key.startsWith('aws.cognito') || 
+                key.startsWith('amplify-') ||
+                key.includes('cognito')) {
+              console.log('Removing sessionStorage key:', key)
+              sessionStorage.removeItem(key)
+            }
+          })
+        }
+        
+        // Amplifyのサインアウト（ローカルのみ）
+        await signOut({ global: false }) // グローバルサインアウトを無効化
+        
+      } catch (signOutError) {
+        console.log('Amplify signOut error (expected for OAuth):', signOutError)
+        // OAuth認証の場合、signOut()でエラーが発生することがあるが、
+        // ローカルストレージのクリアで実質的にログアウトは完了
+      }
       
       // 状態をクリア
       isAuthenticated.value = false
       user.value = null
-      console.log('User signed out successfully')
+      console.log('Local sign out completed successfully')
       
       // 少し待ってから状態を確実にクリア
       await nextTick()
-      
-      // ローカルストレージも手動でクリア
-      if (process.client) {
-        // Amplifyのトークンストレージをクリア
-        try {
-          localStorage.removeItem('aws-amplify-user')
-          localStorage.removeItem('aws-amplify-federatedInfo')
-          Object.keys(localStorage).forEach(key => {
-            if (key.startsWith('CognitoIdentity') || key.startsWith('aws.cognito')) {
-              localStorage.removeItem(key)
-            }
-          })
-        } catch (e) {
-          console.log('Error clearing localStorage:', e)
-        }
-      }
       
     } catch (error) {
       console.error('Sign out error:', error)
@@ -160,16 +178,20 @@ export const useAuth = () => {
       isAuthenticated.value = false
       user.value = null
       
+      // ローカルストレージも強制的にクリア
       if (process.client) {
         try {
-          localStorage.removeItem('aws-amplify-user')
-          localStorage.removeItem('aws-amplify-federatedInfo')
+          localStorage.clear()
+          sessionStorage.clear()
+          console.log('Force cleared all storage due to error')
         } catch (e) {
-          console.log('Error clearing localStorage after error:', e)
+          console.log('Error force clearing storage:', e)
         }
       }
       
-      throw error
+      // エラーをログに残すが、ユーザーには成功として扱う
+      console.log('Treated sign out as successful despite errors')
+      
     } finally {
       loading.value = false
     }

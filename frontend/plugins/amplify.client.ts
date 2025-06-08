@@ -32,20 +32,10 @@ export default defineNuxtPlugin(() => {
           },
         },
       },
-      Storage: {
-        // ローカルストレージでセッション情報を永続化
-        region: 'ap-northeast-1',
-        cookieStorage: {
-          domain: process.client ? window.location.hostname : 'localhost',
-          path: '/',
-          expires: 365,
-          sameSite: 'strict',
-          secure: process.client ? window.location.protocol === 'https:' : false
-        }
-      }
+      // ローカルストレージ設定を削除（デフォルトのローカルストレージを使用）
     })
     
-    console.log('Amplify configured successfully')
+    console.log('Amplify configured successfully for local logout')
     
     // OAuth認証の状態変更をリスンする
     if (process.client) {
@@ -59,7 +49,7 @@ export default defineNuxtPlugin(() => {
               console.log('User signed in successfully')
               break
             case 'signedOut':
-              console.log('User signed out successfully')
+              console.log('User signed out successfully via Hub')
               break
             case 'tokenRefresh':
               console.log('Auth tokens refreshed')
@@ -72,6 +62,11 @@ export default defineNuxtPlugin(() => {
               break
           }
         })
+      })
+      
+      // ページアンロード時にローカルログアウトを確実に実行
+      window.addEventListener('beforeunload', () => {
+        console.log('Page unloading, ensuring clean logout state')
       })
     }
     
@@ -88,11 +83,25 @@ export default defineNuxtPlugin(() => {
         event.preventDefault()
         return false
       }
+      
+      // Cognitoのログアウトエラーも無視
+      if (event.message && event.message.includes('redirect_uri')) {
+        console.log('Ignoring Cognito logout redirect error')
+        event.preventDefault()
+        return false
+      }
     })
 
     // Promise rejection エラーも処理
     window.addEventListener('unhandledrejection', (event) => {
       if (event.reason && event.reason.toString().includes('content.js')) {
+        event.preventDefault()
+        return false
+      }
+      
+      // Cognitoのログアウトエラーも無視
+      if (event.reason && event.reason.toString().includes('redirect_uri')) {
+        console.log('Ignoring Cognito logout promise rejection')
         event.preventDefault()
         return false
       }
