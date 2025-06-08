@@ -1,13 +1,28 @@
-import { ref, readonly } from 'vue'
+import { ref, readonly, nextTick, type Ref } from 'vue'
 import { signIn, signOut, signUp, confirmSignUp, getCurrentUser, fetchUserAttributes, resetPassword, confirmResetPassword, signInWithRedirect, type AuthUser } from '@aws-amplify/auth'
 
-// グローバルな認証状態（シングルトンパターン）
-const isAuthenticated = ref(false)
-const user = ref<AuthUser | null>(null)
-const loading = ref(false)
+// グローバルな認証状態
+let globalAuthState: {
+  isAuthenticated: Ref<boolean>
+  user: Ref<AuthUser | null>
+  loading: Ref<boolean>
+} | null = null
+
+// シングルトンパターンでグローバル状態を管理
+const getGlobalAuthState = () => {
+  if (!globalAuthState) {
+    globalAuthState = {
+      isAuthenticated: ref(false),
+      user: ref<AuthUser | null>(null),
+      loading: ref(false)
+    }
+  }
+  return globalAuthState
+}
 
 export const useAuth = () => {
   const config = useRuntimeConfig()
+  const { isAuthenticated, user, loading } = getGlobalAuthState()
 
   // 認証状態の初期化
   const initialize = async () => {
@@ -73,9 +88,12 @@ export const useAuth = () => {
       const { isSignedIn, nextStep } = await signIn({ username, password })
       
       if (isSignedIn) {
+        // サインイン成功後、少し待ってから状態を更新
+        await new Promise(resolve => setTimeout(resolve, 500))
         const currentUser = await getCurrentUser()
         user.value = currentUser
         isAuthenticated.value = true
+        console.log('Sign in successful, auth state updated')
       }
       
       return { isSignedIn, nextStep }
@@ -95,6 +113,9 @@ export const useAuth = () => {
       isAuthenticated.value = false
       user.value = null
       console.log('User signed out successfully')
+      
+      // 少し待ってから状態を確実にクリア
+      await nextTick()
     } catch (error) {
       console.error('Sign out error:', error)
       throw error
@@ -203,10 +224,10 @@ export const useAuth = () => {
   }
 
   return {
-    // 読み取り専用の状態を返す
-    isAuthenticated: readonly(isAuthenticated),
-    user: readonly(user),
-    loading: readonly(loading),
+    // リアクティブな状態を返す
+    isAuthenticated,
+    user,
+    loading,
     initialize,
     refreshAuthState,
     getToken,

@@ -10,19 +10,18 @@ onMounted(async () => {
   try {
     console.log('OAuth callback page mounted')
     
-    // 少し待ってからAmplifyの認証状態を確認
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    // OAuth認証処理後の待機時間
+    await new Promise(resolve => setTimeout(resolve, 2000))
     
-    // 認証状態を初期化（強制更新）
+    // 認証状態を更新
     await refreshAuthState()
     
     // 認証に成功した場合
     if (isAuthenticated.value) {
       console.log('OAuth authentication successful, redirecting to home')
-      // 短い遅延を入れてからリダイレクト
-      setTimeout(() => {
-        navigateTo('/')
-      }, 500)
+      
+      // ホームページにリダイレクト
+      await navigateTo('/')
     } else {
       console.log('OAuth authentication failed')
       error.value = '認証に失敗しました。再度お試しください。'
