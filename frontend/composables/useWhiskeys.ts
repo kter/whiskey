@@ -46,6 +46,21 @@ export const useWhiskeys = () => {
     }
   }
 
+  // フロントエンドのstyle値をバックエンドのserving_style値にマッピング
+  const mapServingStyle = (style: string): string => {
+    const styleMap: Record<string, string> = {
+      'Neat': 'NEAT',
+      'Rock': 'ROCKS',
+      'Twice Up': 'WATER',
+      'High Ball': 'SODA',
+      'On the Rocks': 'ROCKS',
+      'Water': 'WATER',
+      'Hot': 'COCKTAIL',
+      'Cocktail': 'COCKTAIL'
+    }
+    return styleMap[style] || 'NEAT'
+  }
+
   // レビューの作成（認証必要）
   const createReview = async (review: ReviewInput) => {
     try {
@@ -53,22 +68,40 @@ export const useWhiskeys = () => {
       error.value = null
 
       const token = await getToken()
-      const response = await fetch(`${config.public.apiBaseUrl}/api/reviews`, {
+      
+      // フロントエンドの形式をバックエンドの期待形式に変換
+      const payload = {
+        whiskey: 'dummy-whiskey-id', // 新しいウイスキーの場合、APIが新規作成
+        whiskey_name: review.whiskey_name,
+        whiskey_distillery: review.distillery,
+        notes: review.notes,
+        rating: review.rating,
+        serving_style: review.style && review.style.length > 0 ? mapServingStyle(review.style[0]) : 'NEAT',
+        date: review.date,
+        image_url: review.image_url
+      }
+
+      console.log('Sending review payload:', payload)
+
+      const response = await fetch(`${config.public.apiBaseUrl}/api/reviews/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify(review)
+        body: JSON.stringify(payload)
       })
 
       if (!response.ok) {
+        const errorText = await response.text()
+        console.error('API Error:', response.status, errorText)
         throw new Error('レビューの作成に失敗しました')
       }
 
       return await response.json()
     } catch (err) {
       error.value = 'レビューの作成に失敗しました'
+      console.error('createReview error:', err)
       throw err
     } finally {
       loading.value = false

@@ -25,7 +25,17 @@ export interface Review {
   user_id?: string
 }
 
-export type ReviewInput = Omit<Review, 'id' | 'created_at' | 'updated_at' | 'whiskey_name' | 'whiskey_distillery' | 'user_id'>
+export interface ReviewInput {
+  whiskey?: string
+  whiskey_name?: string
+  distillery?: string
+  notes?: string
+  rating: number
+  style?: ServingStyle[]
+  serving_style?: string
+  date: string
+  image_url?: string
+}
 
 export interface Whiskey {
   id: string
