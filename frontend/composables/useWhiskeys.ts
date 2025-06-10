@@ -109,28 +109,41 @@ export const useWhiskeys = () => {
   }
 
   // レビューの更新（認証必要）
-  const updateReview = async (id: number, review: ReviewInput) => {
+  const updateReview = async (id: string, review: ReviewInput) => {
     try {
       loading.value = true
       error.value = null
 
       const token = await getToken()
-      const response = await fetch(`${config.public.apiBaseUrl}/api/reviews/${id}`, {
+      
+      // フロントエンドの形式をバックエンドの期待形式に変換
+      const payload = {
+        notes: review.notes,
+        rating: review.rating,
+        serving_style: review.style && review.style.length > 0 ? mapServingStyle(review.style[0]) : 'NEAT',
+        date: review.date,
+        image_url: review.image_url
+      }
+
+      const response = await fetch(`${config.public.apiBaseUrl}/api/reviews/${id}/`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify(review)
+        body: JSON.stringify(payload)
       })
 
       if (!response.ok) {
+        const errorText = await response.text()
+        console.error('API Error:', response.status, errorText)
         throw new Error('レビューの更新に失敗しました')
       }
 
       return await response.json()
     } catch (err) {
       error.value = 'レビューの更新に失敗しました'
+      console.error('updateReview error:', err)
       throw err
     } finally {
       loading.value = false
@@ -138,7 +151,7 @@ export const useWhiskeys = () => {
   }
 
   // レビューの削除（認証必要）
-  const deleteReview = async (id: number) => {
+  const deleteReview = async (id: string) => {
     try {
       loading.value = true
       error.value = null
