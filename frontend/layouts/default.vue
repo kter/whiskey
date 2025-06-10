@@ -2,7 +2,7 @@
 import { useAuth } from '~/composables/useAuth'
 import { watch, onMounted, nextTick } from 'vue'
 
-const { isAuthenticated, user, signOut, refreshAuthState } = useAuth()
+const { isAuthenticated, user, signOut, refreshAuthState, getDisplayName } = useAuth()
 
 const handleSignOut = async () => {
   try {
@@ -79,10 +79,16 @@ if (process.client && process.env.NODE_ENV === 'development') {
             </div>
             
             <!-- 認証済みユーザー向けボタン -->
-            <div v-if="isAuthenticated" class="flex items-center">
-              <span class="mr-3 text-amber-200 text-sm">
-                こんにちは、{{ user?.username || 'ユーザー' }}さん
+            <div v-if="isAuthenticated" class="flex items-center space-x-3">
+              <span class="text-amber-200 text-sm">
+                こんにちは、{{ getDisplayName() }}さん
               </span>
+              <NuxtLink
+                to="/profile"
+                class="inline-flex items-center px-3 py-1.5 border border-amber-700 text-xs font-medium rounded-md text-amber-100 bg-stone-700 hover:bg-stone-600 transition-colors"
+              >
+                プロフィール
+              </NuxtLink>
               <button
                 @click="handleSignOut"
                 class="inline-flex items-center px-4 py-2 border border-red-800 text-sm font-medium rounded-md text-red-200 bg-red-900 hover:bg-red-800 transition-colors"

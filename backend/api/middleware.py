@@ -42,6 +42,7 @@ class CognitoAuthMiddleware:
         if is_development or debug_mode:
             logger.info(f"Using development mode - assigning dummy user_id")
             request.user_id = 'development-user'
+            request.username = 'development-user'
             return self.get_response(request)
 
         auth_header = request.headers.get('Authorization')
@@ -54,6 +55,7 @@ class CognitoAuthMiddleware:
             # This is a simplified version for development
             claims = jwt.get_unverified_claims(token)
             request.user_id = claims['sub']
+            request.username = claims.get('cognito:username', claims.get('preferred_username', 'unknown'))
             return self.get_response(request)
         except JWTError as e:
             return JsonResponse({'error': str(e)}, status=401) 

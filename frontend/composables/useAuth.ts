@@ -1,11 +1,22 @@
 import { ref, readonly, nextTick, type Ref } from 'vue'
 import { signIn, signOut, signUp, confirmSignUp, getCurrentUser, fetchUserAttributes, resetPassword, confirmResetPassword, signInWithRedirect, type AuthUser, fetchAuthSession } from '@aws-amplify/auth'
 
+// ユーザープロフィール型定義
+export interface UserProfile {
+  user_id: string
+  nickname: string
+  display_name?: string
+  created_at: string
+  updated_at: string
+}
+
 // グローバルな認証状態
 let globalAuthState: {
   isAuthenticated: Ref<boolean>
   user: Ref<AuthUser | null>
+  profile: Ref<UserProfile | null>
   loading: Ref<boolean>
+  profileLoading: Ref<boolean>
 } | null = null
 
 // シングルトンパターンでグローバル状態を管理
@@ -14,7 +25,9 @@ const getGlobalAuthState = () => {
     globalAuthState = {
       isAuthenticated: ref(false),
       user: ref<AuthUser | null>(null),
-      loading: ref(false)
+      profile: ref<UserProfile | null>(null),
+      loading: ref(false),
+      profileLoading: ref(false)
     }
   }
   return globalAuthState
@@ -22,7 +35,7 @@ const getGlobalAuthState = () => {
 
 export const useAuth = () => {
   const config = useRuntimeConfig()
-  const { isAuthenticated, user, loading } = getGlobalAuthState()
+  const { isAuthenticated, user, profile, loading, profileLoading } = getGlobalAuthState()
 
   // 認証状態の初期化（より安全なアプローチ）
   const initialize = async () => {
@@ -46,6 +59,9 @@ export const useAuth = () => {
           user.value = currentUser
           isAuthenticated.value = true
           console.log('User authenticated successfully')
+          
+          // ユーザープロフィールも取得
+          await fetchUserProfile()
         } catch (userError) {
           console.log('Error getting user info:', userError)
           // セッションはあるがユーザー情報が取得できない場合
@@ -166,6 +182,7 @@ export const useAuth = () => {
       // 状態をクリア
       isAuthenticated.value = false
       user.value = null
+      profile.value = null
       console.log('Local sign out completed successfully')
       
       // 少し待ってから状態を確実にクリア
@@ -177,6 +194,7 @@ export const useAuth = () => {
       // エラーが発生してもローカル状態はクリアする
       isAuthenticated.value = false
       user.value = null
+      profile.value = null
       
       // ローカルストレージも強制的にクリア
       if (process.client) {
@@ -296,11 +314,92 @@ export const useAuth = () => {
     }
   }
 
+  // ユーザープロフィール管理機能
+  const fetchUserProfile = async () => {
+    try {
+      profileLoading.value = true
+      const token = await getToken()
+      
+      const response = await fetch(`${config.public.apiBaseUrl}/api/users/profile/get-or-create/`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (!response.ok) {
+        console.error('Failed to fetch user profile:', response.status)
+        return
+      }
+
+      const profileData = await response.json()
+      profile.value = profileData
+      console.log('User profile loaded:', profileData)
+    } catch (error) {
+      console.error('Error fetching user profile:', error)
+    } finally {
+      profileLoading.value = false
+    }
+  }
+
+  const updateUserProfile = async (nickname: string, displayName?: string) => {
+    try {
+      profileLoading.value = true
+      const token = await getToken()
+      
+      const payload: any = { nickname }
+      if (displayName !== undefined) {
+        payload.display_name = displayName
+      }
+
+      const response = await fetch(`${config.public.apiBaseUrl}/api/users/profile/`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'プロフィールの更新に失敗しました')
+      }
+
+      const updatedProfile = await response.json()
+      profile.value = updatedProfile
+      console.log('Profile updated:', updatedProfile)
+      return updatedProfile
+    } catch (error) {
+      console.error('Error updating user profile:', error)
+      throw error
+    } finally {
+      profileLoading.value = false
+    }
+  }
+
+  const getDisplayName = () => {
+    if (profile.value?.nickname) {
+      return profile.value.nickname
+    }
+    if (user.value?.username) {
+      // Google_で始まる場合は「ユーザー」に変更
+      if (user.value.username.startsWith('Google_')) {
+        return 'ユーザー'
+      }
+      return user.value.username
+    }
+    return 'ユーザー'
+  }
+
   return {
     // リアクティブな状態を返す
     isAuthenticated,
     user,
+    profile,
     loading,
+    profileLoading,
     initialize,
     refreshAuthState,
     getToken,
@@ -311,6 +410,10 @@ export const useAuth = () => {
     confirmSignUp: handleConfirmSignUp,
     resetPassword: handleResetPassword,
     confirmResetPassword: handleConfirmResetPassword,
-    googleSignIn: handleGoogleSignIn
+    googleSignIn: handleGoogleSignIn,
+    // プロフィール管理
+    fetchUserProfile,
+    updateUserProfile,
+    getDisplayName
   }
 } 

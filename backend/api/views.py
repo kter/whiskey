@@ -14,7 +14,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 import boto3
 from .dynamodb_service import DynamoDBService
-from .serializers import WhiskeySerializer, ReviewSerializer
+from .serializers import WhiskeySerializer, ReviewSerializer, UserProfileSerializer
 import logging
 
 # Create your views here.
@@ -291,3 +291,91 @@ class HealthCheckView(View):
         response['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
         response['Access-Control-Allow-Headers'] = 'Content-Type'
         return response
+
+
+class UserProfileViewSet(viewsets.ViewSet):
+    """ユーザープロフィール管理用ViewSet"""
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.db_service = DynamoDBService()
+    
+    def retrieve(self, request, pk=None):
+        """ユーザープロフィールを取得 (GET /api/users/profile/)"""
+        user_id = getattr(request, 'user_id', None)
+        if not user_id:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        try:
+            profile = self.db_service.get_user_profile(user_id)
+            if profile:
+                return Response(profile)
+            else:
+                return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    def create(self, request):
+        """ユーザープロフィールを作成 (POST /api/users/profile/)"""
+        user_id = getattr(request, 'user_id', None)
+        if not user_id:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        serializer = UserProfileSerializer(data=request.data)
+        if serializer.is_valid():
+            try:
+                profile = self.db_service.create_user_profile(
+                    user_id=user_id,
+                    nickname=serializer.validated_data['nickname'],
+                    display_name=serializer.validated_data.get('display_name')
+                )
+                return Response(profile, status=status.HTTP_201_CREATED)
+            except ValueError as e:
+                return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            except Exception as e:
+                return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    def update(self, request, pk=None):
+        """ユーザープロフィールを更新 (PUT /api/users/profile/)"""
+        user_id = getattr(request, 'user_id', None)
+        if not user_id:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        serializer = UserProfileSerializer(data=request.data, partial=True)
+        if serializer.is_valid():
+            try:
+                profile = self.db_service.update_user_profile(
+                    user_id=user_id,
+                    nickname=serializer.validated_data.get('nickname'),
+                    display_name=serializer.validated_data.get('display_name')
+                )
+                return Response(profile)
+            except ValueError as e:
+                return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            except Exception as e:
+                return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def get_or_create_profile(self, request):
+        """プロフィールを取得、存在しない場合はデフォルトで作成 (POST /api/users/profile/get-or-create/)"""
+        user_id = getattr(request, 'user_id', None)
+        if not user_id:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        try:
+            # Cognitoのusernameからデフォルトニックネームを生成
+            username = getattr(request, 'username', f'user_{user_id[:8]}')
+            
+            # Google_で始まる場合は「ユーザー」に変更
+            if username.startswith('Google_'):
+                default_nickname = 'ユーザー'
+            else:
+                default_nickname = username
+            
+            profile = self.db_service.get_or_create_user_profile(user_id, default_nickname)
+            return Response(profile)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

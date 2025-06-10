@@ -17,6 +17,7 @@ class DynamoDBService:
         environment = os.getenv('ENVIRONMENT', 'dev')
         self.whiskey_table_name = f'Whiskeys-{environment}'
         self.review_table_name = f'Reviews-{environment}'
+        self.user_table_name = f'Users-{environment}'
         
         if endpoint_url:
             # LocalStack環境
@@ -34,6 +35,7 @@ class DynamoDBService:
         # テーブル参照の初期化（遅延読み込み）
         self._whiskey_table = None
         self._review_table = None
+        self._user_table = None
     
     @property
     def whiskey_table(self):
@@ -64,6 +66,21 @@ class DynamoDBService:
                 time.sleep(2)
                 self._review_table = self.dynamodb.Table(self.review_table_name)
         return self._review_table
+    
+    @property
+    def user_table(self):
+        if self._user_table is None:
+            try:
+                self._user_table = self.dynamodb.Table(self.user_table_name)
+                # テーブルの存在確認
+                self._user_table.load()
+            except Exception as e:
+                print(f"Users table {self.user_table_name} not found, creating: {e}")
+                self._create_user_table()
+                # 作成後に少し待機
+                time.sleep(2)
+                self._user_table = self.dynamodb.Table(self.user_table_name)
+        return self._user_table
     
     def _create_whiskey_table(self):
         """Whiskeysテーブルを作成"""
@@ -125,6 +142,25 @@ class DynamoDBService:
             return table
         except Exception as e:
             print(f"Error creating Reviews table: {e}")
+            return None
+    
+    def _create_user_table(self):
+        """Usersテーブルを作成"""
+        try:
+            table = self.dynamodb.create_table(
+                TableName=self.user_table_name,
+                KeySchema=[
+                    {'AttributeName': 'user_id', 'KeyType': 'HASH'}
+                ],
+                AttributeDefinitions=[
+                    {'AttributeName': 'user_id', 'AttributeType': 'S'}
+                ],
+                BillingMode='PAY_PER_REQUEST'
+            )
+            print("Created Users table")
+            return table
+        except Exception as e:
+            print(f"Error creating Users table: {e}")
             return None
 
     def _serialize_item(self, item: Dict) -> Dict:
@@ -349,3 +385,87 @@ class DynamoDBService:
                 'next': None,
                 'previous': None
             } 
+
+    # User operations
+    def get_user_profile(self, user_id: str) -> Optional[Dict]:
+        """ユーザープロフィールを取得"""
+        try:
+            response = self.user_table.get_item(Key={'user_id': user_id})
+            if 'Item' in response:
+                return self._serialize_item(response['Item'])
+            return None
+        except Exception as e:
+            print(f"Error getting user profile: {e}")
+            return None
+
+    def create_user_profile(self, user_id: str, nickname: str, display_name: Optional[str] = None) -> Dict:
+        """ユーザープロフィールを作成"""
+        now = datetime.now().isoformat()
+        
+        item = {
+            'user_id': user_id,
+            'nickname': nickname,
+            'display_name': display_name,
+            'created_at': now,
+            'updated_at': now
+        }
+        
+        try:
+            # 既存のプロフィールが存在しないことを確認
+            existing = self.get_user_profile(user_id)
+            if existing:
+                raise ValueError("User profile already exists")
+            
+            self.user_table.put_item(Item=item)
+            return self._serialize_item(item)
+        except Exception as e:
+            print(f"Error creating user profile: {e}")
+            raise
+
+    def update_user_profile(self, user_id: str, nickname: Optional[str] = None, display_name: Optional[str] = None) -> Dict:
+        """ユーザープロフィールを更新"""
+        try:
+            # 既存のプロフィールを確認
+            existing = self.get_user_profile(user_id)
+            if not existing:
+                raise ValueError("User profile not found")
+            
+            # 更新するフィールドを準備
+            update_expression = "SET updated_at = :updated_at"
+            expression_values = {
+                ':updated_at': datetime.now().isoformat()
+            }
+            
+            if nickname is not None:
+                update_expression += ", nickname = :nickname"
+                expression_values[':nickname'] = nickname
+            
+            if display_name is not None:
+                update_expression += ", display_name = :display_name"
+                expression_values[':display_name'] = display_name
+            
+            response = self.user_table.update_item(
+                Key={'user_id': user_id},
+                UpdateExpression=update_expression,
+                ExpressionAttributeValues=expression_values,
+                ReturnValues='ALL_NEW'
+            )
+            
+            return self._serialize_item(response['Attributes'])
+        except Exception as e:
+            print(f"Error updating user profile: {e}")
+            raise
+
+    def get_or_create_user_profile(self, user_id: str, default_nickname: str) -> Dict:
+        """ユーザープロフィールを取得、存在しない場合は作成"""
+        try:
+            # 既存のプロフィールを確認
+            profile = self.get_user_profile(user_id)
+            if profile:
+                return profile
+            
+            # プロフィールが存在しない場合は作成
+            return self.create_user_profile(user_id, default_nickname)
+        except Exception as e:
+            print(f"Error getting or creating user profile: {e}")
+            raise
