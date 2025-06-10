@@ -16,7 +16,7 @@ class ReviewSerializer(serializers.Serializer):
     whiskey = serializers.CharField(write_only=True)  # 作成時のみ使用
     whiskey_name = serializers.CharField(required=False, read_only=True)
     whiskey_distillery = serializers.CharField(required=False, read_only=True)
-    notes = serializers.CharField()
+    notes = serializers.CharField(required=False, allow_blank=True)
     rating = serializers.IntegerField(min_value=1, max_value=5)
     serving_style = serializers.ChoiceField(choices=Review.ServingStyle.CHOICES)
     date = serializers.DateField()
