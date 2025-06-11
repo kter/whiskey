@@ -15,6 +15,7 @@ import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as elasticache from 'aws-cdk-lib/aws-elasticache';
 import { Construct } from 'constructs';
 import { environments } from '../config/environments';
 
@@ -179,6 +180,95 @@ export class WhiskeyInfraStack extends cdk.Stack {
       partitionKey: { name: 'user_id', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'date', type: dynamodb.AttributeType.STRING },
     });
+
+    // UsersテーブルUser profile table
+    const usersTable = new dynamodb.Table(this, 'UsersTable', {
+      tableName: `Users-${environment}`,
+      partitionKey: { name: 'user_id', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: environment === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+    });
+
+    // WhiskeySearchテーブル - 検索最適化用
+    const whiskeySearchTable = new dynamodb.Table(this, 'WhiskeySearchTable', {
+      tableName: `WhiskeySearch-${environment}`,
+      partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: environment === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+    });
+
+    // 検索用GSI
+    whiskeySearchTable.addGlobalSecondaryIndex({
+      indexName: 'NameJaIndex',
+      partitionKey: { name: 'normalized_name_ja', type: dynamodb.AttributeType.STRING },
+    });
+
+    whiskeySearchTable.addGlobalSecondaryIndex({
+      indexName: 'DistilleryJaIndex',
+      partitionKey: { name: 'normalized_distillery_ja', type: dynamodb.AttributeType.STRING },
+    });
+
+    whiskeySearchTable.addGlobalSecondaryIndex({
+      indexName: 'NameEnIndex',
+      partitionKey: { name: 'normalized_name_en', type: dynamodb.AttributeType.STRING },
+    });
+
+    whiskeySearchTable.addGlobalSecondaryIndex({
+      indexName: 'DistilleryEnIndex',
+      partitionKey: { name: 'normalized_distillery_en', type: dynamodb.AttributeType.STRING },
+    });
+
+    // ====================
+    // ElastiCache Valkey (Translation Cache)
+    // ====================
+    
+    // ElastiCache用セキュリティグループ
+    const cacheSecurityGroup = new ec2.SecurityGroup(this, 'CacheSecurityGroup', {
+      vpc: vpc,
+      description: 'Security group for ElastiCache Valkey',
+      allowAllOutbound: false,
+    });
+
+    // キャッシュサブネットグループ
+    const cacheSubnetGroup = new elasticache.CfnSubnetGroup(this, 'CacheSubnetGroup', {
+      description: 'Subnet group for ElastiCache Valkey',
+      subnetIds: vpc.privateSubnets.map(subnet => subnet.subnetId),
+      cacheSubnetGroupName: `whiskey-cache-subnet-group-${environment}`,
+    });
+
+    // ElastiCache Valkey クラスター
+    // 無料枠利用のためcache.t3.micro (500MB) を使用
+    const cacheCluster = new elasticache.CfnCacheCluster(this, 'ValkeyCluster', {
+      cacheNodeType: 'cache.t3.micro', // 無料枠利用のため
+      engine: 'valkey', // Redis互換のValkey
+      numCacheNodes: 1, // 単一ノード（無料枠利用のため）
+      cacheSubnetGroupName: cacheSubnetGroup.cacheSubnetGroupName,
+      vpcSecurityGroupIds: [cacheSecurityGroup.securityGroupId],
+      clusterName: `whiskey-valkey-${environment}`,
+      port: 6379,
+      // 自動バックアップを無効化（無料枠利用のため）
+      snapshotRetentionLimit: 0,
+      // メンテナンスウィンドウ
+      preferredMaintenanceWindow: 'sun:05:00-sun:06:00',
+      // パラメータグループ（デフォルト使用）
+      cacheParameterGroupName: 'default.valkey7',
+      tags: [
+        {
+          key: 'Environment',
+          value: environment,
+        },
+        {
+          key: 'Purpose',
+          value: 'Translation Cache',
+        },
+        {
+          key: 'FreeeTier',
+          value: 'true',
+        },
+      ],
+    });
+
+    cacheCluster.addDependency(cacheSubnetGroup);
 
     // ====================
     // Secrets Manager (moved before Cognito to support Google provider)
@@ -410,6 +500,8 @@ export class WhiskeyInfraStack extends cdk.Stack {
     // DynamoDB アクセス権限
     whiskeysTable.grantReadWriteData(appExecutionRole);
     reviewsTable.grantReadWriteData(appExecutionRole);
+    usersTable.grantReadWriteData(appExecutionRole);
+    whiskeySearchTable.grantReadWriteData(appExecutionRole);
 
     // S3 アクセス権限
     imagesBucket.grantReadWrite(appExecutionRole);
@@ -506,9 +598,13 @@ export class WhiskeyInfraStack extends cdk.Stack {
         ].join(','),
         DYNAMODB_WHISKEYS_TABLE: whiskeysTable.tableName,
         DYNAMODB_REVIEWS_TABLE: reviewsTable.tableName,
+        DYNAMODB_USERS_TABLE: usersTable.tableName,
+        DYNAMODB_WHISKEY_SEARCH_TABLE: whiskeySearchTable.tableName,
         S3_IMAGES_BUCKET: imagesBucket.bucketName,
         COGNITO_USER_POOL_ID: userPool.userPoolId,
         CORS_ALLOWED_ORIGINS: envConfig.allowedOrigins.join(','),
+        ELASTICACHE_ENDPOINT: cacheCluster.attrRedisEndpointAddress,
+        ELASTICACHE_PORT: '6379',
       },
       secrets: {
         JWT_SECRET: ecs.Secret.fromSecretsManager(appSecrets, 'JWT_SECRET'),
@@ -533,6 +629,13 @@ export class WhiskeyInfraStack extends cdk.Stack {
       albSecurityGroup,
       ec2.Port.tcp(8000),
       'Allow traffic from ALB'
+    );
+
+    // ElastiCacheへのアクセスを許可
+    cacheSecurityGroup.addIngressRule(
+      ecsSecurityGroup,
+      ec2.Port.tcp(6379),
+      'Allow ECS tasks to access ElastiCache Valkey'
     );
 
     // ECS Service
@@ -698,6 +801,26 @@ export class WhiskeyInfraStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'ReviewsTableName', {
       value: reviewsTable.tableName,
       exportName: `whiskey-reviews-table-${environment}`,
+    });
+
+    new cdk.CfnOutput(this, 'UsersTableName', {
+      value: usersTable.tableName,
+      exportName: `whiskey-users-table-${environment}`,
+    });
+
+    new cdk.CfnOutput(this, 'WhiskeySearchTableName', {
+      value: whiskeySearchTable.tableName,
+      exportName: `whiskey-search-table-${environment}`,
+    });
+
+    new cdk.CfnOutput(this, 'ValkeyClusterEndpoint', {
+      value: cacheCluster.attrRedisEndpointAddress,
+      exportName: `whiskey-valkey-endpoint-${environment}`,
+    });
+
+    new cdk.CfnOutput(this, 'ValkeyClusterPort', {
+      value: '6379',
+      exportName: `whiskey-valkey-port-${environment}`,
     });
 
     new cdk.CfnOutput(this, 'AppExecutionRoleArn', {

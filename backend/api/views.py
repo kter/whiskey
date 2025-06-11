@@ -186,7 +186,7 @@ class ReviewViewSet(viewsets.ViewSet):
             return Response({'error': 'Failed to delete review'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class WhiskeySuggestView(APIView):
-    """ウィスキー検索API"""
+    """ウィスキー検索API - 既存ウィスキーテーブルから検索"""
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -200,6 +200,138 @@ class WhiskeySuggestView(APIView):
         whiskeys = self.db_service.search_whiskeys(q)
         serializer = WhiskeySerializer(whiskeys, many=True)
         return Response(serializer.data)
+
+
+class WhiskeySearchSuggestView(APIView):
+    """ウィスキー検索API - 検索最適化テーブルから日本語検索"""
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.db_service = DynamoDBService()
+    
+    def get(self, request):
+        """
+        日本語でのインクリメンタル検索
+        ?q=検索クエリ&limit=10
+        """
+        q = request.query_params.get('q', '').strip()
+        limit = int(request.query_params.get('limit', 10))
+        
+        # 最小文字数チェック
+        if len(q) < 1:
+            return Response([])
+        
+        # 最大制限
+        limit = min(limit, 50)
+        
+        try:
+            # 検索実行
+            suggestions = self.db_service.search_whiskey_suggestions(q, limit)
+            
+            # レスポンス形式を整形
+            formatted_suggestions = []
+            for suggestion in suggestions:
+                formatted_suggestions.append({
+                    'id': suggestion.get('id'),
+                    'name_ja': suggestion.get('name_ja', ''),
+                    'name_en': suggestion.get('name_en', ''),
+                    'distillery_ja': suggestion.get('distillery_ja', ''),
+                    'distillery_en': suggestion.get('distillery_en', ''),
+                    'region': suggestion.get('region', ''),
+                    'type': suggestion.get('type', ''),
+                    'description': suggestion.get('description_ja', suggestion.get('description', ''))[:100] + '...' if suggestion.get('description_ja', suggestion.get('description', '')) else ''
+                })
+            
+            return Response({
+                'query': q,
+                'suggestions': formatted_suggestions,
+                'total': len(formatted_suggestions)
+            })
+            
+        except Exception as e:
+            logger.error(f"Search error: {e}")
+            return Response({
+                'query': q,
+                'suggestions': [],
+                'total': 0,
+                'error': 'Search temporarily unavailable'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class WhiskeySearchView(APIView):
+    """ウィスキー詳細検索API"""
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.db_service = DynamoDBService()
+    
+    def get(self, request):
+        """
+        詳細検索
+        ?name=名前&distillery=蒸留所&region=地域&type=タイプ&limit=20
+        """
+        name = request.query_params.get('name', '').strip()
+        distillery = request.query_params.get('distillery', '').strip()
+        region = request.query_params.get('region', '').strip()
+        whiskey_type = request.query_params.get('type', '').strip()
+        limit = int(request.query_params.get('limit', 20))
+        
+        # 最大制限
+        limit = min(limit, 100)
+        
+        try:
+            results = []
+            
+            # 各条件で検索して結果をマージ
+            if name:
+                name_results = self.db_service.search_whiskey_suggestions(name, limit)
+                results.extend(name_results)
+            
+            if distillery:
+                distillery_results = self.db_service.search_whiskey_suggestions(distillery, limit)
+                results.extend(distillery_results)
+            
+            # 重複除去とフィルタリング
+            seen_ids = set()
+            filtered_results = []
+            
+            for result in results:
+                if result['id'] in seen_ids:
+                    continue
+                
+                # 地域フィルタ
+                if region and region.lower() not in result.get('region', '').lower():
+                    continue
+                
+                # タイプフィルタ
+                if whiskey_type and whiskey_type.lower() not in result.get('type', '').lower():
+                    continue
+                
+                seen_ids.add(result['id'])
+                filtered_results.append(result)
+                
+                if len(filtered_results) >= limit:
+                    break
+            
+            return Response({
+                'filters': {
+                    'name': name,
+                    'distillery': distillery,
+                    'region': region,
+                    'type': whiskey_type
+                },
+                'results': filtered_results[:limit],
+                'total': len(filtered_results)
+            })
+            
+        except Exception as e:
+            logger.error(f"Advanced search error: {e}")
+            return Response({
+                'filters': {},
+                'results': [],
+                'total': 0,
+                'error': 'Search temporarily unavailable'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class WhiskeyRankingView(APIView):
     """ウィスキーランキングAPI"""

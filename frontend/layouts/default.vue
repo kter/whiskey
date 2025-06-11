@@ -65,6 +65,12 @@ if (process.client && process.env.NODE_ENV === 'development') {
                 レビュー一覧
               </NuxtLink>
               <NuxtLink
+                to="/search"
+                class="inline-flex items-center px-1 pt-1 text-amber-100 hover:text-amber-300 transition-colors"
+              >
+                ウイスキー検索
+              </NuxtLink>
+              <NuxtLink
                 to="/ranking"
                 class="inline-flex items-center px-1 pt-1 text-amber-100 hover:text-amber-300 transition-colors"
               >
