@@ -383,14 +383,8 @@ export const useAuth = () => {
     if (profile.value?.nickname) {
       return profile.value.nickname
     }
-    if (user.value?.username) {
-      // Google_で始まる場合は「ユーザー」に変更
-      if (user.value.username.startsWith('Google_')) {
-        return 'ユーザー'
-      }
-      return user.value.username
-    }
-    return 'ユーザー'
+    // プロフィールが読み込まれていない場合のフォールバック
+    return '神秘的なウイスキー愛好家'
   }
 
   return {

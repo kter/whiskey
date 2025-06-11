@@ -366,14 +366,34 @@ class UserProfileViewSet(viewsets.ViewSet):
             return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
         
         try:
-            # Cognitoのusernameからデフォルトニックネームを生成
-            username = getattr(request, 'username', f'user_{user_id[:8]}')
+            # デフォルトニックネームを生成
+            import random
             
-            # Google_で始まる場合は「ユーザー」に変更
-            if username.startswith('Google_'):
-                default_nickname = 'ユーザー'
-            else:
-                default_nickname = username
+            # 称号のような親しみやすい形容詞
+            title_words = [
+                'エレガントな', '情熱的な', '洗練された', '優雅な', '熟練の',
+                '神秘的な', '伝説の', '華麗なる', '至高の', '究極の',
+                '魅惑的な', '上品な', '贅沢な', '格調高い', '気品ある',
+                '卓越した', '素晴らしい', '見事な', '美しき', '誇り高き',
+                '知的な', '穏やかな', '温和な', '心優しい', '勇敢な',
+                '冒険好きな', '探究心旺盛な', '好奇心強い', '学習熱心な', '研究熱心な',
+                'ロマンチックな', 'クラシックな', 'モダンな', 'スタイリッシュな', 'シャープな'
+            ]
+            
+            # ウイスキー関連用語
+            whiskey_terms = [
+                'ウイスキー愛好家', 'テイスター', 'ウイスキーファン', 
+                'スコッチ愛好家', 'バーボン好き', '蒸留酒マニア',
+                'モルト探検家', 'ウイスキー初心者', '樽の番人',
+                'シングルモルト好き', 'ブレンド愛好家', 'カスク探求者',
+                'アンバー愛好家', 'ピート好き', 'シェリーカスク派',
+                'ハイランド好き', 'アイラ島愛好家', 'スペイサイド派'
+            ]
+            
+            # ランダムに組み合わせて生成
+            title = random.choice(title_words)
+            whiskey_term = random.choice(whiskey_terms)
+            default_nickname = f'{title}{whiskey_term}'
             
             profile = self.db_service.get_or_create_user_profile(user_id, default_nickname)
             return Response(profile)

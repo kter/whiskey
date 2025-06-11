@@ -114,14 +114,6 @@ onMounted(() => {
               </p>
             </div>
 
-            <div v-if="user?.username">
-              <label class="block text-sm font-medium text-amber-200 mb-1">
-                アカウント名
-              </label>
-              <p class="text-amber-100 text-sm">
-                {{ user.username }}
-              </p>
-            </div>
 
             <div v-if="profile?.created_at">
               <label class="block text-sm font-medium text-amber-200 mb-1">
