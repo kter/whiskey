@@ -15,7 +15,7 @@ export const environments: Record<string, EnvironmentConfig> = {
     domain: 'dev.whiskeybar.site',
     apiDomain: 'api.dev.whiskeybar.site',
     allowedOrigins: ['https://dev.whiskeybar.site', 'https://www.dev.whiskeybar.site', 'http://localhost:3000'], // 開発環境では本番ドメインとローカル
-    natGateways: 1,
+    natGateways: 0, // Lambda使用のためNATゲートウェイ不要
     retainResources: false,
   },
   prod: {
@@ -23,7 +23,7 @@ export const environments: Record<string, EnvironmentConfig> = {
     domain: 'whiskeybar.site',
     apiDomain: 'api.whiskeybar.site',
     allowedOrigins: ['https://whiskeybar.site'], // 本番ドメインのみ許可
-    natGateways: 2,
+    natGateways: 0, // Lambda使用のためNATゲートウェイ不要
     retainResources: true,
     // certificateArn: 'arn:aws:acm:ap-northeast-1:123456789012:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
   },

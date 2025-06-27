@@ -35,8 +35,12 @@ DEBUG = os.getenv('DJANGO_DEBUG', str(not IS_PRODUCTION)).lower() == 'true'
 if IS_LOCAL:
     ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0']
 else:
-    # Production/Development environments
-    ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'api.whiskeybar.site,api.dev.whiskeybar.site').split(',')
+    # Production/Development environments - Include API Gateway domains
+    default_hosts = 'api.whiskeybar.site,api.dev.whiskeybar.site'
+    # Lambda environments may use API Gateway execute-api domains
+    if os.getenv('AWS_LAMBDA_FUNCTION_NAME'):
+        default_hosts += ',.execute-api.ap-northeast-1.amazonaws.com'
+    ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', default_hosts).split(',')
 
 # Security settings for production
 if IS_PRODUCTION:

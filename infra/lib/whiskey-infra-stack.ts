@@ -1,32 +1,31 @@
 import * as cdk from 'aws-cdk-lib';
-import * as ec2 from 'aws-cdk-lib/aws-ec2';
-import * as s3 from 'aws-cdk-lib/aws-s3';
-import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
-import * as cognito from 'aws-cdk-lib/aws-cognito';
-import * as iam from 'aws-cdk-lib/aws-iam';
-import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as apigateway from 'aws-cdk-lib/aws-apigateway';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
-import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
-import * as route53 from 'aws-cdk-lib/aws-route53';
-import * as acm from 'aws-cdk-lib/aws-certificatemanager';
-import * as targets from 'aws-cdk-lib/aws-route53-targets';
-import * as ecs from 'aws-cdk-lib/aws-ecs';
-import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
-import * as ecr from 'aws-cdk-lib/aws-ecr';
+import * as cognito from 'aws-cdk-lib/aws-cognito';
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as route53 from 'aws-cdk-lib/aws-route53';
+import * as targets from 'aws-cdk-lib/aws-route53-targets';
+import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
 import { environments } from '../config/environments';
 
 interface WhiskeyInfraStackProps extends cdk.StackProps {
   environment: string;
+  cloudFrontCertificateArn?: string;
 }
 
 export class WhiskeyInfraStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: WhiskeyInfraStackProps) {
     super(scope, id, props);
 
-    const { environment } = props;
+    const { environment, cloudFrontCertificateArn } = props;
     const envConfig = environments[environment];
     
     if (!envConfig) {
@@ -37,7 +36,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
     // VPC Configuration
     // ====================
     const vpc = new ec2.Vpc(this, 'WhiskeyVPC', {
-      cidr: '10.0.0.0/16',
+      ipAddresses: ec2.IpAddresses.cidr('10.0.0.0/16'),
       maxAzs: 2,
       natGateways: envConfig.natGateways, // 環境に応じてNATゲートウェイを設定
       subnetConfiguration: [
@@ -49,7 +48,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
         {
           cidrMask: 24,
           name: 'Private',
-          subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS, // ECS Fargate用
+          subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
         },
       ],
     });
@@ -97,20 +96,16 @@ export class WhiskeyInfraStack extends cdk.Stack {
         domainName: envConfig.domain,
       });
       
-      // フロントエンド用SSL証明書（CloudFront用なのでus-east-1で作成）
-      webCertificate = new acm.DnsValidatedCertificate(this, 'WebCertificate', {
-        domainName: envConfig.domain,
-        subjectAlternativeNames: [`www.${envConfig.domain}`],
-        hostedZone: hostedZone,
-        region: 'us-east-1', // CloudFrontではus-east-1のみ
-      });
+      // CloudFront用SSL証明書（証明書スタックから参照）
+      if (cloudFrontCertificateArn) {
+        webCertificate = acm.Certificate.fromCertificateArn(this, 'WebCertificate', cloudFrontCertificateArn);
+      }
       
-      // API用SSL証明書（ALB用なので現在のリージョンで作成）
+      // API用SSL証明書（API Gateway用なので現在のリージョンで作成）
       if (envConfig.apiDomain) {
-        apiCertificate = new acm.DnsValidatedCertificate(this, 'ApiCertificate', {
+        apiCertificate = new acm.Certificate(this, 'ApiCertificate', {
           domainName: envConfig.apiDomain,
-          hostedZone: hostedZone,
-          region: envConfig.region, // ALB用は現在のリージョン
+          validation: acm.CertificateValidation.fromDns(hostedZone),
         });
       }
     }
@@ -289,133 +284,38 @@ export class WhiskeyInfraStack extends cdk.Stack {
     userPoolClient.node.addDependency(googleProvider);
 
     // ====================
-    // API Infrastructure (ECS Fargate + ALB)
+    // API Infrastructure (Lambda + API Gateway)
     // ====================
     
-    // ECR Repository for API Docker images
-    const apiRepository = new ecr.Repository(this, 'WhiskeyApiRepository', {
-      repositoryName: `whiskey-api-${environment}`,
-      imageScanOnPush: true,
-      removalPolicy: environment === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
-    });
-
-    // ECS Cluster
-    const cluster = new ecs.Cluster(this, 'WhiskeyApiCluster', {
-      clusterName: `whiskey-api-cluster-${environment}`,
-      vpc: vpc,
-      containerInsights: environment === 'prod', // 本番環境のみ有効
-    });
-
-    // CloudWatch Logs Group
-    const logGroup = new logs.LogGroup(this, 'WhiskeyApiLogGroup', {
-      logGroupName: `/ecs/whiskey-api-${environment}`,
+    // CloudWatch Logs Group for Lambda
+    const lambdaLogGroup = new logs.LogGroup(this, 'WhiskeyApiLogGroup', {
+      logGroupName: `/aws/lambda/whiskey-api-${environment}`,
       retention: environment === 'prod' ? logs.RetentionDays.ONE_MONTH : logs.RetentionDays.ONE_WEEK,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
-
-    // ALB Security Group
-    const albSecurityGroup = new ec2.SecurityGroup(this, 'ALBSecurityGroup', {
-      vpc: vpc,
-      description: 'Security group for API ALB',
-      allowAllOutbound: true,
-    });
-
-    // ALB Security Group Rules
-    albSecurityGroup.addIngressRule(
-      ec2.Peer.anyIpv4(),
-      ec2.Port.tcp(80),
-      'Allow HTTP traffic'
-    );
-    albSecurityGroup.addIngressRule(
-      ec2.Peer.anyIpv4(),
-      ec2.Port.tcp(443),
-      'Allow HTTPS traffic'
-    );
-
-    // Application Load Balancer
-    const alb = new elbv2.ApplicationLoadBalancer(this, 'WhiskeyApiALB', {
-      loadBalancerName: `whiskey-api-alb-${environment}`,
-      vpc: vpc,
-      internetFacing: true,
-      securityGroup: albSecurityGroup,
-    });
-
-    // Target Group
-    const targetGroup = new elbv2.ApplicationTargetGroup(this, 'WhiskeyApiTargetGroup', {
-      targetGroupName: `whiskey-api-tg-${environment}`,
-      port: 8000, // Django port
-      protocol: elbv2.ApplicationProtocol.HTTP,
-      vpc: vpc,
-      targetType: elbv2.TargetType.IP,
-      healthCheck: {
-        enabled: true,
-        path: '/health/', // Django health check endpoint
-        protocol: elbv2.Protocol.HTTP,
-        port: '8000',
-        healthyThresholdCount: 2,
-        unhealthyThresholdCount: 5,
-        timeout: cdk.Duration.seconds(10),
-        interval: cdk.Duration.seconds(30),
-      },
-    });
-
-    // HTTPS Listener (if API domain and certificate exist)
-    if (envConfig.apiDomain && apiCertificate) {
-      const httpsListener = alb.addListener('HttpsListener', {
-        port: 443,
-        protocol: elbv2.ApplicationProtocol.HTTPS,
-        certificates: [apiCertificate],
-        defaultTargetGroups: [targetGroup],
-      });
-    }
-
-    // HTTP Listener
-    if (envConfig.apiDomain && apiCertificate) {
-      // カスタムドメインがある場合はHTTPSにリダイレクト
-      const httpListener = alb.addListener('HttpListener', {
-        port: 80,
-        protocol: elbv2.ApplicationProtocol.HTTP,
-        defaultAction: elbv2.ListenerAction.redirect({
-          protocol: 'HTTPS',
-          port: '443',
-          permanent: true,
-        }),
-      });
-    } else {
-      // カスタムドメインがない場合は直接Target Groupに転送
-      const httpListener = alb.addListener('HttpListener', {
-        port: 80,
-        protocol: elbv2.ApplicationProtocol.HTTP,
-        defaultTargetGroups: [targetGroup],
-      });
-    }
 
     // ====================
     // IAM Roles
     // ====================
     
-    // Lambda/ECS実行ロール
-    const appExecutionRole = new iam.Role(this, 'WhiskeyAppExecutionRole', {
-      roleName: `whiskey-app-execution-role-${environment}`,
-      assumedBy: new iam.CompositePrincipal(
-        new iam.ServicePrincipal('lambda.amazonaws.com'),
-        new iam.ServicePrincipal('ecs-tasks.amazonaws.com')
-      ),
+    // Lambda実行ロール
+    const lambdaExecutionRole = new iam.Role(this, 'WhiskeyLambdaExecutionRole', {
+      roleName: `whiskey-lambda-execution-role-${environment}`,
+      assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
       managedPolicies: [
         iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
-        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaVPCAccessExecutionRole'),
       ],
     });
 
     // DynamoDB アクセス権限
-    whiskeysTable.grantReadWriteData(appExecutionRole);
-    reviewsTable.grantReadWriteData(appExecutionRole);
+    whiskeysTable.grantReadWriteData(lambdaExecutionRole);
+    reviewsTable.grantReadWriteData(lambdaExecutionRole);
 
     // S3 アクセス権限
-    imagesBucket.grantReadWrite(appExecutionRole);
+    imagesBucket.grantReadWrite(lambdaExecutionRole);
     
     // Cognito アクセス権限
-    appExecutionRole.addToPolicy(new iam.PolicyStatement({
+    lambdaExecutionRole.addToPolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: [
         'cognito-idp:AdminGetUser',
@@ -429,6 +329,72 @@ export class WhiskeyInfraStack extends cdk.Stack {
       ],
       resources: [userPool.userPoolArn],
     }));
+
+    // Lambda関数
+    const apiLambda = new lambda.Function(this, 'WhiskeyApiFunction', {
+      functionName: `whiskey-api-${environment}`,
+      runtime: lambda.Runtime.PYTHON_3_11,
+      handler: 'lambda_handler.lambda_handler',
+      code: lambda.Code.fromAsset('../backend', {
+        exclude: ['venv/', '__pycache__/', '*.pyc', '.env', 'Dockerfile*'],
+      }),
+      timeout: cdk.Duration.seconds(30),
+      memorySize: environment === 'prod' ? 512 : 256,
+      role: lambdaExecutionRole,
+      logGroup: lambdaLogGroup,
+      environment: {
+        ENVIRONMENT: environment,
+        DYNAMODB_WHISKEYS_TABLE: whiskeysTable.tableName,
+        DYNAMODB_REVIEWS_TABLE: reviewsTable.tableName,
+        S3_IMAGES_BUCKET: imagesBucket.bucketName,
+        COGNITO_USER_POOL_ID: userPool.userPoolId,
+        CORS_ALLOWED_ORIGINS: envConfig.allowedOrigins.join(','),
+      },
+    });
+
+    // API Gateway
+    const api = new apigateway.RestApi(this, 'WhiskeyApi', {
+      restApiName: `whiskey-api-${environment}`,
+      description: `Whiskey API for ${environment} environment`,
+      cloudWatchRole: true,
+      deployOptions: {
+        stageName: environment,
+        loggingLevel: apigateway.MethodLoggingLevel.INFO,
+        dataTraceEnabled: true,
+        metricsEnabled: true,
+      },
+      defaultCorsPreflightOptions: {
+        allowOrigins: envConfig.allowedOrigins,
+        allowMethods: apigateway.Cors.ALL_METHODS,
+        allowHeaders: [
+          'Content-Type',
+          'X-Amz-Date',
+          'Authorization',
+          'X-Api-Key',
+          'X-Amz-Security-Token',
+          'X-Requested-With',
+        ],
+        allowCredentials: true,
+      },
+      ...(envConfig.apiDomain && apiCertificate ? {
+        domainName: {
+          domainName: envConfig.apiDomain,
+          certificate: apiCertificate,
+        },
+      } : {}),
+    });
+
+    // Lambda統合
+    const lambdaIntegration = new apigateway.LambdaIntegration(apiLambda, {
+      requestTemplates: { 'application/json': '{ "statusCode": "200" }' },
+    });
+
+    // プロキシリソースの設定（Django URLsを全てキャッチ）
+    const proxyResource = api.root.addResource('{proxy+}');
+    proxyResource.addMethod('ANY', lambdaIntegration);
+    
+    // ルートパスも処理
+    api.root.addMethod('ANY', lambdaIntegration);
 
     // GitHub Actions用OIDC プロバイダー
     const gitHubOidcProvider = new iam.OpenIdConnectProvider(this, 'GitHubOidcProvider', {
@@ -463,6 +429,19 @@ export class WhiskeyInfraStack extends cdk.Stack {
       resources: [distribution.distributionArn],
     }));
 
+    // Lambda関数更新権限
+    githubActionsRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'lambda:UpdateFunctionCode',
+        'lambda:UpdateFunctionConfiguration',
+        'lambda:GetFunction',
+        'lambda:PublishVersion',
+      ],
+      resources: [apiLambda.functionArn],
+    }));Resource handler returned message: "The repository with name 'whiskey-api-dev' in registry with id '031921999648' cannot be deleted because it still contains images (Service: Ecr, Status Code: 400, Request ID: 8
+
+
     // CloudFormationスタック情報読み取り権限
     githubActionsRole.addToPolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
@@ -473,143 +452,6 @@ export class WhiskeyInfraStack extends cdk.Stack {
       resources: [`arn:aws:cloudformation:${this.region}:${this.account}:stack/WhiskeyApp-*/*`],
     }));
 
-    // ====================
-    // ECS Task Definition & Service
-    // ====================
-    
-    // ECS Task Definition
-    const taskDefinition = new ecs.FargateTaskDefinition(this, 'WhiskeyApiTaskDefinition', {
-      family: `whiskey-api-${environment}`,
-      cpu: 256, // 0.25 vCPU
-      memoryLimitMiB: 512, // 512 MB
-      executionRole: appExecutionRole,
-      taskRole: appExecutionRole,
-    });
-
-    // Container Definition
-    const container = taskDefinition.addContainer('WhiskeyApiContainer', {
-      containerName: 'whiskey-api',
-      image: ecs.ContainerImage.fromEcrRepository(apiRepository, 'latest'),
-      logging: ecs.LogDrivers.awsLogs({
-        streamPrefix: 'whiskey-api',
-        logGroup: logGroup,
-      }),
-      environment: {
-        ENVIRONMENT: environment,
-        AWS_REGION: envConfig.region,
-        ALLOWED_HOSTS: [
-          envConfig.apiDomain || 'localhost',
-          '.elb.amazonaws.com', // ALBのドメインを許可
-          'localhost',
-          '127.0.0.1',
-          '*' // 一時的にすべてのホストを許可（ALBヘルスチェック用）
-        ].join(','),
-        DYNAMODB_WHISKEYS_TABLE: whiskeysTable.tableName,
-        DYNAMODB_REVIEWS_TABLE: reviewsTable.tableName,
-        S3_IMAGES_BUCKET: imagesBucket.bucketName,
-        COGNITO_USER_POOL_ID: userPool.userPoolId,
-        CORS_ALLOWED_ORIGINS: envConfig.allowedOrigins.join(','),
-      },
-      secrets: {
-        JWT_SECRET: ecs.Secret.fromSecretsManager(appSecrets, 'JWT_SECRET'),
-      },
-      portMappings: [
-        {
-          containerPort: 8000,
-          protocol: ecs.Protocol.TCP,
-        },
-      ],
-    });
-
-    // ECS Security Group
-    const ecsSecurityGroup = new ec2.SecurityGroup(this, 'EcsSecurityGroup', {
-      vpc: vpc,
-      description: 'Security group for ECS API tasks',
-      allowAllOutbound: true,
-    });
-
-    // Allow ALB to communicate with ECS tasks
-    ecsSecurityGroup.addIngressRule(
-      albSecurityGroup,
-      ec2.Port.tcp(8000),
-      'Allow traffic from ALB'
-    );
-
-    // ECS Service
-    const ecsService = new ecs.FargateService(this, 'WhiskeyApiService', {
-      serviceName: `whiskey-api-service-${environment}`,
-      cluster: cluster,
-      taskDefinition: taskDefinition,
-      desiredCount: environment === 'prod' ? 2 : 1, // 本番は2台、開発は1台
-      assignPublicIp: false, // プライベートサブネットなので
-      securityGroups: [ecsSecurityGroup],
-      vpcSubnets: {
-        subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
-      },
-    });
-
-    // Attach ECS Service to Target Group
-    ecsService.attachToApplicationTargetGroup(targetGroup);
-
-    // ECR認証トークン取得権限（全リソースに対して必要）
-    githubActionsRole.addToPolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: [
-        'ecr:GetAuthorizationToken',
-      ],
-      resources: ['*'],
-    }));
-
-    // ECRリポジトリ操作権限
-    githubActionsRole.addToPolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: [
-        'ecr:BatchCheckLayerAvailability',
-        'ecr:GetDownloadUrlForLayer',
-        'ecr:BatchGetImage',
-        'ecr:InitiateLayerUpload',
-        'ecr:UploadLayerPart',
-        'ecr:CompleteLayerUpload',
-        'ecr:PutImage',
-      ],
-      resources: [apiRepository.repositoryArn],
-    }));
-
-    // ECS操作権限（より広範なリソース指定）
-    githubActionsRole.addToPolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: [
-        'ecs:UpdateService',
-        'ecs:DescribeServices',
-        'ecs:DescribeTasks',
-        'ecs:DescribeTaskDefinition',
-        'ecs:RegisterTaskDefinition',
-        'ecs:ListTasks',
-        'ecs:DescribeClusters',
-      ],
-      resources: [
-        cluster.clusterArn,
-        ecsService.serviceArn,
-        `arn:aws:ecs:${this.region}:${this.account}:task-definition/whiskey-api-${environment}:*`,
-        `arn:aws:ecs:${this.region}:${this.account}:task/whiskey-api-cluster-${environment}/*`,
-      ],
-    }));
-
-    // ECS wait操作のためのpass role権限
-    githubActionsRole.addToPolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: [
-        'iam:PassRole',
-      ],
-      resources: [
-        appExecutionRole.roleArn,
-      ],
-      conditions: {
-        StringEquals: {
-          'iam:PassedToService': 'ecs-tasks.amazonaws.com',
-        },
-      },
-    }));
 
     // ====================
     // Route53 DNS Records (if domain is configured)
@@ -634,7 +476,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
         new route53.ARecord(this, 'ApiDomainARecord', {
           zone: hostedZone,
           recordName: envConfig.apiDomain,
-          target: route53.RecordTarget.fromAlias(new targets.LoadBalancerTarget(alb)),
+          target: route53.RecordTarget.fromAlias(new targets.ApiGateway(api)),
         });
       }
     }
@@ -700,9 +542,9 @@ export class WhiskeyInfraStack extends cdk.Stack {
       exportName: `whiskey-reviews-table-${environment}`,
     });
 
-    new cdk.CfnOutput(this, 'AppExecutionRoleArn', {
-      value: appExecutionRole.roleArn,
-      exportName: `whiskey-app-execution-role-arn-${environment}`,
+    new cdk.CfnOutput(this, 'LambdaExecutionRoleArn', {
+      value: lambdaExecutionRole.roleArn,
+      exportName: `whiskey-lambda-execution-role-arn-${environment}`,
     });
 
     new cdk.CfnOutput(this, 'GitHubActionsRoleArn', {
@@ -716,24 +558,24 @@ export class WhiskeyInfraStack extends cdk.Stack {
     });
 
     // API関連の出力
-    new cdk.CfnOutput(this, 'ApiRepositoryUri', {
-      value: apiRepository.repositoryUri,
-      exportName: `whiskey-api-repository-uri-${environment}`,
+    new cdk.CfnOutput(this, 'LambdaFunctionName', {
+      value: apiLambda.functionName,
+      exportName: `whiskey-lambda-function-name-${environment}`,
     });
 
-    new cdk.CfnOutput(this, 'AlbDnsName', {
-      value: alb.loadBalancerDnsName,
-      exportName: `whiskey-alb-dns-${environment}`,
+    new cdk.CfnOutput(this, 'LambdaFunctionArn', {
+      value: apiLambda.functionArn,
+      exportName: `whiskey-lambda-function-arn-${environment}`,
     });
 
-    new cdk.CfnOutput(this, 'EcsClusterName', {
-      value: cluster.clusterName,
-      exportName: `whiskey-ecs-cluster-${environment}`,
+    new cdk.CfnOutput(this, 'ApiGatewayRestApiId', {
+      value: api.restApiId,
+      exportName: `whiskey-api-gateway-id-${environment}`,
     });
 
-    new cdk.CfnOutput(this, 'EcsServiceName', {
-      value: ecsService.serviceName,
-      exportName: `whiskey-ecs-service-${environment}`,
+    new cdk.CfnOutput(this, 'ApiGatewayUrl', {
+      value: api.url,
+      exportName: `whiskey-api-gateway-url-${environment}`,
     });
 
     // APIドメインの出力
