@@ -152,6 +152,7 @@ cd infra && npm test  # Run CDK tests
 - IMPORTANT: シンプルで明快な実装を優先する
 - IMPORTANT: 複雑なロジックにはコメントを付ける
 - IMPORTANT: 既にIaCでコード化されているインフラのリソースを変更する際はawsコマンドではなくIaCを使用する
+- IMPORTANT: 既存のAWSリソースをCDKにインポートするのは禁止。常に新しいリソースを作成すること
 - IMPORTANT: エラーが発生したらエラー文をWebで検索し修正する
 - **IMPORTANT: 費用最適化されたアーキテクチャを維持する**
   - **使用推奨**: Lambda, API Gateway, S3, CloudFront, DynamoDB, Cognito

@@ -34,7 +34,7 @@ if (envConfig.domain) {
     tags: {
       Project: 'WhiskeyApp',
       Environment: env
-    }Resource handler returned message: "The repository with name 'whiskey-api-dev' in registry with id '031921999648' cannot be deleted because it still contains images (Service: Ecr, Status Code: 400, Request ID: 8
+    }
 
   });
 }
