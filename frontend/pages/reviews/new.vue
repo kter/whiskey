@@ -2,14 +2,16 @@
 import { ref } from 'vue'
 import type { ReviewInput, ServingStyle } from '~/types/whiskey'
 import { useWhiskeys } from '~/composables/useWhiskeys'
-import { useSuggestWhiskeys } from '~/composables/useSuggestWhiskeys'
+import WhiskeySearchInput from '~/components/WhiskeySearchInput.vue'
 
 const { createReview } = useWhiskeys()
-const { suggestions, debouncedSearch } = useSuggestWhiskeys()
+
+// クエリパラメータから初期値を取得
+const route = useRoute()
 
 const review = ref<ReviewInput>({
-  whiskey_name: '',
-  distillery: '',
+  whiskey_name: (route.query.whiskey_name as string) || '',
+  distillery: (route.query.distillery as string) || '',
   notes: '',
   rating: 3,
   style: [],
@@ -17,24 +19,13 @@ const review = ref<ReviewInput>({
 })
 
 const error = ref('')
-const showSuggestions = ref(false)
 
-// サジェスト検索
-const handleWhiskeyNameInput = (event: Event) => {
-  const input = event.target as HTMLInputElement
-  review.value.whiskey_name = input.value
-  if (input.value.length >= 2) {
-    debouncedSearch(input.value)
-    showSuggestions.value = true
-  } else {
-    showSuggestions.value = false
+// 検索候補の選択処理
+const handleWhiskeySelection = (selection: { name: string; distillery: string }) => {
+  review.value.whiskey_name = selection.name
+  if (selection.distillery && !review.value.distillery) {
+    review.value.distillery = selection.distillery
   }
-}
-
-// サジェストアイテムの選択
-const selectSuggestion = (name: string) => {
-  review.value.whiskey_name = name
-  showSuggestions.value = false
 }
 
 // 飲み方の選択
@@ -78,36 +69,20 @@ const handleSubmit = async () => {
     </h1>
 
     <form @submit.prevent="handleSubmit" class="mt-6 space-y-6 bg-stone-800 p-6 rounded-lg shadow-lg border border-amber-700">
-      <!-- ウイスキー名 -->
-      <div class="relative">
-        <label for="whiskey_name" class="block text-sm font-medium text-amber-200">
+      <!-- ウイスキー名検索 -->
+      <div>
+        <label class="block text-sm font-medium text-amber-200 mb-2">
           ウイスキー名 *
         </label>
-        <input
-          id="whiskey_name"
-          type="text"
-          required
-          :value="review.whiskey_name"
-          @input="handleWhiskeyNameInput"
-          class="mt-1 block w-full rounded-md border-amber-700 bg-stone-700 text-amber-100 shadow-sm focus:border-amber-500 focus:ring-amber-500 sm:text-sm placeholder-amber-400"
-          placeholder="ウイスキー名を入力"
-        >
-        <!-- サジェスト -->
-        <div
-          v-if="showSuggestions && suggestions.length > 0"
-          class="absolute z-10 mt-1 w-full bg-stone-700 shadow-lg rounded-md border border-amber-600"
-        >
-          <ul class="py-1">
-            <li
-              v-for="suggestion in suggestions"
-              :key="suggestion"
-              @click="selectSuggestion(suggestion)"
-              class="px-3 py-2 hover:bg-stone-600 cursor-pointer text-amber-100"
-            >
-              {{ suggestion }}
-            </li>
-          </ul>
-        </div>
+        <WhiskeySearchInput
+          v-model="review.whiskey_name"
+          placeholder="ウイスキー名や蒸留所名で検索..."
+          :show-distillery="true"
+          @select="handleWhiskeySelection"
+        />
+        <p class="mt-1 text-xs text-amber-400">
+          日本語や英語でウイスキー名を入力してください。候補から選択すると蒸留所名も自動入力されます。
+        </p>
       </div>
 
       <!-- 蒸留所 -->

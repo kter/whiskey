@@ -175,6 +175,43 @@ export class WhiskeyInfraStack extends cdk.Stack {
       sortKey: { name: 'date', type: dynamodb.AttributeType.STRING },
     });
 
+    // UsersテーブルUser profile table
+    const usersTable = new dynamodb.Table(this, 'UsersTable', {
+      tableName: `Users-${environment}`,
+      partitionKey: { name: 'user_id', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: environment === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+    });
+
+    // WhiskeySearchテーブル - 検索最適化用
+    const whiskeySearchTable = new dynamodb.Table(this, 'WhiskeySearchTable', {
+      tableName: `WhiskeySearch-${environment}`,
+      partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: environment === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+    });
+
+    // 検索用GSI
+    whiskeySearchTable.addGlobalSecondaryIndex({
+      indexName: 'NameJaIndex',
+      partitionKey: { name: 'normalized_name_ja', type: dynamodb.AttributeType.STRING },
+    });
+
+    whiskeySearchTable.addGlobalSecondaryIndex({
+      indexName: 'DistilleryJaIndex',
+      partitionKey: { name: 'normalized_distillery_ja', type: dynamodb.AttributeType.STRING },
+    });
+
+    whiskeySearchTable.addGlobalSecondaryIndex({
+      indexName: 'NameEnIndex',
+      partitionKey: { name: 'normalized_name_en', type: dynamodb.AttributeType.STRING },
+    });
+
+    whiskeySearchTable.addGlobalSecondaryIndex({
+      indexName: 'DistilleryEnIndex',
+      partitionKey: { name: 'normalized_distillery_en', type: dynamodb.AttributeType.STRING },
+    });
+
     // ====================
     // Secrets Manager (moved before Cognito to support Google provider)
     // ====================
@@ -310,6 +347,8 @@ export class WhiskeyInfraStack extends cdk.Stack {
     // DynamoDB アクセス権限
     whiskeysTable.grantReadWriteData(lambdaExecutionRole);
     reviewsTable.grantReadWriteData(lambdaExecutionRole);
+    usersTable.grantReadWriteData(lambdaExecutionRole);
+    whiskeySearchTable.grantReadWriteData(lambdaExecutionRole);
 
     // S3 アクセス権限
     imagesBucket.grantReadWrite(lambdaExecutionRole);
@@ -346,6 +385,8 @@ export class WhiskeyInfraStack extends cdk.Stack {
         ENVIRONMENT: environment,
         DYNAMODB_WHISKEYS_TABLE: whiskeysTable.tableName,
         DYNAMODB_REVIEWS_TABLE: reviewsTable.tableName,
+        DYNAMODB_USERS_TABLE: usersTable.tableName,
+        DYNAMODB_WHISKEY_SEARCH_TABLE: whiskeySearchTable.tableName,
         S3_IMAGES_BUCKET: imagesBucket.bucketName,
         COGNITO_USER_POOL_ID: userPool.userPoolId,
         CORS_ALLOWED_ORIGINS: envConfig.allowedOrigins.join(','),
@@ -439,7 +480,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
         'lambda:PublishVersion',
       ],
       resources: [apiLambda.functionArn],
-    }));Resource handler returned message: "The repository with name 'whiskey-api-dev' in registry with id '031921999648' cannot be deleted because it still contains images (Service: Ecr, Status Code: 400, Request ID: 8
+    }));
 
 
     // CloudFormationスタック情報読み取り権限

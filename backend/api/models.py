@@ -13,6 +13,14 @@ class Whiskey:
     review_count: Optional[int] = None
 
 @dataclass
+class User:
+    user_id: str
+    nickname: str
+    display_name: Optional[str]
+    created_at: str
+    updated_at: str
+
+@dataclass
 class Review:
     id: str
     whiskey_id: str
