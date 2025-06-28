@@ -457,19 +457,37 @@ export class WhiskeyInfraStack extends cdk.Stack {
     
     // GET /api/whiskeys - ウイスキー一覧
     whiskeysResource.addMethod('GET', 
-      new apigateway.LambdaIntegration(whiskeyListLambda)
+      new apigateway.LambdaIntegration(whiskeyListLambda),
+      {
+        authorizationType: apigateway.AuthorizationType.NONE,
+      }
     );
     
     // GET /api/whiskeys/search - ウイスキー検索  
     const whiskeySearchResource = whiskeysResource.addResource('search');
     whiskeySearchResource.addMethod('GET', 
-      new apigateway.LambdaIntegration(whiskeySearchLambda)
+      new apigateway.LambdaIntegration(whiskeySearchLambda),
+      {
+        authorizationType: apigateway.AuthorizationType.NONE,
+      }
     );
     
-    // GET /api/whiskeys/suggest - ウイスキー サジェスト
+    // GET /api/whiskeys/suggest - ウイスキー サジェスト (直接アクセス用)
     const whiskeySuggestResource = whiskeysResource.addResource('suggest');
     whiskeySuggestResource.addMethod('GET', 
-      new apigateway.LambdaIntegration(whiskeySearchLambda) // 検索Lambdaを共用
+      new apigateway.LambdaIntegration(whiskeySearchLambda), // 検索Lambdaを共用
+      {
+        authorizationType: apigateway.AuthorizationType.NONE,
+      }
+    );
+    
+    // GET /api/whiskeys/search/suggest - ウイスキー サジェスト (フロントエンド互換用)
+    const whiskeySearchSuggestResource = whiskeySearchResource.addResource('suggest');
+    whiskeySearchSuggestResource.addMethod('GET', 
+      new apigateway.LambdaIntegration(whiskeySearchLambda), // 検索Lambdaを共用
+      {
+        authorizationType: apigateway.AuthorizationType.NONE,
+      }
     );
     
     // レビュー関連エンドポイント
@@ -477,28 +495,43 @@ export class WhiskeyInfraStack extends cdk.Stack {
     
     // レビューCRUD (GET /api/reviews?public=true, POST /api/reviews, PUT /api/reviews/{id})
     reviewsResource.addMethod('GET', 
-      new apigateway.LambdaIntegration(reviewsLambda)
+      new apigateway.LambdaIntegration(reviewsLambda),
+      {
+        authorizationType: apigateway.AuthorizationType.NONE, // Lambda内で認証処理
+      }
     );
     reviewsResource.addMethod('POST', 
-      new apigateway.LambdaIntegration(reviewsLambda)
+      new apigateway.LambdaIntegration(reviewsLambda),
+      {
+        authorizationType: apigateway.AuthorizationType.NONE, // Lambda内で認証処理
+      }
     );
     
     // PUT /api/reviews/{id} - レビュー更新
     const reviewByIdResource = reviewsResource.addResource('{id}');
     reviewByIdResource.addMethod('PUT', 
-      new apigateway.LambdaIntegration(reviewsLambda)
+      new apigateway.LambdaIntegration(reviewsLambda),
+      {
+        authorizationType: apigateway.AuthorizationType.NONE, // Lambda内で認証処理
+      }
     );
     
     // GET /api/reviews/public/ - パブリックレビュー（後方互換性のため）
     const reviewsPublicResource = reviewsResource.addResource('public');
     reviewsPublicResource.addMethod('GET', 
-      new apigateway.LambdaIntegration(reviewsLambda) // パブリックレビューも同じLambdaで処理
+      new apigateway.LambdaIntegration(reviewsLambda), // パブリックレビューも同じLambdaで処理
+      {
+        authorizationType: apigateway.AuthorizationType.NONE,
+      }
     );
     
     // GET /api/whiskeys/ranking/ - ウイスキーランキング（後方互換性のため）
     const whiskeyRankingResource = whiskeysResource.addResource('ranking');
     whiskeyRankingResource.addMethod('GET', 
-      new apigateway.LambdaIntegration(whiskeySearchLambda) // 検索Lambdaでランキングも処理
+      new apigateway.LambdaIntegration(whiskeySearchLambda), // 検索Lambdaでランキングも処理
+      {
+        authorizationType: apigateway.AuthorizationType.NONE,
+      }
     );
 
     // 単数形パスは削除し、複数形 /api/whiskeys/ に統一

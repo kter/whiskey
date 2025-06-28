@@ -76,7 +76,7 @@ export const useWhiskeySearch = () => {
       isSearching.value = true
       searchError.value = ''
       
-      const response = await fetch(`${config.public.apiBaseUrl}/api/whiskeys/search/suggest/?q=${encodeURIComponent(query)}&limit=${limit}`, {
+      const response = await fetch(`${config.public.apiBaseUrl}/api/whiskeys/search/suggest?q=${encodeURIComponent(query)}&limit=${limit}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json'
@@ -87,13 +87,25 @@ export const useWhiskeySearch = () => {
         throw new Error(`検索エラー: ${response.status}`)
       }
       
-      const data: SearchResponse = await response.json()
+      const data = await response.json()
       
       if (data.error) {
         throw new Error(data.error)
       }
       
-      searchResults.value = data.suggestions || []
+      // APIレスポンス形式に対応：data.whiskeys から WhiskeySuggestion形式に変換
+      const suggestions: WhiskeySuggestion[] = (data.whiskeys || []).map((whiskey: any) => ({
+        id: whiskey.id,
+        name_ja: whiskey.name,
+        name_en: whiskey.name,
+        distillery_ja: whiskey.distillery,
+        distillery_en: whiskey.distillery,
+        region: whiskey.region || '',
+        type: whiskey.type || '',
+        description: whiskey.description || ''
+      }))
+      
+      searchResults.value = suggestions
       showSuggestions.value = true
       
     } catch (error: any) {
@@ -140,7 +152,7 @@ export const useWhiskeySearch = () => {
       if (filters.type) params.append('type', filters.type)
       params.append('limit', limit.toString())
       
-      const response = await fetch(`${config.public.apiBaseUrl}/api/whiskeys/search/?${params.toString()}`, {
+      const response = await fetch(`${config.public.apiBaseUrl}/api/whiskeys/search?${params.toString()}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json'
@@ -151,13 +163,25 @@ export const useWhiskeySearch = () => {
         throw new Error(`詳細検索エラー: ${response.status}`)
       }
       
-      const data: AdvancedSearchResponse = await response.json()
+      const data = await response.json()
       
       if (data.error) {
         throw new Error(data.error)
       }
       
-      advancedResults.value = data.results || []
+      // APIレスポンス形式に対応：data.whiskeys から WhiskeySuggestion形式に変換
+      const results: WhiskeySuggestion[] = (data.whiskeys || []).map((whiskey: any) => ({
+        id: whiskey.id,
+        name_ja: whiskey.name,
+        name_en: whiskey.name,
+        distillery_ja: whiskey.distillery,
+        distillery_en: whiskey.distillery,
+        region: whiskey.region || '',
+        type: whiskey.type || '',
+        description: whiskey.description || ''
+      }))
+      
+      advancedResults.value = results
       
       return data
       

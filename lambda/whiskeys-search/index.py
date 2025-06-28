@@ -74,21 +74,18 @@ def lambda_handler(event, context):
     GET /api/whiskeys/ranking/ - ウイスキーランキング
     """
     
-    # CORS headers
+    # Response headers with CORS support
+    origin = event.get('headers', {}).get('origin') or event.get('headers', {}).get('Origin')
+    allowed_origins = ['https://dev.whiskeybar.site', 'https://whiskeybar.site', 'http://localhost:3000']
+    
     headers = {
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Origin': origin if origin in allowed_origins else 'https://dev.whiskeybar.site',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
     }
     
-    # OPTIONS request (CORS preflight)
-    if event.get('httpMethod') == 'OPTIONS':
-        return {
-            'statusCode': 200,
-            'headers': headers,
-            'body': ''
-        }
+    # OPTIONS requests handled by API Gateway
     
     try:
         # パス判定でエンドポイントを分岐

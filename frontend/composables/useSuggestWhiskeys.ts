@@ -20,7 +20,7 @@ export const useSuggestWhiskeys = () => {
 
       // サジェストAPIは認証不要のパブリックエンドポイント
       const response = await fetch(
-        `${config.public.apiBaseUrl}/api/whiskeys/suggest?q=${encodeURIComponent(query)}`
+        `${config.public.apiBaseUrl}/api/whiskeys/search/suggest?q=${encodeURIComponent(query)}&limit=10`
       )
 
       if (!response.ok) {
@@ -28,8 +28,8 @@ export const useSuggestWhiskeys = () => {
       }
 
       const data = await response.json()
-      // バックエンドのレスポンス形式に応じて調整
-      suggestions.value = Array.isArray(data) ? data.map(item => typeof item === 'string' ? item : item.name) : data.suggestions || []
+      // バックエンドのレスポンス形式に応じて調整（whiskeysフィールドから名前を抽出）
+      suggestions.value = data.whiskeys ? data.whiskeys.map((whiskey: any) => whiskey.name) : []
     } catch (err) {
       error.value = 'サジェストの取得に失敗しました'
       suggestions.value = []
