@@ -501,31 +501,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
       new apigateway.LambdaIntegration(whiskeySearchLambda) // 検索Lambdaでランキングも処理
     );
 
-    // 後方互換性のため単数形 /api/whiskey/ も対応
-    const whiskeyResource = apiResource.addResource('whiskey');
-    
-    // GET /api/whiskey - ウイスキー一覧（後方互換性）
-    whiskeyResource.addMethod('GET', 
-      new apigateway.LambdaIntegration(whiskeyListLambda)
-    );
-    
-    // GET /api/whiskey/search - ウイスキー検索（後方互換性）
-    const whiskeySearchResourceSingular = whiskeyResource.addResource('search');
-    whiskeySearchResourceSingular.addMethod('GET', 
-      new apigateway.LambdaIntegration(whiskeySearchLambda)
-    );
-    
-    // GET /api/whiskey/suggest - ウイスキー サジェスト（後方互換性）
-    const whiskeySuggestResourceSingular = whiskeySearchResourceSingular.addResource('suggest');
-    whiskeySuggestResourceSingular.addMethod('GET', 
-      new apigateway.LambdaIntegration(whiskeySearchLambda)
-    );
-    
-    // GET /api/whiskey/ranking - ウイスキーランキング（後方互換性）
-    const whiskeyRankingResourceSingular = whiskeyResource.addResource('ranking');
-    whiskeyRankingResourceSingular.addMethod('GET', 
-      new apigateway.LambdaIntegration(whiskeySearchLambda)
-    );
+    // 単数形パスは削除し、複数形 /api/whiskeys/ に統一
 
     // GitHub Actions用OIDC プロバイダー
     const gitHubOidcProvider = new iam.OpenIdConnectProvider(this, 'GitHubOidcProvider', {
