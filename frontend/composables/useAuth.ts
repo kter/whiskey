@@ -314,30 +314,24 @@ export const useAuth = () => {
     }
   }
 
-  // ユーザープロフィール管理機能
+  // ユーザープロフィール管理機能（一時的に無効化 - マイクロサービスアーキテクチャでは未実装）
   const fetchUserProfile = async () => {
     try {
       profileLoading.value = true
-      const token = await getToken()
+      // TODO: ユーザープロフィール機能が必要な場合は別途実装
+      console.log('User profile functionality temporarily disabled')
       
-      const response = await fetch(`${config.public.apiBaseUrl}/api/users/profile/get-or-create/`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+      // 基本的なプロフィール情報をユーザー情報から設定
+      if (user.value) {
+        profile.value = {
+          id: user.value.sub,
+          email: user.value.email,
+          nickname: user.value.nickname || user.value.given_name || 'ウイスキー愛好家',
+          display_name: user.value.name || user.value.given_name
         }
-      })
-
-      if (!response.ok) {
-        console.error('Failed to fetch user profile:', response.status)
-        return
       }
-
-      const profileData = await response.json()
-      profile.value = profileData
-      console.log('User profile loaded:', profileData)
     } catch (error) {
-      console.error('Error fetching user profile:', error)
+      console.error('Error in fetchUserProfile:', error)
     } finally {
       profileLoading.value = false
     }
@@ -346,31 +340,18 @@ export const useAuth = () => {
   const updateUserProfile = async (nickname: string, displayName?: string) => {
     try {
       profileLoading.value = true
-      const token = await getToken()
+      // TODO: ユーザープロフィール更新機能が必要な場合は別途実装
+      console.log('User profile update functionality temporarily disabled')
       
-      const payload: any = { nickname }
-      if (displayName !== undefined) {
-        payload.display_name = displayName
+      // ローカルで更新（実際のAPIは未実装）
+      if (profile.value) {
+        profile.value.nickname = nickname
+        if (displayName !== undefined) {
+          profile.value.display_name = displayName
+        }
       }
-
-      const response = await fetch(`${config.public.apiBaseUrl}/api/users/profile/`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'プロフィールの更新に失敗しました')
-      }
-
-      const updatedProfile = await response.json()
-      profile.value = updatedProfile
-      console.log('Profile updated:', updatedProfile)
-      return updatedProfile
+      
+      return profile.value
     } catch (error) {
       console.error('Error updating user profile:', error)
       throw error

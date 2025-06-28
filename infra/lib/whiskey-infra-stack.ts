@@ -369,27 +369,49 @@ export class WhiskeyInfraStack extends cdk.Stack {
       resources: [userPool.userPoolArn],
     }));
 
-    // Lambda関数
-    const apiLambda = new lambda.Function(this, 'WhiskeyApiFunction', {
-      functionName: `whiskey-api-${environment}`,
+    // マイクロサービス Lambda関数群
+    
+    // ウイスキー一覧取得Lambda
+    const whiskeyListLambda = new lambda.Function(this, 'WhiskeyListFunction', {
+      functionName: `whiskey-list-${environment}`,
       runtime: lambda.Runtime.PYTHON_3_11,
-      handler: 'lambda_handler.lambda_handler',
-      code: lambda.Code.fromAsset('../backend', {
-        exclude: ['venv/', '__pycache__/', '*.pyc', '.env', 'Dockerfile*'],
-      }),
-      timeout: cdk.Duration.seconds(30),
-      memorySize: environment === 'prod' ? 512 : 256,
+      handler: 'index.lambda_handler',
+      code: lambda.Code.fromAsset('../lambda/whiskeys-list'),
+      timeout: cdk.Duration.seconds(15),
+      memorySize: 256,
       role: lambdaExecutionRole,
-      logGroup: lambdaLogGroup,
       environment: {
-        ENVIRONMENT: environment,
-        DYNAMODB_WHISKEYS_TABLE: whiskeysTable.tableName,
-        DYNAMODB_REVIEWS_TABLE: reviewsTable.tableName,
-        DYNAMODB_USERS_TABLE: usersTable.tableName,
-        DYNAMODB_WHISKEY_SEARCH_TABLE: whiskeySearchTable.tableName,
-        S3_IMAGES_BUCKET: imagesBucket.bucketName,
-        COGNITO_USER_POOL_ID: userPool.userPoolId,
-        CORS_ALLOWED_ORIGINS: envConfig.allowedOrigins.join(','),
+        WHISKEYS_TABLE: whiskeysTable.tableName,
+      },
+    });
+
+    // ウイスキー検索Lambda
+    const whiskeySearchLambda = new lambda.Function(this, 'WhiskeySearchFunction', {
+      functionName: `whiskey-search-${environment}`,
+      runtime: lambda.Runtime.PYTHON_3_11,
+      handler: 'index.lambda_handler',
+      code: lambda.Code.fromAsset('../lambda/whiskeys-search'),
+      timeout: cdk.Duration.seconds(15),
+      memorySize: 256,
+      role: lambdaExecutionRole,
+      environment: {
+        WHISKEYS_TABLE: whiskeysTable.tableName,
+        REVIEWS_TABLE: reviewsTable.tableName, // ランキング機能のため追加
+      },
+    });
+
+    // レビュー統合Lambda
+    const reviewsLambda = new lambda.Function(this, 'ReviewsFunction', {
+      functionName: `reviews-${environment}`,
+      runtime: lambda.Runtime.PYTHON_3_11,
+      handler: 'index.lambda_handler',
+      code: lambda.Code.fromAsset('../lambda/reviews'),
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 512,
+      role: lambdaExecutionRole,
+      environment: {
+        REVIEWS_TABLE: reviewsTable.tableName,
+        WHISKEYS_TABLE: whiskeysTable.tableName,
       },
     });
 
@@ -425,17 +447,85 @@ export class WhiskeyInfraStack extends cdk.Stack {
       } : {}),
     });
 
-    // Lambda統合
-    const lambdaIntegration = new apigateway.LambdaIntegration(apiLambda, {
-      requestTemplates: { 'application/json': '{ "statusCode": "200" }' },
-    });
-
-    // プロキシリソースの設定（Django URLsを全てキャッチ）
-    const proxyResource = api.root.addResource('{proxy+}');
-    proxyResource.addMethod('ANY', lambdaIntegration);
+    // API Gateway ルーティング設定
+    // フロントエンドとの互換性のため /api プレフィックスを追加
     
-    // ルートパスも処理
-    api.root.addMethod('ANY', lambdaIntegration);
+    const apiResource = api.root.addResource('api');
+    
+    // ウイスキー関連エンドポイント
+    const whiskeysResource = apiResource.addResource('whiskeys');
+    
+    // GET /api/whiskeys - ウイスキー一覧
+    whiskeysResource.addMethod('GET', 
+      new apigateway.LambdaIntegration(whiskeyListLambda)
+    );
+    
+    // GET /api/whiskeys/search - ウイスキー検索  
+    const whiskeySearchResource = whiskeysResource.addResource('search');
+    whiskeySearchResource.addMethod('GET', 
+      new apigateway.LambdaIntegration(whiskeySearchLambda)
+    );
+    
+    // GET /api/whiskeys/suggest - ウイスキー サジェスト
+    const whiskeySuggestResource = whiskeysResource.addResource('suggest');
+    whiskeySuggestResource.addMethod('GET', 
+      new apigateway.LambdaIntegration(whiskeySearchLambda) // 検索Lambdaを共用
+    );
+    
+    // レビュー関連エンドポイント
+    const reviewsResource = apiResource.addResource('reviews');
+    
+    // レビューCRUD (GET /api/reviews?public=true, POST /api/reviews, PUT /api/reviews/{id})
+    reviewsResource.addMethod('GET', 
+      new apigateway.LambdaIntegration(reviewsLambda)
+    );
+    reviewsResource.addMethod('POST', 
+      new apigateway.LambdaIntegration(reviewsLambda)
+    );
+    
+    // PUT /api/reviews/{id} - レビュー更新
+    const reviewByIdResource = reviewsResource.addResource('{id}');
+    reviewByIdResource.addMethod('PUT', 
+      new apigateway.LambdaIntegration(reviewsLambda)
+    );
+    
+    // GET /api/reviews/public/ - パブリックレビュー（後方互換性のため）
+    const reviewsPublicResource = reviewsResource.addResource('public');
+    reviewsPublicResource.addMethod('GET', 
+      new apigateway.LambdaIntegration(reviewsLambda) // パブリックレビューも同じLambdaで処理
+    );
+    
+    // GET /api/whiskeys/ranking/ - ウイスキーランキング（後方互換性のため）
+    const whiskeyRankingResource = whiskeysResource.addResource('ranking');
+    whiskeyRankingResource.addMethod('GET', 
+      new apigateway.LambdaIntegration(whiskeySearchLambda) // 検索Lambdaでランキングも処理
+    );
+
+    // 後方互換性のため単数形 /api/whiskey/ も対応
+    const whiskeyResource = apiResource.addResource('whiskey');
+    
+    // GET /api/whiskey - ウイスキー一覧（後方互換性）
+    whiskeyResource.addMethod('GET', 
+      new apigateway.LambdaIntegration(whiskeyListLambda)
+    );
+    
+    // GET /api/whiskey/search - ウイスキー検索（後方互換性）
+    const whiskeySearchResourceSingular = whiskeyResource.addResource('search');
+    whiskeySearchResourceSingular.addMethod('GET', 
+      new apigateway.LambdaIntegration(whiskeySearchLambda)
+    );
+    
+    // GET /api/whiskey/suggest - ウイスキー サジェスト（後方互換性）
+    const whiskeySuggestResourceSingular = whiskeySearchResourceSingular.addResource('suggest');
+    whiskeySuggestResourceSingular.addMethod('GET', 
+      new apigateway.LambdaIntegration(whiskeySearchLambda)
+    );
+    
+    // GET /api/whiskey/ranking - ウイスキーランキング（後方互換性）
+    const whiskeyRankingResourceSingular = whiskeyResource.addResource('ranking');
+    whiskeyRankingResourceSingular.addMethod('GET', 
+      new apigateway.LambdaIntegration(whiskeySearchLambda)
+    );
 
     // GitHub Actions用OIDC プロバイダー
     const gitHubOidcProvider = new iam.OpenIdConnectProvider(this, 'GitHubOidcProvider', {
@@ -470,7 +560,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
       resources: [distribution.distributionArn],
     }));
 
-    // Lambda関数更新権限
+    // Lambda関数更新権限（マイクロサービス対応）
     githubActionsRole.addToPolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: [
@@ -479,7 +569,11 @@ export class WhiskeyInfraStack extends cdk.Stack {
         'lambda:GetFunction',
         'lambda:PublishVersion',
       ],
-      resources: [apiLambda.functionArn],
+      resources: [
+        whiskeyListLambda.functionArn,
+        whiskeySearchLambda.functionArn,
+        reviewsLambda.functionArn,
+      ],
     }));
 
 
@@ -598,15 +692,20 @@ export class WhiskeyInfraStack extends cdk.Stack {
       exportName: `whiskey-secrets-arn-${environment}`,
     });
 
-    // API関連の出力
-    new cdk.CfnOutput(this, 'LambdaFunctionName', {
-      value: apiLambda.functionName,
-      exportName: `whiskey-lambda-function-name-${environment}`,
+    // Lambda関数の出力（マイクロサービス対応）
+    new cdk.CfnOutput(this, 'WhiskeyListLambdaArn', {
+      value: whiskeyListLambda.functionArn,
+      exportName: `whiskey-list-lambda-arn-${environment}`,
     });
-
-    new cdk.CfnOutput(this, 'LambdaFunctionArn', {
-      value: apiLambda.functionArn,
-      exportName: `whiskey-lambda-function-arn-${environment}`,
+    
+    new cdk.CfnOutput(this, 'WhiskeySearchLambdaArn', {
+      value: whiskeySearchLambda.functionArn,
+      exportName: `whiskey-search-lambda-arn-${environment}`,
+    });
+    
+    new cdk.CfnOutput(this, 'ReviewsLambdaArn', {
+      value: reviewsLambda.functionArn,
+      exportName: `reviews-lambda-arn-${environment}`,
     });
 
     new cdk.CfnOutput(this, 'ApiGatewayRestApiId', {
