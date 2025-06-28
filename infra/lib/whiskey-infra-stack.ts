@@ -427,7 +427,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
         metricsEnabled: true,
       },
       defaultCorsPreflightOptions: {
-        allowOrigins: envConfig.allowedOrigins,
+        allowOrigins: apigateway.Cors.ALL_ORIGINS,
         allowMethods: apigateway.Cors.ALL_METHODS,
         allowHeaders: [
           'Content-Type',
@@ -437,7 +437,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
           'X-Amz-Security-Token',
           'X-Requested-With',
         ],
-        allowCredentials: true,
+        allowCredentials: false, // Lambdaでより柔軟なCORS処理を行うため無効化
       },
       ...(envConfig.apiDomain && apiCertificate ? {
         domainName: {
