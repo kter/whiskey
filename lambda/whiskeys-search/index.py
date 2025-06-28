@@ -129,6 +129,8 @@ def lambda_handler(event, context):
         search_query = query_params.get('q', '').strip()
         distillery_filter = query_params.get('distillery', '').strip()
         
+        print(f"DEBUG: Search query received: '{search_query}'")
+        
         # WhiskeySearchテーブルを使用（多言語対応）
         search_table = dynamodb.Table(whiskey_search_table_name)
         
