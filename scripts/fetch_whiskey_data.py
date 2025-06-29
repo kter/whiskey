@@ -92,11 +92,15 @@ class WhiskeyDataFetcher:
         logger.info(f"ウイスキーデータ取得開始: limit={limit}, offset={offset}")
         
         try:
-            while len(whiskeys) < limit:
+            # limit=0の場合は制限なし（無限ループ防止のため最大10000件）
+            max_items = limit if limit > 0 else 10000
+            
+            while len(whiskeys) < max_items:
                 # 正しいAPIエンドポイント
                 url = f"{self.base_url}/whisky/get"
+                batch_size = 50 if limit == 0 else min(50, limit - len(whiskeys))
                 params = {
-                    'limit': min(50, limit - len(whiskeys)),  # 一度に最大50件
+                    'limit': batch_size,
                     'offset': current_offset
                 }
                 
@@ -120,14 +124,15 @@ class WhiskeyDataFetcher:
                 whiskeys.extend(batch_whiskeys)
                 current_offset += len(batch_whiskeys)
                 
-                logger.info(f"取得済み: {len(whiskeys)} / {limit}")
+                display_limit = "無制限" if limit == 0 else str(limit)
+                logger.info(f"取得済み: {len(whiskeys)} / {display_limit}")
                 
                 # 非常に保守的な待機
                 logger.info(f"{self.api_rate_limit}秒待機中...")
                 time.sleep(self.api_rate_limit)
                 
             logger.info(f"ウイスキーデータ取得完了: {len(whiskeys)}件")
-            return whiskeys[:limit]
+            return whiskeys if limit == 0 else whiskeys[:limit]
             
         except Exception as e:
             logger.error(f"ウイスキーデータ取得エラー: {e}")
@@ -323,8 +328,7 @@ class WhiskeyDataFetcher:
             'distillery_ja': distillery_ja,
             'normalized_name_en': self._normalize_text(whiskey_data.get('name', '')),
             'normalized_name_ja': self._normalize_text(whiskey_data.get('name_ja', '')),
-            'normalized_distillery_en': self._normalize_text(distillery_en),
-            'normalized_distillery_ja': self._normalize_text(distillery_ja),
+            # 蒸留所の正規化フィールドは削除（検索対象外のため）
             'description': whiskey_data.get('description', ''),
             'region': whiskey_data.get('region', ''),
             'type': whiskey_data.get('type', ''),

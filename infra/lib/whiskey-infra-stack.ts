@@ -191,25 +191,15 @@ export class WhiskeyInfraStack extends cdk.Stack {
       removalPolicy: environment === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
     });
 
-    // 検索用GSI
+    // 検索用GSI（名前のみ - 蒸留所検索は削除済み）
     whiskeySearchTable.addGlobalSecondaryIndex({
       indexName: 'NameJaIndex',
       partitionKey: { name: 'normalized_name_ja', type: dynamodb.AttributeType.STRING },
     });
 
     whiskeySearchTable.addGlobalSecondaryIndex({
-      indexName: 'DistilleryJaIndex',
-      partitionKey: { name: 'normalized_distillery_ja', type: dynamodb.AttributeType.STRING },
-    });
-
-    whiskeySearchTable.addGlobalSecondaryIndex({
       indexName: 'NameEnIndex',
       partitionKey: { name: 'normalized_name_en', type: dynamodb.AttributeType.STRING },
-    });
-
-    whiskeySearchTable.addGlobalSecondaryIndex({
-      indexName: 'DistilleryEnIndex',
-      partitionKey: { name: 'normalized_distillery_en', type: dynamodb.AttributeType.STRING },
     });
 
     // ====================
@@ -397,6 +387,8 @@ export class WhiskeyInfraStack extends cdk.Stack {
       environment: {
         WHISKEYS_TABLE: whiskeysTable.tableName,
         REVIEWS_TABLE: reviewsTable.tableName, // ランキング機能のため追加
+        WHISKEY_SEARCH_TABLE: whiskeySearchTable.tableName,
+        ENVIRONMENT: environment,
       },
     });
 

@@ -6,9 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a whiskey tasting review application built with:
 - **Frontend**: Nuxt.js 3 SPA (TypeScript, Tailwind CSS)
-- **Backend**: Django REST API with DynamoDB (running on Lambda)
+- **Backend**: Serverless Lambda functions with DynamoDB
 - **Infrastructure**: AWS CDK (Lambda, API Gateway, S3, CloudFront, Cognito)
 - **Authentication**: AWS Cognito with Google OAuth
+- **Search**: Multi-language (English/Japanese) whiskey search
 - **Deployment**: GitHub Actions CI/CD
 
 ## AWS Account Configuration
@@ -22,14 +23,13 @@ This is a whiskey tasting review application built with:
 Always use the `dev` profile for development environment:
 ```bash
 AWS_PROFILE=dev npm run deploy:dev
-AWS_PROFILE=dev npx cdk deploy --all --require-approval never
+AWS_PROFILE=dev npx cdk deploy WhiskeyApp-Dev --require-approval never
 ```
 
 ## Development Commands
 
 ### Local Development
 ```bash
-<<<<<<< HEAD
 # Start all services with Docker Compose
 make up               # or ./dev.sh up
 make down             # Stop all services
@@ -43,12 +43,6 @@ npm run build         # Build for production
 npm run lint          # Run ESLint
 npm run lint:fix      # Fix ESLint issues
 
-# Backend development (in backend/)
-python manage.py runserver        # Start Django server
-python manage.py migrate          # Run migrations
-python manage.py create_test_data # Create test data
-pytest                            # Run tests
-
 # Infrastructure (in infra/)
 npm run build         # Compile TypeScript
 npm run test          # Run CDK tests
@@ -56,10 +50,16 @@ npm run deploy:dev    # Deploy to dev environment
 npm run deploy:prod   # Deploy to prod environment
 npm run diff:dev      # Show infrastructure diff
 npm run synth:dev     # Synthesize CloudFormation
+```
 
-# Lambda function deployment (CDK handles automatically)
-AWS_PROFILE=dev npx cdk deploy WhiskeyApp-Dev --require-approval never
-# CDK automatically packages backend/ directory and deploys to Lambda
+### Data Management
+```bash
+# Process whiskey data from external API
+python scripts/fetch_whiskey_data.py --mode fetch --whiskeys 100
+python scripts/fetch_whiskey_data.py --mode process --file raw_whiskey_data_YYYYMMDD_HHMMSS.json
+
+# Check DynamoDB data
+PAGER=cat AWS_PROFILE=dev aws dynamodb scan --table-name WhiskeySearch-dev --select COUNT
 ```
 
 ### Testing
@@ -70,22 +70,34 @@ make test             # Run Django tests via Docker
 
 # Infrastructure tests
 cd infra && npm test  # Run CDK tests
+
+# Search functionality tests
+curl "https://api.dev.whiskeybar.site/api/whiskeys/search/?q=bowmore"
+curl "https://api.dev.whiskeybar.site/api/whiskeys/search/?q=%E3%83%9C%E3%82%A6%E3%83%A2%E3%82%A2"  # Japanese
 ```
 
 ## Architecture
 
-### Three-Tier Application（費用最適化済み）
+### Serverless Microservices Architecture（費用最適化済み）
 1. **Frontend (Nuxt.js SPA)**: Static files served via S3/CloudFront
-2. **API (Django REST)**: Serverless functions on AWS Lambda behind API Gateway
+2. **API (Lambda Functions)**: Serverless microservices behind API Gateway
 3. **Data Layer**: DynamoDB for application data, Cognito for authentication
+4. **Search Layer**: Dedicated WhiskeySearch table with multi-language support
 
 ### Key Infrastructure Components（全て従量課金）
 - **VPC**: Multi-AZ with public/private subnets (**natGateways: 0** - 費用ゼロ)
 - **Lambda**: Serverless compute platform for API（実行時のみ課金）
+  - `whiskey-list-dev`: Whiskey listing
+  - `whiskey-search-dev`: Multi-language search with manual filtering
+  - `reviews-dev`: Review management
 - **API Gateway**: RESTful API endpoint with CORS support（リクエスト従量）
 - **S3**: Static site hosting + image storage（ストレージ従量）
 - **CloudFront**: CDN for global content delivery（転送量従量）
 - **DynamoDB**: NoSQL database - Pay per request（アクセス従量）
+  - `Whiskeys-dev`: Basic whiskey data
+  - `WhiskeySearch-dev`: Optimized search with English/Japanese names
+  - `Reviews-dev`: User reviews
+  - `Users-dev`: User profiles
 - **Cognito**: User authentication + Google OAuth（MAU従量）
 - **Route53**: DNS management with custom domains（クエリ従量）
 
@@ -93,6 +105,7 @@ cd infra && npm test  # Run CDK tests
 - ❌ **NAT Gateway**: 削除済み（月額$30-45削減）
 - ❌ **ALB**: 削除済み（月額$16-25削減）
 - ❌ **ECS Fargate**: 削除済み（月額$15-50削減）
+- ❌ **蒸留所検索機能**: 削除済み（GSI削減でコスト最適化）
 - ✅ **総削減額**: 月額$60-120の大幅削減達成
 
 ### Environment Configuration
@@ -100,30 +113,60 @@ cd infra && npm test  # Run CDK tests
 - **Dev**: `dev.whiskeybar.site` + `api.dev.whiskeybar.site`
 - **Prod**: `whiskeybar.site` + `api.whiskeybar.site`
 
+## Search Architecture
+
+### Multi-Language Search System
+- **English Search**: Full text search in `name_en` field
+- **Japanese Search**: Full text search in `name_ja` field with proper UTF-8 encoding
+- **Search Method**: Manual filtering approach (DynamoDB `contains()` proved unreliable)
+- **URL Encoding**: Japanese queries must be properly URL-encoded (e.g., `%E3%83%9C%E3%82%A6%E3%83%A2%E3%82%A2` for ボウモア)
+
+### DynamoDB Table Structure
+
+#### WhiskeySearch-dev Table
+```json
+{
+  "id": "uuid",
+  "name_en": "English whiskey name",
+  "name_ja": "日本語ウイスキー名",
+  "distillery_en": "English distillery name",
+  "distillery_ja": "日本語蒸留所名",
+  "normalized_name_en": "searchable english name",
+  "normalized_name_ja": "検索可能な日本語名",
+  "description": "Description",
+  "region": "Region",
+  "type": "Type",
+  "created_at": "2025-06-29T...",
+  "updated_at": "2025-06-29T..."
+}
+```
+
+#### Global Secondary Indexes
+- **NameJaIndex**: Partition key on `normalized_name_ja`
+- **NameEnIndex**: Partition key on `normalized_name_en`
+- ~~DistilleryJaIndex~~: 削除済み（蒸留所検索機能削除）
+- ~~DistilleryEnIndex~~: 削除済み（蒸留所検索機能削除）
+
 ## Key File Locations
 
-### Frontend Structure
-- `frontend/nuxt.config.ts` - Nuxt configuration
-- `frontend/composables/` - Vue composables for API calls
-- `frontend/pages/` - Vue page components
-- `frontend/layouts/default.vue` - Main layout with auth handling
+### Lambda Functions
+- `lambda/whiskeys-search/index.py`: Multi-language search with manual filtering
+- `lambda/whiskeys-list/index.py`: Whiskey listing functionality
+- `lambda/reviews/index.py`: Review management
 
-### Backend Structure
-- `backend/backend/settings.py` - Django settings with environment detection
-- `backend/api/` - Django REST API application
-- `backend/api/middleware.py` - Cognito JWT authentication middleware
-- `backend/api/dynamodb_service.py` - DynamoDB operations
-- `backend/lambda_handler.py` - AWS Lambda entry point using Mangum
+### Frontend Structure
+- `frontend/nuxt.config.ts`: Nuxt configuration
+- `frontend/composables/`: Vue composables for API calls
+- `frontend/pages/`: Vue page components
+- `frontend/layouts/default.vue`: Main layout with auth handling
+
+### Data Processing
+- `scripts/fetch_whiskey_data.py`: External API data fetching and translation
+- `raw_whiskey_data_*.json`: Processed whiskey data files
 
 ### Infrastructure
-- `infra/lib/whiskey-infra-stack.ts` - Main CDK stack definition
-- `infra/config/environments.ts` - Environment-specific configurations
-- `infra/scripts/deploy.sh` - Deployment script
-
-### Deployment
-- `.github/workflows/` - GitHub Actions for CI/CD
-- `scripts/` - Deployment and utility scripts
-- `docker-compose.yml` - Local development setup
+- `infra/lib/whiskey-infra-stack.ts`: Main CDK stack definition
+- `infra/config/environments.ts`: Environment-specific configurations
 
 ## Development Principles
 
@@ -143,22 +186,18 @@ cd infra && npm test  # Run CDK tests
 - YOU MUST: エラーハンドリングを実装
 - YOU MUST: 変更前に既存テストが通ることを確認
 - YOU MUST: 生成したコードの動作原理を説明できること
+- **YOU MUST: 日本語検索時は適切なURLエンコーディングを使用**
 
 ### IMPORTANT（重要事項）：
 - IMPORTANT: パフォーマンスへの影響を考慮
 - IMPORTANT: 後方互換性を維持
 - IMPORTANT: セキュリティベストプラクティスに従う
-- IMPORTANT: 複雑な型定義には必ず使用例とコメントを追加
-- IMPORTANT: シンプルで明快な実装を優先する
-- IMPORTANT: 複雑なロジックにはコメントを付ける
 - IMPORTANT: 既にIaCでコード化されているインフラのリソースを変更する際はawsコマンドではなくIaCを使用する
 - IMPORTANT: 既存のAWSリソースをCDKにインポートするのは禁止。常に新しいリソースを作成すること
-- IMPORTANT: エラーが発生したらエラー文をWebで検索し修正する
+- **IMPORTANT: 蒸留所検索機能は削除済み。名前のみの検索に特化**
 - **IMPORTANT: 費用最適化されたアーキテクチャを維持する**
   - **使用推奨**: Lambda, API Gateway, S3, CloudFront, DynamoDB, Cognito
   - **VPC設定**: natGateways: 0 を維持（Lambdaは常にVPC外で実行）
-  - **証明書**: us-east-1用は別スタックで管理
-  - **モニタリング**: CloudWatchで使用量を定期監視
 
 ## Authentication Flow
 
@@ -168,224 +207,61 @@ The application uses AWS Cognito for authentication:
 3. API validates JWT tokens via Cognito middleware
 4. Automatic token refresh handled by frontend
 
-## Data Models
+## API Endpoints
 
-### DynamoDB Tables
-- **Whiskeys**: Main whiskey data (id, name, distillery, region)
-- **Reviews**: User reviews (id, whiskey_id, user_id, rating, notes, image_url)
-- **GSI**: NameIndex for whiskeys, UserDateIndex for reviews
+### Search Endpoints
+- `GET /api/whiskeys/search/?q={query}` - Multi-language whiskey search
+- `GET /api/whiskeys/search/suggest/?q={query}` - Search suggestions
+- `GET /api/whiskeys/suggest/?q={query}` - Direct suggestions endpoint
 
-### API Endpoints
+### Data Endpoints
 - `GET /api/whiskeys/` - List whiskeys
+- `GET /api/whiskeys/ranking/` - Whiskey rankings
 - `POST /api/reviews/` - Create review
 - `GET /api/reviews/` - List user reviews
-- `GET /health/` - Health check endpoint
+
+### Search Examples
+```bash
+# English search
+curl "https://api.dev.whiskeybar.site/api/whiskeys/search/?q=talisker"
+
+# Japanese search (URL encoded)
+curl "https://api.dev.whiskeybar.site/api/whiskeys/search/?q=%E3%83%9C%E3%82%A6%E3%83%A2%E3%82%A2"
+
+# Empty query (returns up to 50 items)
+curl "https://api.dev.whiskeybar.site/api/whiskeys/search/?q="
+```
 
 ## Environment Variables
+
+### Lambda Environment Variables
+```bash
+ENVIRONMENT=dev                                    # Environment name
+WHISKEYS_TABLE=Whiskeys-dev                       # Basic whiskey table
+WHISKEY_SEARCH_TABLE=WhiskeySearch-dev            # Search-optimized table
+REVIEWS_TABLE=Reviews-dev                         # Reviews table
+```
 
 ### Frontend (.env)
-- `NUXT_PUBLIC_API_BASE_URL` - API base URL
-- `NUXT_PUBLIC_USER_POOL_ID` - Cognito User Pool ID
-- `NUXT_PUBLIC_USER_POOL_CLIENT_ID` - Cognito Client ID
-- `NUXT_PUBLIC_REGION` - AWS region
-
-### Backend (.env)
-- `ENVIRONMENT` - Runtime environment (local/dev/prod)
-- `DJANGO_SECRET_KEY` - Django secret key
-- `COGNITO_USER_POOL_ID` - Cognito User Pool ID
-- `DYNAMODB_WHISKEYS_TABLE` - DynamoDB table name
-- `S3_IMAGES_BUCKET` - S3 bucket for images
-
-## Deployment Strategy
-
-### Infrastructure-as-Code
-- All AWS resources defined in CDK
-- Environment-specific configurations
-- Automated CloudFormation deployment
-
-### CI/CD Pipeline
-- GitHub Actions triggers on branch push
-- Parallel deployment of frontend and API
-- Automatic invalidation of CloudFront cache
-- **Lambda deployment via CDK** (not direct zip upload)
-  - CDK automatically handles code packaging and deployment
-  - Uses `Code.fromAsset()` for automatic zip creation
-  - No manual Lambda function updates required
-
-
-=======
-# Start all services (includes LocalStack for AWS services)
-make up
-# or ./dev.sh up
-
-# Stop services
-make down
-
-# View logs
-make logs
-
-# Backend shell access
-make shell
-
-# Run backend tests
-make test
-
-# Initialize test data
-make init-db
-```
-
-### Frontend Development
 ```bash
-cd frontend
-npm run dev          # Development server at localhost:3000
-npm run build        # Production build
-npm run generate     # Static site generation
-npm run lint         # ESLint
-npm run lint:fix     # Auto-fix lint issues
+NUXT_PUBLIC_API_BASE_URL=https://api.dev.whiskeybar.site
+NUXT_PUBLIC_USER_POOL_ID=ap-northeast-1_jEgeFKRCu
+NUXT_PUBLIC_USER_POOL_CLIENT_ID=5iilnqou9ndfreukuk76533o0t
+NUXT_PUBLIC_REGION=ap-northeast-1
 ```
 
-### Backend Development
-```bash
-cd backend
-python manage.py runserver              # Development server
-python manage.py create_test_data       # Create sample data
-pytest                                  # Run tests
-```
+## Data Management
 
-### Infrastructure & Deployment
-```bash
-cd infra
-npm run deploy:dev      # Deploy to dev environment
-npm run deploy:prod     # Deploy to prod environment
-npm run diff:dev        # Show deployment diff
-npm run test            # Run infrastructure tests
+### External Data Processing
+1. **Fetch Data**: `python scripts/fetch_whiskey_data.py --mode fetch --whiskeys 100`
+2. **Process & Translate**: `python scripts/fetch_whiskey_data.py --mode process --file raw_whiskey_data_*.json`
+3. **Verification**: Check DynamoDB table counts and test search functionality
 
-# Manual deployment scripts
-./scripts/deploy.sh dev     # Frontend deployment
-./scripts/deploy-api.sh dev # Backend deployment
-```
-
-## Key Architecture Patterns
-
-### Authentication Flow
-1. AWS Cognito User Pool manages authentication
-2. Amplify SDK handles frontend auth state with automatic token refresh
-3. Backend validates JWT tokens via custom middleware (`CognitoAuthMiddleware`)
-4. User ID extracted from JWT `sub` claim for data isolation
-
-### Database Design (DynamoDB)
-- **Whiskeys Table**: `id` (PK), with `NameIndex` GSI on `name`
-- **Reviews Table**: `id` (PK), with `UserDateIndex` GSI on `user_id` + `date`
-- All user data is isolated by `user_id` from JWT token
-
-### API Structure
-- RESTful endpoints under `/api/`
-- Authentication required for CRUD operations
-- Public read-only endpoints for rankings and discovery
-- S3 presigned URLs for image uploads via `/api/s3/upload-url/`
-
-### Frontend Composables
-- `useAuth.ts`: Authentication state management
-- `useWhiskeys.ts`: Whiskey search and suggestions
-- `useSuggestWhiskeys.ts`: Autocomplete functionality
-
-### Environment Management
-- **local**: Docker Compose with LocalStack
-- **dev**: AWS development (auto-deploy from `main` branch)
-- **prod**: AWS production (auto-deploy from `production` branch)
-
-## Important Files & Locations
-
-### Core Backend Logic
-- `backend/api/dynamodb_service.py`: All DynamoDB operations
-- `backend/api/views.py`: API endpoints and business logic
-- `backend/api/middleware.py`: JWT authentication middleware
-- `backend/backend/settings.py`: Django configuration
-
-### Core Frontend Logic
-- `frontend/composables/useAuth.ts`: Authentication management
-- `frontend/types/whiskey.ts`: TypeScript type definitions
-- `frontend/plugins/amplify.client.ts`: Amplify configuration
-
-### Configuration
-- `frontend/nuxt.config.ts`: Frontend build and runtime config
-- `docker-compose.yml`: Local development environment
-- `infra/config/environments.ts`: Environment-specific AWS settings
-
-### Data Models
-```typescript
-// Whiskey type
-interface Whiskey {
-  id: string;
-  name: string;
-  distillery: string;
-  created_at: string;
-  updated_at: string;
-}
-
-// Review type
-interface Review {
-  id: string;
-  whiskey_id: string;
-  user_id: string;
-  rating: number;           // 1-5
-  notes: string;
-  serving_style: 'NEAT' | 'ROCKS' | 'WATER' | 'HIGHBALL';
-  date: string;            // YYYY-MM-DD format
-  image_url?: string;
-  created_at: string;
-  updated_at: string;
-}
-```
-
-## Development Workflows
-
-### Adding New API Endpoints
-1. Add URL pattern to `backend/api/urls.py`
-2. Implement view in `backend/api/views.py`
-3. Add DynamoDB operations to `backend/api/dynamodb_service.py` if needed
-4. Update frontend composables in `frontend/composables/`
-5. Run `make test` for backend tests
-
-### Modifying Database Schema
-- DynamoDB is schemaless, but update TypeScript types in `frontend/types/whiskey.ts`
-- Update serializers in `backend/api/serializers.py`
-- Consider GSI requirements for new query patterns
-
-### Frontend Component Development
-- Follow existing patterns in `frontend/pages/` and `frontend/components/`
-- Use Tailwind CSS for styling (already configured)
-- Implement responsive design patterns
-- Use composition API with TypeScript
-
-### Deployment Process
-- **Automatic**: Push to `main` (dev) or `production` (prod) branches
-- **Manual**: Use deployment scripts in `scripts/` directory
-- Infrastructure changes: Use CDK in `infra/` directory
-- Always test locally with `make up` before deployment
-
-## Environment Variables
-
-### Required for Frontend
-```bash
-NUXT_PUBLIC_API_BASE_URL         # Backend API URL
-NUXT_PUBLIC_USER_POOL_ID         # Cognito User Pool ID
-NUXT_PUBLIC_USER_POOL_CLIENT_ID  # Cognito Client ID
-NUXT_PUBLIC_REGION               # AWS Region
-NUXT_PUBLIC_IMAGES_BUCKET        # S3 bucket for images
-NUXT_PUBLIC_ENVIRONMENT          # Environment name
-```
-
-### Required for Backend
-```bash
-ENVIRONMENT                      # Environment name
-DJANGO_SECRET_KEY               # Django secret
-AWS_REGION                      # AWS Region
-DYNAMODB_WHISKEYS_TABLE         # DynamoDB table name
-DYNAMODB_REVIEWS_TABLE          # DynamoDB table name
-S3_IMAGES_BUCKET               # S3 bucket name
-COGNITO_USER_POOL_ID           # For JWT validation
-```
+### Current Data Status
+- **Total Records**: 768+ whiskey entries
+- **Languages**: English and Japanese names/distilleries
+- **Source**: TheWhiskyEdition.com API with AWS Translate enhancement
+- **Search Coverage**: Full text search across both languages
 
 ## AWS Profile Configuration
 
@@ -396,73 +272,40 @@ COGNITO_USER_POOL_ID           # For JWT validation
 PAGER=cat AWS_PROFILE=dev aws [command]
 ```
 
-### Production Environment  
-```bash
-PAGER=cat AWS_PROFILE=prd aws [command]
-```
-
 Examples:
 ```bash
-# Check ECS logs (dev environment)
-PAGER=cat AWS_PROFILE=dev aws logs tail /ecs/whiskey-api-dev --follow
+# Check Lambda logs
+PAGER=cat AWS_PROFILE=dev aws logs tail /aws/lambda/whiskey-search-dev --follow
 
-# Check ECS logs (production environment)
-PAGER=cat AWS_PROFILE=prd aws logs tail /ecs/whiskey-api-prod --follow
-
-# List DynamoDB tables (dev environment)
+# Check DynamoDB tables
 PAGER=cat AWS_PROFILE=dev aws dynamodb list-tables
 
-# Deploy infrastructure (automatically uses correct profile via scripts)
-cd infra && npm run deploy:dev    # Uses dev profile internally
-cd infra && npm run deploy:prod   # Uses prd profile internally
+# Deploy infrastructure
+cd infra && AWS_PROFILE=dev npm run deploy:dev
 ```
-
-## Testing & Quality
-
-### Running Tests
-```bash
-make test                    # Backend tests with pytest
-cd infra && npm run test     # Infrastructure tests with Jest
-cd frontend && npm run lint  # Frontend linting
-```
-
-### Local Services
-When running `make up`, these services are available:
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:8000
-- LocalStack (AWS services): http://localhost:4566
 
 ## Troubleshooting
 
-### Common Issues
-1. **ECS deployment failures**: Check `./deploy-fix.sh` for ECR permission fixes
-2. **Authentication errors**: Verify Cognito configuration and JWT token validity
-3. **DynamoDB errors**: Ensure proper table names and GSI usage
-4. **CORS issues**: Check allowed origins in Django settings
+### Search Issues
+1. **日本語検索が失敗**: URLエンコーディングを確認（`encodeURIComponent()`使用）
+2. **文字化け**: Lambda関数でクエリが正しく受信されているかCloudWatchログで確認
+3. **検索結果0件**: データの存在とテーブル名を確認
 
 ### Debug Commands
 ```bash
-# Check ECS logs (with appropriate profile and pager)
-PAGER=cat AWS_PROFILE=dev aws logs tail /ecs/whiskey-api-dev --follow
-PAGER=cat AWS_PROFILE=prd aws logs tail /ecs/whiskey-api-prod --follow
+# Check search functionality
+curl -s "https://api.dev.whiskeybar.site/api/whiskeys/search/?q=test" | jq .
 
-# Health check
-curl https://api.dev.whiskeybar.site/health/
-curl https://api.whiskeybar.site/health/
+# Check Lambda logs
+PAGER=cat AWS_PROFILE=dev aws logs tail /aws/lambda/whiskey-search-dev --since 5m
 
-# Local DynamoDB (via LocalStack - no profile needed)
-PAGER=cat aws --endpoint-url=http://localhost:4566 dynamodb list-tables
-
-# Check target group health (with appropriate profile and pager)
-PAGER=cat AWS_PROFILE=dev aws elbv2 describe-target-health --target-group-arn <target-group-arn>
-
-# CloudFormation stack events (with appropriate profile and pager)
-PAGER=cat AWS_PROFILE=dev aws cloudformation describe-stack-events --stack-name WhiskeyApp-Dev
-PAGER=cat AWS_PROFILE=prd aws cloudformation describe-stack-events --stack-name WhiskeyApp-Prod
-
-# ECS service status (with appropriate profile and pager)
-PAGER=cat AWS_PROFILE=dev aws ecs describe-services --cluster whiskey-api-cluster-dev --services whiskey-api-service-dev
+# Check DynamoDB data
+PAGER=cat AWS_PROFILE=dev aws dynamodb scan --table-name WhiskeySearch-dev --limit 1
 ```
 
-Always run lint/typecheck commands after making changes, and test locally with Docker Compose before deployment.
->>>>>>> refs/remotes/origin/main
+### Common Issues
+1. **CDK deployment failures**: DynamoDB GSI limitations (一度に1つのGSI変更のみ可能)
+2. **Lambda function updates**: CDK経由でのコード更新推奨
+3. **Search performance**: 手動フィルタリングは768件以下で最適化済み
+
+Always run lint/typecheck commands after making changes, and test search functionality with both English and Japanese queries.

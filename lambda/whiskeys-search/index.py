@@ -72,17 +72,8 @@ def normalize_text(text: str) -> str:
     if not text:
         return ''
     
-    # 小文字に変換、スペースを除去
-    normalized = text.lower().replace(' ', '').replace('　', '')
-    
-    # カタカナをひらがなに変換（簡易版）
-    katakana_to_hiragana = str.maketrans(
-        'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン',
-        'あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをん'
-    )
-    normalized = normalized.translate(katakana_to_hiragana)
-    
-    return normalized
+    # 保存時と同じ正規化ロジック：小文字に変換、スペースを除去のみ
+    return text.lower().replace(' ', '').replace('　', '')
 
 
 def lambda_handler(event, context):
@@ -115,6 +106,11 @@ def lambda_handler(event, context):
         reviews_table_name = os.environ.get('REVIEWS_TABLE', '')
         whiskey_search_table_name = os.environ.get('WHISKEY_SEARCH_TABLE', f'WhiskeySearch-{os.environ.get("ENVIRONMENT", "dev")}')
         
+        print(f"DEBUG: Environment variables:")
+        print(f"DEBUG: WHISKEYS_TABLE = {whiskeys_table_name}")
+        print(f"DEBUG: WHISKEY_SEARCH_TABLE = {whiskey_search_table_name}")
+        print(f"DEBUG: ENVIRONMENT = {os.environ.get('ENVIRONMENT', 'dev')}")
+        
         # ランキングエンドポイント
         if 'ranking' in path:
             ranking = get_whiskey_ranking(dynamodb, whiskeys_table_name, reviews_table_name)
@@ -127,117 +123,78 @@ def lambda_handler(event, context):
         # 検索/サジェストエンドポイント
         query_params = event.get('queryStringParameters') or {}
         search_query = query_params.get('q', '').strip()
-        distillery_filter = query_params.get('distillery', '').strip()
         
         print(f"DEBUG: Search query received: '{search_query}'")
         
         # WhiskeySearchテーブルを使用（多言語対応）
         search_table = dynamodb.Table(whiskey_search_table_name)
+        print(f"DEBUG: Using table: '{whiskey_search_table_name}'")
         
-        # 多言語検索を実行
+        # 名前のみの検索を実行
         whiskeys = []
         
         try:
             if search_query:
                 print(f"DEBUG: Search query: '{search_query}'")
-                # 複数の検索戦略を試す
-                all_results = []
                 
-                # 1. 日本語名での完全一致検索
-                try:
-                    normalized_query = normalize_text(search_query)
-                    print(f"DEBUG: Normalized query (JA): '{normalized_query}'")
-                    if normalized_query:
-                        response = search_table.query(
-                            IndexName='NameJaIndex',
-                            KeyConditionExpression='normalized_name_ja = :query',
-                            ExpressionAttributeValues={':query': normalized_query}
-                        )
-                        ja_results = response.get('Items', [])
-                        print(f"DEBUG: Japanese name search results: {len(ja_results)}")
-                        all_results.extend(ja_results)
-                except Exception as e:
-                    print(f"Japanese name search error: {e}")
+                # 名前での部分一致検索のみ（シンプル化）
+                from boto3.dynamodb.conditions import Attr
+                print(f"DEBUG: Starting name-only search for: '{search_query}'")
                 
-                # 2. 英語名での完全一致検索
-                try:
-                    normalized_query_en = normalize_text(search_query)
-                    print(f"DEBUG: Normalized query (EN): '{normalized_query_en}'")
-                    if normalized_query_en:
-                        response = search_table.query(
-                            IndexName='NameEnIndex',
-                            KeyConditionExpression='normalized_name_en = :query',
-                            ExpressionAttributeValues={':query': normalized_query_en}
-                        )
-                        en_results = response.get('Items', [])
-                        print(f"DEBUG: English name search results: {len(en_results)}")
-                        all_results.extend(en_results)
-                except Exception as e:
-                    print(f"English name search error: {e}")
+                # 大文字小文字両方で検索
+                search_lower = search_query.lower()
+                search_upper = search_query.upper()
+                search_title = search_query.title()
                 
-                # 3. 部分一致検索（日本語・英語両方、大文字小文字対応）
-                try:
-                    from boto3.dynamodb.conditions import Attr
-                    print(f"DEBUG: Starting partial match search for: '{search_query}'")
+                # まずテーブル内のアイテム総数を確認
+                table_scan = search_table.scan(Limit=5)
+                print(f"DEBUG: Table scan sample: {len(table_scan.get('Items', []))} items")
+                if table_scan.get('Items'):
+                    print(f"DEBUG: Sample item keys: {list(table_scan['Items'][0].keys())}")
+                    sample_names = [item.get('name_en', '') for item in table_scan['Items']]
+                    print(f"DEBUG: Sample names: {sample_names}")
+                
+                # より詳細なデバッグ: 実際の名前で検索テスト
+                print(f"DEBUG: Testing filter conditions for '{search_query}'")
+                
+                # DynamoDB contains()が不安定なため、手動フィルタリングを使用
+                print(f"DEBUG: Starting manual filtering for query: '{search_query}'")
+                
+                # 検索クエリの各種バリエーション
+                query_lower = search_query.lower()
+                query_title = search_query.title()
+                query_upper = search_query.upper()
+                
+                # 全データを取得して手動でフィルタリング
+                all_items = search_table.scan().get('Items', [])
+                print(f"DEBUG: Scanning {len(all_items)} total items")
+                
+                filtered_items = []
+                
+                for item in all_items:
+                    name_en = item.get('name_en', '')
+                    name_ja = item.get('name_ja', '')
                     
-                    # 大文字小文字両方で検索
-                    search_lower = search_query.lower()
-                    search_upper = search_query.upper()
-                    search_title = search_query.title()
-                    
-                    response = search_table.scan(
-                        FilterExpression=(
-                            # 元の検索語
-                            Attr('name_ja').contains(search_query) |
-                            Attr('name_en').contains(search_query) |
-                            Attr('distillery_ja').contains(search_query) |
-                            Attr('distillery_en').contains(search_query) |
-                            # 小文字版
-                            Attr('name_ja').contains(search_lower) |
-                            Attr('name_en').contains(search_lower) |
-                            Attr('distillery_ja').contains(search_lower) |
-                            Attr('distillery_en').contains(search_lower) |
-                            # タイトルケース版
-                            Attr('name_ja').contains(search_title) |
-                            Attr('name_en').contains(search_title) |
-                            Attr('distillery_ja').contains(search_title) |
-                            Attr('distillery_en').contains(search_title)
-                        ),
-                        Limit=20
-                    )
-                    partial_results = response.get('Items', [])
-                    print(f"DEBUG: Partial match search results: {len(partial_results)}")
-                    all_results.extend(partial_results)
-                except Exception as e:
-                    print(f"Partial match search error: {e}")
+                    # 大文字小文字を無視した検索 + 完全一致検索
+                    if (search_query in name_en or search_query in name_ja or
+                        query_lower in name_en.lower() or query_lower in name_ja.lower() or
+                        query_title in name_en or query_title in name_ja or
+                        query_upper in name_en.upper() or query_upper in name_ja.upper()):
+                        filtered_items.append(item)
                 
-                # 重複除去
-                seen_ids = set()
-                unique_results = []
-                for item in all_results:
-                    if item['id'] not in seen_ids:
-                        seen_ids.add(item['id'])
-                        unique_results.append(item)
+                results = filtered_items[:20]  # 最大20件
+                
+                print(f"DEBUG: Final search results: {len(results)}")
                 
                 # WhiskeySearchのデータを従来形式に変換
-                for item in unique_results:
+                for item in results:
                     whiskey = {
                         'id': item['id'],
                         'name': item.get('name_ja', item.get('name_en', '')),  # 日本語名を優先
-                        'distillery': item.get('distillery_ja', item.get('distillery_en', '')),  # 日本語蒸留所名を優先
+                        'distillery': item.get('distillery_ja', item.get('distillery_en', '')),  # 表示用蒸留所名
                         'created_at': item.get('created_at', ''),
                         'updated_at': item.get('updated_at', '')
                     }
-                    
-                    # 蒸留所フィルター適用
-                    if distillery_filter:
-                        distillery_matches = (
-                            distillery_filter.lower() in whiskey['distillery'].lower() or
-                            distillery_filter.lower() in item.get('distillery_en', '').lower()
-                        )
-                        if not distillery_matches:
-                            continue
-                    
                     whiskeys.append(whiskey)
                 
             else:
@@ -282,7 +239,7 @@ def lambda_handler(event, context):
                 'whiskeys': whiskeys,
                 'count': len(whiskeys),
                 'query': search_query,
-                'distillery': distillery_filter
+                'distillery': ""  # 蒸留所フィルターは削除済み
             }, default=decimal_default)
         }
         
