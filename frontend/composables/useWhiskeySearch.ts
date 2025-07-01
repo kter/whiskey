@@ -144,13 +144,18 @@ export const useWhiskeySearch = () => {
       isAdvancedSearching.value = true
       advancedSearchError.value = ''
       
-      const params = new URLSearchParams()
+      // 検索条件を統合してクエリを作成
+      const searchTerms = []
+      if (filters.name) searchTerms.push(filters.name)
+      if (filters.distillery) searchTerms.push(filters.distillery)
+      if (filters.region) searchTerms.push(filters.region)
+      if (filters.type) searchTerms.push(filters.type)
       
-      if (filters.name) params.append('name', filters.name)
-      if (filters.distillery) params.append('distillery', filters.distillery)
-      if (filters.region) params.append('region', filters.region)
-      if (filters.type) params.append('type', filters.type)
-      params.append('limit', limit.toString())
+      // 全て空の場合は全件取得
+      const query = searchTerms.length > 0 ? searchTerms.join(' ') : ''
+      
+      const params = new URLSearchParams()
+      params.append('q', query)
       
       const response = await fetch(`${config.public.apiBaseUrl}/api/whiskeys/search?${params.toString()}`, {
         method: 'GET',
