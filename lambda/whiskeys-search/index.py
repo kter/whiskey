@@ -1,12 +1,23 @@
 """
 Whiskeys Search Lambda Function
-ウイスキー検索API
+ウイスキー検索API (新スキーマ対応)
 """
 import json
 import boto3
 import os
+import sys
 from decimal import Decimal
 from datetime import datetime
+
+# プロジェクトルートをパスに追加
+sys.path.append('/opt')
+
+try:
+    from whiskey_search_service import WhiskeySearchService
+    USE_NEW_SERVICE = True
+except ImportError:
+    print("WhiskeySearchService not available, using legacy implementation")
+    USE_NEW_SERVICE = False
 
 
 def decimal_default(obj):
@@ -48,37 +59,28 @@ def get_whiskey_ranking(dynamodb, whiskeys_table_name, reviews_table_name):
                 
                 ranking.append({
                     'id': whiskey['id'],
-                    'name': whiskey['name'],
-                    'distillery': whiskey['distillery'],
-                    'avg_rating': round(avg_rating, 2),  # フロントエンドが期待するフィールド名
-                    'average_rating': round(avg_rating, 2),  # 後方互換性のため
+                    'name': whiskey.get('name', ''),
+                    'distillery': whiskey.get('distillery', ''),
+                    'region': whiskey.get('region', ''),
+                    'average_rating': avg_rating,
                     'review_count': review_count
                 })
             except Exception as e:
-                print(f"Error processing whiskey {whiskey['id']}: {e}")
+                print(f"Error processing whiskey {whiskey.get('id', 'unknown')}: {e}")
                 continue
         
-        # 平均評価でソート（降順）、同じ評価の場合はレビュー数でソート
+        # 平均評価とレビュー数でソート
         ranking.sort(key=lambda x: (x['average_rating'], x['review_count']), reverse=True)
-        return ranking[:20]  # トップ20
+        return ranking[:20]  # 上位20件
         
     except Exception as e:
-        print(f"Error in get_whiskey_ranking: {e}")
+        print(f"Error generating ranking: {e}")
         return []
-
-
-def normalize_text(text: str) -> str:
-    """テキストを検索用に正規化（DynamoDBServiceと同じロジック）"""
-    if not text:
-        return ''
-    
-    # 保存時と同じ正規化ロジック：小文字に変換、スペースを除去のみ
-    return text.lower().replace(' ', '').replace('　', '')
 
 
 def lambda_handler(event, context):
     """
-    GET /api/whiskeys/search?q=検索語&distillery=蒸留所 - ウイスキー検索
+    GET /api/whiskeys/search?q=検索語 - ウイスキー検索
     GET /api/whiskeys/suggest?q=検索語 - ウイスキーサジェスト
     GET /api/whiskeys/ranking/ - ウイスキーランキング
     """
@@ -94,26 +96,18 @@ def lambda_handler(event, context):
         'Access-Control-Allow-Methods': 'GET, OPTIONS',
     }
     
-    # OPTIONS requests handled by API Gateway
-    
     try:
         # パス判定でエンドポイントを分岐
         path = event.get('path', '')
         
-        # DynamoDB setup
-        dynamodb = boto3.resource('dynamodb')
-        whiskeys_table_name = os.environ['WHISKEYS_TABLE']
-        reviews_table_name = os.environ.get('REVIEWS_TABLE', '')
-        whiskey_search_table_name = os.environ.get('WHISKEY_SEARCH_TABLE', f'WhiskeySearch-{os.environ.get("ENVIRONMENT", "dev")}')
-        
-        print(f"DEBUG: Environment variables:")
-        print(f"DEBUG: WHISKEYS_TABLE = {whiskeys_table_name}")
-        print(f"DEBUG: WHISKEY_SEARCH_TABLE = {whiskey_search_table_name}")
-        print(f"DEBUG: ENVIRONMENT = {os.environ.get('ENVIRONMENT', 'dev')}")
-        
         # ランキングエンドポイント
-        if 'ranking' in path:
+        if '/ranking' in path:
+            dynamodb = boto3.resource('dynamodb')
+            whiskeys_table_name = os.environ['WHISKEYS_TABLE']
+            reviews_table_name = os.environ.get('REVIEWS_TABLE', '')
+            
             ranking = get_whiskey_ranking(dynamodb, whiskeys_table_name, reviews_table_name)
+            
             return {
                 'statusCode': 200,
                 'headers': headers,
@@ -126,111 +120,128 @@ def lambda_handler(event, context):
         
         print(f"DEBUG: Search query received: '{search_query}'")
         
-        # WhiskeySearchテーブルを使用（多言語対応）
-        search_table = dynamodb.Table(whiskey_search_table_name)
-        print(f"DEBUG: Using table: '{whiskey_search_table_name}'")
-        
-        # 名前のみの検索を実行
+        # 新しいサービスを使用
         whiskeys = []
         
-        try:
-            if search_query:
-                print(f"DEBUG: Search query: '{search_query}'")
-                
-                # 名前での部分一致検索のみ（シンプル化）
-                from boto3.dynamodb.conditions import Attr
-                print(f"DEBUG: Starting name-only search for: '{search_query}'")
-                
-                # 大文字小文字両方で検索
-                search_lower = search_query.lower()
-                search_upper = search_query.upper()
-                search_title = search_query.title()
-                
-                # まずテーブル内のアイテム総数を確認
-                table_scan = search_table.scan(Limit=5)
-                print(f"DEBUG: Table scan sample: {len(table_scan.get('Items', []))} items")
-                if table_scan.get('Items'):
-                    print(f"DEBUG: Sample item keys: {list(table_scan['Items'][0].keys())}")
-                    sample_names = [item.get('name_en', '') for item in table_scan['Items']]
-                    print(f"DEBUG: Sample names: {sample_names}")
-                
-                # より詳細なデバッグ: 実際の名前で検索テスト
-                print(f"DEBUG: Testing filter conditions for '{search_query}'")
-                
-                # DynamoDB contains()が不安定なため、手動フィルタリングを使用
-                print(f"DEBUG: Starting manual filtering for query: '{search_query}'")
-                
-                # 検索クエリの各種バリエーション
-                query_lower = search_query.lower()
-                query_title = search_query.title()
-                query_upper = search_query.upper()
-                
-                # 全データを取得して手動でフィルタリング
-                all_items = search_table.scan().get('Items', [])
-                print(f"DEBUG: Scanning {len(all_items)} total items")
-                
-                filtered_items = []
-                
-                for item in all_items:
-                    name_en = item.get('name_en', '')
-                    name_ja = item.get('name_ja', '')
-                    
-                    # 大文字小文字を無視した検索 + 完全一致検索
-                    if (search_query in name_en or search_query in name_ja or
-                        query_lower in name_en.lower() or query_lower in name_ja.lower() or
-                        query_title in name_en or query_title in name_ja or
-                        query_upper in name_en.upper() or query_upper in name_ja.upper()):
-                        filtered_items.append(item)
-                
-                results = filtered_items[:20]  # 最大20件
-                
-                print(f"DEBUG: Final search results: {len(results)}")
-                
-                # WhiskeySearchのデータを従来形式に変換
-                for item in results:
-                    whiskey = {
-                        'id': item['id'],
-                        'name': item.get('name_ja', item.get('name_en', '')),  # 日本語名を優先
-                        'distillery': item.get('distillery_ja', item.get('distillery_en', '')),  # 表示用蒸留所名
-                        'created_at': item.get('created_at', ''),
-                        'updated_at': item.get('updated_at', '')
-                    }
-                    whiskeys.append(whiskey)
-                
-            else:
-                # 検索クエリがない場合は全件取得
-                response = search_table.scan(Limit=50)
-                for item in response.get('Items', []):
-                    whiskey = {
-                        'id': item['id'],
-                        'name': item.get('name_ja', item.get('name_en', '')),
-                        'distillery': item.get('distillery_ja', item.get('distillery_en', '')),
-                        'created_at': item.get('created_at', ''),
-                        'updated_at': item.get('updated_at', '')
-                    }
-                    whiskeys.append(whiskey)
+        if USE_NEW_SERVICE:
+            print("DEBUG: Using WhiskeySearchService")
+            service = WhiskeySearchService()
+            raw_results = service.search_whiskeys(search_query, limit=50)
+            print(f"DEBUG: Found {len(raw_results)} whiskeys via new service")
             
-        except Exception as e:
-            print(f"Search error: {e}")
-            # フォールバック: 空の結果を返す
-            whiskeys = []
-        
-        # Sort by relevance (exact matches first, then partial)
-        if search_query:
-            def sort_key(w):
-                name_lower = w['name'].lower()
-                query_lower = search_query.lower()
-                if name_lower == query_lower:
-                    return 0  # Exact match
-                elif name_lower.startswith(query_lower):
-                    return 1  # Starts with
-                else:
-                    return 2  # Contains
-            
-            whiskeys.sort(key=sort_key)
+            # 従来形式に変換
+            for item in raw_results:
+                whiskey = {
+                    'id': item.get('id'),
+                    'name': item.get('name', ''),
+                    'name_en': item.get('name', ''),  # 新スキーマでは name を name_en として使用
+                    'name_ja': '',  # 新スキーマでは日本語名は分離されていない
+                    'distillery': item.get('distillery', ''),
+                    'region': item.get('region', ''),
+                    'type': item.get('type', ''),
+                    'confidence': float(item.get('confidence', 0)),
+                    'source': item.get('source', ''),
+                    'created_at': item.get('created_at'),
+                    'updated_at': item.get('updated_at')
+                }
+                whiskeys.append(whiskey)
         else:
-            # Sort alphabetically if no search query
-            whiskeys.sort(key=lambda x: x['name'])
+            print("DEBUG: Using legacy search")
+            # フォールバック実装
+            dynamodb = boto3.resource('dynamodb')
+            whiskey_search_table_name = os.environ.get('WHISKEY_SEARCH_TABLE', f'WhiskeySearch-{os.environ.get("ENVIRONMENT", "dev")}')
+            search_table = dynamodb.Table(whiskey_search_table_name)
+            
+            if search_query:
+                from boto3.dynamodb.conditions import Attr
+                
+                # テーブルスキーマを確認
+                table_scan = search_table.scan(Limit=1)
+                if table_scan.get('Items'):
+                    sample_item = table_scan['Items'][0]
+                    print(f"DEBUG: Sample item keys: {list(sample_item.keys())}")
+                    
+                    # 新スキーマ（name, distillery）か旧スキーマ（name_en, name_ja）かを判定
+                    if 'name' in sample_item:
+                        print("DEBUG: Using new schema (name, distillery)")
+                        response = search_table.scan(
+                            FilterExpression=Attr('name').contains(search_query) | Attr('distillery').contains(search_query)
+                        )
+                    else:
+                        print("DEBUG: Using legacy schema (name_en, name_ja)")
+                        response = search_table.scan(
+                            FilterExpression=Attr('name_en').contains(search_query) | Attr('name_ja').contains(search_query)
+                        )
+                    
+                    raw_items = response.get('Items', [])
+                    print(f"DEBUG: Found {len(raw_items)} whiskeys via legacy search")
+                    
+                    # 統一形式に変換
+                    for item in raw_items:
+                        if 'name' in item:  # 新スキーマ
+                            whiskey = {
+                                'id': item.get('id'),
+                                'name': item.get('name', ''),
+                                'name_en': item.get('name', ''),
+                                'name_ja': '',
+                                'distillery': item.get('distillery', ''),
+                                'region': item.get('region', ''),
+                                'type': item.get('type', ''),
+                                'confidence': float(item.get('confidence', 0)),
+                                'created_at': item.get('created_at'),
+                                'updated_at': item.get('updated_at')
+                            }
+                        else:  # 旧スキーマ
+                            whiskey = {
+                                'id': item.get('id'),
+                                'name': item.get('name_en') or item.get('name_ja'),
+                                'name_en': item.get('name_en', ''),
+                                'name_ja': item.get('name_ja', ''),
+                                'distillery': item.get('distillery_en') or item.get('distillery_ja'),
+                                'region': item.get('region', ''),
+                                'type': item.get('type', ''),
+                                'created_at': item.get('created_at'),
+                                'updated_at': item.get('updated_at')
+                            }
+                        whiskeys.append(whiskey)
+                else:
+                    print("DEBUG: No items in table")
+            else:
+                # 空クエリの場合は最初の数件を返す
+                response = search_table.scan(Limit=10)
+                raw_items = response.get('Items', [])
+                
+                for item in raw_items:
+                    if 'name' in item:  # 新スキーマ
+                        whiskey = {
+                            'id': item.get('id'),
+                            'name': item.get('name', ''),
+                            'name_en': item.get('name', ''),
+                            'name_ja': '',
+                            'distillery': item.get('distillery', ''),
+                            'region': item.get('region', ''),
+                            'type': item.get('type', ''),
+                            'confidence': float(item.get('confidence', 0)),
+                            'created_at': item.get('created_at'),
+                            'updated_at': item.get('updated_at')
+                        }
+                    else:  # 旧スキーマ
+                        whiskey = {
+                            'id': item.get('id'),
+                            'name': item.get('name_en') or item.get('name_ja'),
+                            'name_en': item.get('name_en', ''),
+                            'name_ja': item.get('name_ja', ''),
+                            'distillery': item.get('distillery_en') or item.get('distillery_ja'),
+                            'region': item.get('region', ''),
+                            'type': item.get('type', ''),
+                            'created_at': item.get('created_at'),
+                            'updated_at': item.get('updated_at')
+                        }
+                    whiskeys.append(whiskey)
+        
+        # Sort alphabetically
+        if whiskeys:
+            whiskeys.sort(key=lambda x: x.get('name', ''))
         
         return {
             'statusCode': 200,
