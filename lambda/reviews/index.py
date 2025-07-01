@@ -71,8 +71,8 @@ def get_user_id_from_token(event):
         if auth_header and auth_header.startswith('Bearer '):
             token = auth_header.replace('Bearer ', '')
             # 簡単なJWTデコード（本来はVerifyすべき）
-            import base64
             try:
+                import base64
                 # JWT payload部分を取得
                 parts = token.split('.')
                 if len(parts) >= 2:
@@ -214,6 +214,124 @@ def update_review(dynamodb, reviews_table_name, user_id, review_id, data):
     return updated_review
 
 
+def get_cors_headers(event):
+    """CORS対応ヘッダーを生成"""
+    origin = event.get('headers', {}).get('origin') or event.get('headers', {}).get('Origin')
+    allowed_origins = ['https://dev.whiskeybar.site', 'https://whiskeybar.site', 'http://localhost:3000']
+    
+    return {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': origin if origin in allowed_origins else 'https://dev.whiskeybar.site',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    }
+
+
+def create_response(status_code, body, headers, start_time=None, logger=None):
+    """統一されたAPIレスポンスを生成"""
+    response = {
+        'statusCode': status_code,
+        'headers': headers,
+        'body': json.dumps(body, default=decimal_default) if isinstance(body, (dict, list)) else body
+    }
+    
+    if start_time and logger:
+        duration_ms = (time.time() - start_time) * 1000
+        logger.log_api_response(
+            status_code=status_code,
+            duration_ms=duration_ms
+        )
+    
+    return response
+
+
+def authenticate_user(event, headers):
+    """ユーザー認証とエラーレスポンスを処理"""
+    user_id = get_user_id_from_token(event)
+    if not user_id:
+        return None, create_response(401, {'error': 'Authentication required'}, headers)
+    return user_id, None
+
+
+def handle_get_reviews(event, dynamodb, reviews_table_name, whiskeys_table_name, headers, logger):
+    """レビュー取得エンドポイントの処理"""
+    query_params = event.get('queryStringParameters') or {}
+    path = event.get('path', '')
+    
+    # パブリックレビューか判定
+    is_public_by_path = path.endswith('/public') or path.endswith('/public/')
+    is_public_by_param = query_params.get('public') == 'true'
+    
+    if is_public_by_path or is_public_by_param:
+        # パブリックレビュー
+        logger.debug("Fetching public reviews")
+        reviews = get_public_reviews(dynamodb, reviews_table_name, whiskeys_table_name)
+        response_body = {
+            'results': reviews,  # フロントエンドとの互換性のため
+            'reviews': reviews,
+            'count': len(reviews)
+        }
+        return create_response(200, response_body, headers)
+    else:
+        # 認証ユーザーのレビュー
+        user_id, error_response = authenticate_user(event, headers)
+        if error_response:
+            return error_response
+        
+        logger.debug("Fetching user reviews", user_id=user_id)
+        reviews = get_user_reviews(dynamodb, reviews_table_name, whiskeys_table_name, user_id)
+        response_body = {
+            'results': reviews,  # フロントエンドとの互換性のため
+            'reviews': reviews,
+            'count': len(reviews)
+        }
+        return create_response(200, response_body, headers)
+
+
+def handle_post_review(event, dynamodb, reviews_table_name, headers, logger):
+    """レビュー作成エンドポイントの処理"""
+    user_id, error_response = authenticate_user(event, headers)
+    if error_response:
+        return error_response
+    
+    try:
+        body = json.loads(event['body'])
+        logger.debug("Creating review", user_id=user_id, whiskey_id=body.get('whiskey_id'))
+        review = create_review(dynamodb, reviews_table_name, user_id, body)
+        return create_response(201, review, headers)
+    except (json.JSONDecodeError, KeyError) as e:
+        logger.error("Invalid request body for review creation", error=str(e))
+        return create_response(400, {'error': 'Invalid request body'}, headers)
+
+
+def handle_put_review(event, dynamodb, reviews_table_name, headers, logger):
+    """レビュー更新エンドポイントの処理"""
+    user_id, error_response = authenticate_user(event, headers)
+    if error_response:
+        return error_response
+    
+    path_params = event.get('pathParameters') or {}
+    review_id = path_params.get('id')
+    if not review_id:
+        return create_response(400, {'error': 'Review ID required'}, headers)
+    
+    try:
+        body = json.loads(event['body'])
+        logger.debug("Updating review", user_id=user_id, review_id=review_id)
+        
+        review = update_review(dynamodb, reviews_table_name, user_id, review_id, body)
+        if not review:
+            return create_response(404, {'error': 'Review not found'}, headers)
+        
+        return create_response(200, review, headers)
+    except ValueError as e:
+        logger.warning("Unauthorized review update attempt", user_id=user_id, review_id=review_id, error=str(e))
+        return create_response(403, {'error': str(e)}, headers)
+    except (json.JSONDecodeError, KeyError) as e:
+        logger.error("Invalid request body for review update", error=str(e))
+        return create_response(400, {'error': 'Invalid request body'}, headers)
+
+
 def lambda_handler(event, context):
     """
     Reviews API統合ハンドラー
@@ -243,134 +361,26 @@ def lambda_handler(event, context):
         query_params=query_params
     )
     
-    # Response headers with CORS support
-    origin = event.get('headers', {}).get('origin') or event.get('headers', {}).get('Origin')
-    allowed_origins = ['https://dev.whiskeybar.site', 'https://whiskeybar.site', 'http://localhost:3000']
-    
-    headers = {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': origin if origin in allowed_origins else 'https://dev.whiskeybar.site',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
-    }
-    
-    # OPTIONS requests handled by API Gateway
+    # CORS対応ヘッダー取得
+    headers = get_cors_headers(event)
     
     try:
         method = event['httpMethod']
-        query_params = event.get('queryStringParameters') or {}
-        path_params = event.get('pathParameters') or {}
         
-        # DynamoDB setup
+        # DynamoDBセットアップ
         dynamodb = boto3.resource('dynamodb')
         reviews_table_name = os.environ['REVIEWS_TABLE']
         whiskeys_table_name = os.environ['WHISKEYS_TABLE']
         
+        # HTTPメソッドごとに処理を分岐
         if method == 'GET':
-            # パスベースでパブリックレビューを判定（後方互換性）
-            path = event.get('path', '')
-            is_public_by_path = path.endswith('/public') or path.endswith('/public/')
-            is_public_by_param = query_params.get('public') == 'true'
-            
-            if is_public_by_path or is_public_by_param:
-                # パブリックレビュー
-                reviews = get_public_reviews(dynamodb, reviews_table_name, whiskeys_table_name)
-                return {
-                    'statusCode': 200,
-                    'headers': headers,
-                    'body': json.dumps({
-                        'results': reviews,  # フロントエンドとの互換性のため
-                        'reviews': reviews,
-                        'count': len(reviews)
-                    }, default=decimal_default)
-                }
-            else:
-                # 認証ユーザーのレビュー
-                user_id = get_user_id_from_token(event)
-                if not user_id:
-                    return {
-                        'statusCode': 401,
-                        'headers': headers,
-                        'body': json.dumps({'error': 'Authentication required'})
-                    }
-                
-                reviews = get_user_reviews(dynamodb, reviews_table_name, whiskeys_table_name, user_id)
-                return {
-                    'statusCode': 200,
-                    'headers': headers,
-                    'body': json.dumps({
-                        'results': reviews,  # フロントエンドとの互換性のため
-                        'reviews': reviews,
-                        'count': len(reviews)
-                    }, default=decimal_default)
-                }
-        
+            return handle_get_reviews(event, dynamodb, reviews_table_name, whiskeys_table_name, headers, logger)
         elif method == 'POST':
-            # レビュー作成
-            user_id = get_user_id_from_token(event)
-            if not user_id:
-                return {
-                    'statusCode': 401,
-                    'headers': headers,
-                    'body': json.dumps({'error': 'Authentication required'})
-                }
-            
-            body = json.loads(event['body'])
-            review = create_review(dynamodb, reviews_table_name, user_id, body)
-            
-            return {
-                'statusCode': 201,
-                'headers': headers,
-                'body': json.dumps(review, default=decimal_default)
-            }
-        
+            return handle_post_review(event, dynamodb, reviews_table_name, headers, logger)
         elif method == 'PUT':
-            # レビュー更新
-            user_id = get_user_id_from_token(event)
-            if not user_id:
-                return {
-                    'statusCode': 401,
-                    'headers': headers,
-                    'body': json.dumps({'error': 'Authentication required'})
-                }
-            
-            review_id = path_params.get('id')
-            if not review_id:
-                return {
-                    'statusCode': 400,
-                    'headers': headers,
-                    'body': json.dumps({'error': 'Review ID required'})
-                }
-            
-            body = json.loads(event['body'])
-            
-            try:
-                review = update_review(dynamodb, reviews_table_name, user_id, review_id, body)
-                if not review:
-                    return {
-                        'statusCode': 404,
-                        'headers': headers,
-                        'body': json.dumps({'error': 'Review not found'})
-                    }
-                
-                return {
-                    'statusCode': 200,
-                    'headers': headers,
-                    'body': json.dumps(review, default=decimal_default)
-                }
-            except ValueError as e:
-                return {
-                    'statusCode': 403,
-                    'headers': headers,
-                    'body': json.dumps({'error': str(e)})
-                }
-        
+            return handle_put_review(event, dynamodb, reviews_table_name, headers, logger)
         else:
-            return {
-                'statusCode': 405,
-                'headers': headers,
-                'body': json.dumps({'error': 'Method not allowed'})
-            }
+            return create_response(405, {'error': 'Method not allowed'}, headers)
         
     except Exception as e:
         duration_ms = (time.time() - start_time) * 1000
@@ -378,16 +388,9 @@ def lambda_handler(event, context):
                     error=str(e), 
                     duration_ms=duration_ms)
         
-        logger.log_api_response(
-            status_code=500,
-            duration_ms=duration_ms
-        )
-        
-        return {
-            'statusCode': 500,
-            'headers': headers,
-            'body': json.dumps({
-                'error': 'Internal server error',
-                'message': str(e)
-            })
+        error_body = {
+            'error': 'Internal server error',
+            'message': str(e)
         }
+        
+        return create_response(500, error_body, headers, start_time, logger)

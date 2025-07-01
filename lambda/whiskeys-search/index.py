@@ -111,6 +111,180 @@ def get_whiskey_ranking(dynamodb, whiskeys_table_name, reviews_table_name):
         return []
 
 
+def get_cors_headers(event):
+    """CORS対応のレスポンスヘッダーを生成"""
+    origin = event.get('headers', {}).get('origin') or event.get('headers', {}).get('Origin')
+    allowed_origins = ['https://dev.whiskeybar.site', 'https://whiskeybar.site', 'http://localhost:3000']
+    
+    return {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': origin if origin in allowed_origins else 'https://dev.whiskeybar.site',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    }
+
+
+def create_response(status_code, body, headers, start_time=None, logger=None):
+    """統一されたAPIレスポンスを生成"""
+    response = {
+        'statusCode': status_code,
+        'headers': headers,
+        'body': json.dumps(body, default=decimal_default) if isinstance(body, (dict, list)) else body
+    }
+    
+    if start_time and logger:
+        duration_ms = (time.time() - start_time) * 1000
+        logger.log_api_response(
+            status_code=status_code,
+            duration_ms=duration_ms
+        )
+    
+    return response
+
+
+def transform_whiskey_item(item, schema_type='new'):
+    """DynamoDBアイテムを統一フォーマットに変換"""
+    if schema_type == 'new' or 'name' in item:
+        return {
+            'id': item.get('id'),
+            'name': item.get('name', ''),
+            'name_en': item.get('name', ''),
+            'name_ja': '',
+            'distillery': item.get('distillery', ''),
+            'region': item.get('region', ''),
+            'type': item.get('type', ''),
+            'confidence': float(item.get('confidence', 0)),
+            'source': item.get('source', ''),
+            'created_at': item.get('created_at'),
+            'updated_at': item.get('updated_at')
+        }
+    else:  # 旧スキーマ
+        return {
+            'id': item.get('id'),
+            'name': item.get('name_en') or item.get('name_ja'),
+            'name_en': item.get('name_en', ''),
+            'name_ja': item.get('name_ja', ''),
+            'distillery': item.get('distillery_en') or item.get('distillery_ja'),
+            'region': item.get('region', ''),
+            'type': item.get('type', ''),
+            'created_at': item.get('created_at'),
+            'updated_at': item.get('updated_at')
+        }
+
+
+def handle_ranking_endpoint(logger):
+    """ランキングエンドポイントの処理"""
+    try:
+        dynamodb = boto3.resource('dynamodb')
+        whiskeys_table_name = os.environ['WHISKEYS_TABLE']
+        reviews_table_name = os.environ.get('REVIEWS_TABLE', '')
+        
+        ranking = get_whiskey_ranking(dynamodb, whiskeys_table_name, reviews_table_name)
+        return ranking
+    except Exception as e:
+        logger.error("Error in ranking endpoint", error=str(e))
+        raise
+
+
+def search_with_new_service(search_query, logger):
+    """新しいWhiskeySearchServiceを使用した検索"""
+    logger.debug("Using WhiskeySearchService")
+    service = WhiskeySearchService()
+    raw_results = service.search_whiskeys(search_query, limit=50)
+    logger.debug("Search completed via new service", result_count=len(raw_results))
+    
+    whiskeys = []
+    for item in raw_results:
+        whiskey = transform_whiskey_item(item, 'new')
+        whiskeys.append(whiskey)
+    
+    return whiskeys
+
+
+def search_with_legacy_service(search_query, logger):
+    """レガシーDynamoDB検索の実装"""
+    logger.debug("Using legacy search implementation")
+    
+    dynamodb = boto3.resource('dynamodb')
+    whiskey_search_table_name = os.environ.get('WHISKEY_SEARCH_TABLE', f'WhiskeySearch-{os.environ.get("ENVIRONMENT", "dev")}')
+    search_table = dynamodb.Table(whiskey_search_table_name)
+    
+    if search_query:
+        return _search_with_query(search_table, search_query, logger)
+    else:
+        return _search_empty_query(search_table, logger)
+
+
+def _search_with_query(search_table, search_query, logger):
+    """クエリありの検索処理"""
+    from boto3.dynamodb.conditions import Attr
+    
+    # テーブルスキーマを確認
+    table_scan = search_table.scan(Limit=1)
+    if not table_scan.get('Items'):
+        logger.info("No items found in search table")
+        return []
+    
+    sample_item = table_scan['Items'][0]
+    logger.debug("Table schema detected", keys=list(sample_item.keys()))
+    
+    # 新スキーマ（name, distillery）か旧スキーマ（name_en, name_ja）かを判定
+    if 'name' in sample_item:
+        logger.debug("Using new schema (name, distillery)")
+        response = search_table.scan(
+            FilterExpression=Attr('name').contains(search_query) | Attr('distillery').contains(search_query)
+        )
+        schema_type = 'new'
+    else:
+        logger.debug("Using legacy schema (name_en, name_ja)")
+        response = search_table.scan(
+            FilterExpression=Attr('name_en').contains(search_query) | Attr('name_ja').contains(search_query)
+        )
+        schema_type = 'legacy'
+    
+    raw_items = response.get('Items', [])
+    logger.debug("Search completed via legacy implementation", result_count=len(raw_items))
+    
+    whiskeys = []
+    for item in raw_items:
+        whiskey = transform_whiskey_item(item, schema_type)
+        whiskeys.append(whiskey)
+    
+    return whiskeys
+
+
+def _search_empty_query(search_table, logger):
+    """空クエリの場合の検索処理"""
+    response = search_table.scan(Limit=10)
+    raw_items = response.get('Items', [])
+    
+    whiskeys = []
+    for item in raw_items:
+        # スキーマタイプを動的に判定
+        schema_type = 'new' if 'name' in item else 'legacy'
+        whiskey = transform_whiskey_item(item, schema_type)
+        whiskeys.append(whiskey)
+    
+    return whiskeys
+
+
+def handle_search_endpoint(search_query, logger):
+    """検索エンドポイントの処理"""
+    logger.debug("Search query received", query=search_query)
+    
+    # 新しいサービスまたはレガシーサービスを使用
+    if USE_NEW_SERVICE:
+        whiskeys = search_with_new_service(search_query, logger)
+    else:
+        whiskeys = search_with_legacy_service(search_query, logger)
+    
+    # アルファベット順にソート
+    if whiskeys:
+        whiskeys.sort(key=lambda x: x.get('name', ''))
+    
+    return whiskeys
+
+
 def lambda_handler(event, context):
     """
     GET /api/whiskeys/search?q=検索語 - ウイスキー検索
@@ -137,16 +311,8 @@ def lambda_handler(event, context):
         query_params=query_params
     )
     
-    # Response headers with CORS support
-    origin = event.get('headers', {}).get('origin') or event.get('headers', {}).get('Origin')
-    allowed_origins = ['https://dev.whiskeybar.site', 'https://whiskeybar.site', 'http://localhost:3000']
-    
-    headers = {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': origin if origin in allowed_origins else 'https://dev.whiskeybar.site',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    }
+    # CORS対応ヘッダー取得
+    headers = get_cors_headers(event)
     
     try:
         # パス判定でエンドポイントを分岐
@@ -154,147 +320,17 @@ def lambda_handler(event, context):
         
         # ランキングエンドポイント
         if '/ranking' in path:
-            dynamodb = boto3.resource('dynamodb')
-            whiskeys_table_name = os.environ['WHISKEYS_TABLE']
-            reviews_table_name = os.environ.get('REVIEWS_TABLE', '')
-            
-            ranking = get_whiskey_ranking(dynamodb, whiskeys_table_name, reviews_table_name)
-            
-            return {
-                'statusCode': 200,
-                'headers': headers,
-                'body': json.dumps(ranking, default=decimal_default)
-            }
+            ranking = handle_ranking_endpoint(logger)
+            return create_response(200, ranking, headers, start_time, logger)
         
         # 検索/サジェストエンドポイント
         query_params = event.get('queryStringParameters') or {}
         search_query = query_params.get('q', '').strip()
         
-        logger.debug("Search query received", query=search_query)
+        # 検索実行
+        whiskeys = handle_search_endpoint(search_query, logger)
         
-        # 新しいサービスを使用
-        whiskeys = []
-        
-        if USE_NEW_SERVICE:
-            logger.debug("Using WhiskeySearchService")
-            service = WhiskeySearchService()
-            raw_results = service.search_whiskeys(search_query, limit=50)
-            logger.debug("Search completed via new service", result_count=len(raw_results))
-            
-            # 従来形式に変換
-            for item in raw_results:
-                whiskey = {
-                    'id': item.get('id'),
-                    'name': item.get('name', ''),
-                    'name_en': item.get('name', ''),  # 新スキーマでは name を name_en として使用
-                    'name_ja': '',  # 新スキーマでは日本語名は分離されていない
-                    'distillery': item.get('distillery', ''),
-                    'region': item.get('region', ''),
-                    'type': item.get('type', ''),
-                    'confidence': float(item.get('confidence', 0)),
-                    'source': item.get('source', ''),
-                    'created_at': item.get('created_at'),
-                    'updated_at': item.get('updated_at')
-                }
-                whiskeys.append(whiskey)
-        else:
-            logger.debug("Using legacy search implementation")
-            # フォールバック実装
-            dynamodb = boto3.resource('dynamodb')
-            whiskey_search_table_name = os.environ.get('WHISKEY_SEARCH_TABLE', f'WhiskeySearch-{os.environ.get("ENVIRONMENT", "dev")}')
-            search_table = dynamodb.Table(whiskey_search_table_name)
-            
-            if search_query:
-                from boto3.dynamodb.conditions import Attr
-                
-                # テーブルスキーマを確認
-                table_scan = search_table.scan(Limit=1)
-                if table_scan.get('Items'):
-                    sample_item = table_scan['Items'][0]
-                    logger.debug("Table schema detected", keys=list(sample_item.keys()))
-                    
-                    # 新スキーマ（name, distillery）か旧スキーマ（name_en, name_ja）かを判定
-                    if 'name' in sample_item:
-                        logger.debug("Using new schema (name, distillery)")
-                        response = search_table.scan(
-                            FilterExpression=Attr('name').contains(search_query) | Attr('distillery').contains(search_query)
-                        )
-                    else:
-                        logger.debug("Using legacy schema (name_en, name_ja)")
-                        response = search_table.scan(
-                            FilterExpression=Attr('name_en').contains(search_query) | Attr('name_ja').contains(search_query)
-                        )
-                    
-                    raw_items = response.get('Items', [])
-                    logger.debug("Search completed via legacy implementation", result_count=len(raw_items))
-                    
-                    # 統一形式に変換
-                    for item in raw_items:
-                        if 'name' in item:  # 新スキーマ
-                            whiskey = {
-                                'id': item.get('id'),
-                                'name': item.get('name', ''),
-                                'name_en': item.get('name', ''),
-                                'name_ja': '',
-                                'distillery': item.get('distillery', ''),
-                                'region': item.get('region', ''),
-                                'type': item.get('type', ''),
-                                'confidence': float(item.get('confidence', 0)),
-                                'created_at': item.get('created_at'),
-                                'updated_at': item.get('updated_at')
-                            }
-                        else:  # 旧スキーマ
-                            whiskey = {
-                                'id': item.get('id'),
-                                'name': item.get('name_en') or item.get('name_ja'),
-                                'name_en': item.get('name_en', ''),
-                                'name_ja': item.get('name_ja', ''),
-                                'distillery': item.get('distillery_en') or item.get('distillery_ja'),
-                                'region': item.get('region', ''),
-                                'type': item.get('type', ''),
-                                'created_at': item.get('created_at'),
-                                'updated_at': item.get('updated_at')
-                            }
-                        whiskeys.append(whiskey)
-                else:
-                    logger.info("No items found in search table")
-            else:
-                # 空クエリの場合は最初の数件を返す
-                response = search_table.scan(Limit=10)
-                raw_items = response.get('Items', [])
-                
-                for item in raw_items:
-                    if 'name' in item:  # 新スキーマ
-                        whiskey = {
-                            'id': item.get('id'),
-                            'name': item.get('name', ''),
-                            'name_en': item.get('name', ''),
-                            'name_ja': '',
-                            'distillery': item.get('distillery', ''),
-                            'region': item.get('region', ''),
-                            'type': item.get('type', ''),
-                            'confidence': float(item.get('confidence', 0)),
-                            'created_at': item.get('created_at'),
-                            'updated_at': item.get('updated_at')
-                        }
-                    else:  # 旧スキーマ
-                        whiskey = {
-                            'id': item.get('id'),
-                            'name': item.get('name_en') or item.get('name_ja'),
-                            'name_en': item.get('name_en', ''),
-                            'name_ja': item.get('name_ja', ''),
-                            'distillery': item.get('distillery_en') or item.get('distillery_ja'),
-                            'region': item.get('region', ''),
-                            'type': item.get('type', ''),
-                            'created_at': item.get('created_at'),
-                            'updated_at': item.get('updated_at')
-                        }
-                    whiskeys.append(whiskey)
-        
-        # Sort alphabetically
-        if whiskeys:
-            whiskeys.sort(key=lambda x: x.get('name', ''))
-        
+        # 検索ログ
         duration_ms = (time.time() - start_time) * 1000
         logger.log_search_operation(
             query=search_query,
@@ -303,21 +339,15 @@ def lambda_handler(event, context):
             search_type="whiskey_search"
         )
         
-        logger.log_api_response(
-            status_code=200,
-            duration_ms=duration_ms
-        )
-        
-        return {
-            'statusCode': 200,
-            'headers': headers,
-            'body': json.dumps({
-                'whiskeys': whiskeys,
-                'count': len(whiskeys),
-                'query': search_query,
-                'distillery': ""  # 蒸留所フィルターは削除済み
-            }, default=decimal_default)
+        # レスポンスボディ
+        response_body = {
+            'whiskeys': whiskeys,
+            'count': len(whiskeys),
+            'query': search_query,
+            'distillery': ""  # 蒸留所フィルターは削除済み
         }
+        
+        return create_response(200, response_body, headers, start_time, logger)
         
     except Exception as e:
         duration_ms = (time.time() - start_time) * 1000
@@ -325,16 +355,9 @@ def lambda_handler(event, context):
                     error=str(e), 
                     duration_ms=duration_ms)
         
-        logger.log_api_response(
-            status_code=500,
-            duration_ms=duration_ms
-        )
-        
-        return {
-            'statusCode': 500,
-            'headers': headers,
-            'body': json.dumps({
-                'error': 'Internal server error',
-                'message': str(e)
-            })
+        error_body = {
+            'error': 'Internal server error',
+            'message': str(e)
         }
+        
+        return create_response(500, error_body, headers, start_time, logger)

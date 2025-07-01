@@ -9,7 +9,11 @@
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "lint": "eslint .",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "eslint . --fix",
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "test:coverage": "vitest --coverage",
+    "test:ui": "vitest --ui"
   },
   "devDependencies": {
     "@nuxt/devtools": "latest",
@@ -17,10 +21,14 @@
     "@nuxtjs/tailwindcss": "^6.11.4",
     "@types/node": "^20.10.4",
     "@typescript-eslint/parser": "^6.13.2",
+    "@vitest/ui": "^1.2.0",
+    "@vue/test-utils": "^2.4.0",
     "eslint": "^8.55.0",
     "eslint-plugin-vue": "^9.19.2",
+    "happy-dom": "^13.3.0",
     "nuxt": "^3.10.3",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.0"
   },
   "dependencies": {
     "@aws-amplify/auth": "^6.0.17",
