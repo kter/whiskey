@@ -405,7 +405,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
         REVIEWS_TABLE: reviewsTable.tableName,
         WHISKEYS_TABLE: whiskeysTable.tableName,
         COGNITO_USER_POOL_ID: userPool.userPoolId,
-        AWS_REGION: this.region,
+        ENVIRONMENT: environment,
       },
     });
 
@@ -530,12 +530,12 @@ export class WhiskeyInfraStack extends cdk.Stack {
 
     // 単数形パスは削除し、複数形 /api/whiskeys/ に統一
 
-    // GitHub Actions用OIDC プロバイダー
-    const gitHubOidcProvider = new iam.OpenIdConnectProvider(this, 'GitHubOidcProvider', {
-      url: 'https://token.actions.githubusercontent.com',
-      clientIds: ['sts.amazonaws.com'],
-      thumbprints: ['1c58a3a8518e8759bf075b76b750d4f2df264fcd', '6938fd4d98bab03faadb97b34396831e3780aea1'],
-    });
+    // GitHub Actions用OIDC プロバイダー（既存のものを参照）
+    const gitHubOidcProvider = iam.OpenIdConnectProvider.fromOpenIdConnectProviderArn(
+      this, 
+      'GitHubOidcProvider',
+      `arn:aws:iam::${this.account}:oidc-provider/token.actions.githubusercontent.com`
+    );
 
     // GitHub Actions用ロール（S3デプロイ用）
     const githubActionsRole = new iam.Role(this, 'GitHubActionsRole', {
@@ -547,7 +547,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
             'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',
           },
           StringLike: {
-            'token.actions.githubusercontent.com:sub': 'repo:kter/whiskey:*', // 実際のリポジトリ名に変更
+            'token.actions.githubusercontent.com:sub': 'repo:takahashitomohiko/whiskey:*',
           },
         }
       ),

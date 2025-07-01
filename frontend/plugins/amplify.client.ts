@@ -5,6 +5,34 @@ export default defineNuxtPlugin(() => {
 
   // 現在のURLを動的に取得
   const currentUrl = process.client ? window.location.origin : 'http://localhost:3000'
+  const environment = config.public.environment || 'dev'
+  
+  // 環境に基づいてCognito設定を決定
+  const cognitoDomain = environment === 'prd' 
+    ? 'whiskey-users-prd.auth.ap-northeast-1.amazoncognito.com'
+    : 'whiskey-users-dev.auth.ap-northeast-1.amazoncognito.com'
+    
+  const redirectUrls = environment === 'prd'
+    ? [
+        'https://whiskeybar.site/auth/callback',
+        'https://www.whiskeybar.site/auth/callback'
+      ]
+    : [
+        'https://dev.whiskeybar.site/auth/callback',
+        'https://www.dev.whiskeybar.site/auth/callback',
+        'http://localhost:3000/auth/callback'
+      ]
+      
+  const logoutUrls = environment === 'prd'
+    ? [
+        'https://whiskeybar.site/',
+        'https://www.whiskeybar.site/'
+      ]
+    : [
+        'https://dev.whiskeybar.site/',
+        'https://www.dev.whiskeybar.site/',
+        'http://localhost:3000/'
+      ]
   
   try {
     Amplify.configure({
@@ -14,18 +42,10 @@ export default defineNuxtPlugin(() => {
           userPoolClientId: config.public.userPoolClientId,
           loginWith: {
             oauth: {
-              domain: 'whiskey-users-dev.auth.ap-northeast-1.amazoncognito.com',
+              domain: cognitoDomain,
               scopes: ['email', 'profile', 'openid'],
-              redirectSignIn: [
-                'https://dev.whiskeybar.site/auth/callback',
-                'https://www.dev.whiskeybar.site/auth/callback',
-                'http://localhost:3000/auth/callback'
-              ],
-              redirectSignOut: [
-                'https://dev.whiskeybar.site/',
-                'https://www.dev.whiskeybar.site/',
-                'http://localhost:3000/'
-              ],
+              redirectSignIn: redirectUrls,
+              redirectSignOut: logoutUrls,
               responseType: 'code' as const
             },
             email: true,

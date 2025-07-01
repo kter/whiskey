@@ -12,7 +12,7 @@ const env = app.node.tryGetContext('env') || process.env.ENV || 'dev';
 // 環境設定を取得
 const envConfig = environments[env];
 if (!envConfig) {
-  throw new Error(`Invalid environment: ${env}. Must be 'dev' or 'prod'.`);
+  throw new Error(`Invalid environment: ${env}. Must be 'dev' or 'prd'.`);
 }
 
 // 共通の環境設定

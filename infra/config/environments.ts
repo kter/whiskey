@@ -18,11 +18,11 @@ export const environments: Record<string, EnvironmentConfig> = {
     natGateways: 0, // Lambda使用のためNATゲートウェイ不要
     retainResources: false,
   },
-  prod: {
+  prd: {
     region: 'ap-northeast-1',
     domain: 'whiskeybar.site',
     apiDomain: 'api.whiskeybar.site',
-    allowedOrigins: ['https://whiskeybar.site'], // 本番ドメインのみ許可
+    allowedOrigins: ['https://whiskeybar.site', 'https://www.whiskeybar.site'], // 本番ドメインのみ許可
     natGateways: 0, // Lambda使用のためNATゲートウェイ不要
     retainResources: true,
     // certificateArn: 'arn:aws:acm:ap-northeast-1:123456789012:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',

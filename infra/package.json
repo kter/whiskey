@@ -10,13 +10,13 @@
     "test": "jest",
     "cdk": "cdk",
     "deploy:dev": "./scripts/deploy.sh dev",
-    "deploy:prod": "./scripts/deploy.sh prod",
+    "deploy:prd": "./scripts/deploy.sh prd",
     "diff:dev": "cdk diff -c env=dev",
-    "diff:prod": "cdk diff -c env=prod",
+    "diff:prd": "cdk diff -c env=prd",
     "synth:dev": "cdk synth -c env=dev",
-    "synth:prod": "cdk synth -c env=prod",
+    "synth:prd": "cdk synth -c env=prd",
     "destroy:dev": "./scripts/deploy.sh dev --destroy",
-    "destroy:prod": "./scripts/deploy.sh prod --destroy"
+    "destroy:prd": "./scripts/deploy.sh prd --destroy"
   },
   "devDependencies": {
     "@types/jest": "^29.5.14",

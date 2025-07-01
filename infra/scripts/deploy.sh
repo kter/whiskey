@@ -13,11 +13,11 @@ NC='\033[0m' # No Color
 
 # 使用方法の表示
 show_usage() {
-    echo "Usage: $0 [dev|prod] [options]"
+    echo "Usage: $0 [dev|prd] [options]"
     echo ""
     echo "Environments:"
     echo "  dev     Deploy to development environment"
-    echo "  prod    Deploy to production environment"
+    echo "  prd     Deploy to production environment"
     echo ""
     echo "Options:"
     echo "  --diff       Show diff before deployment"
@@ -26,7 +26,7 @@ show_usage() {
     echo ""
     echo "Examples:"
     echo "  $0 dev"
-    echo "  $0 prod --diff"
+    echo "  $0 prd --diff"
     echo "  $0 dev --destroy"
     exit 1
 }
@@ -68,8 +68,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 # 環境チェック
-if [ "$ENVIRONMENT" != "dev" ] && [ "$ENVIRONMENT" != "prod" ]; then
-    echo -e "${RED}Error: Environment must be 'dev' or 'prod'${NC}"
+if [ "$ENVIRONMENT" != "dev" ] && [ "$ENVIRONMENT" != "prd" ]; then
+    echo -e "${RED}Error: Environment must be 'dev' or 'prd'${NC}"
     show_usage
 fi
 
@@ -122,7 +122,7 @@ echo "Region: ap-northeast-1"
 echo "Account: $(aws sts get-caller-identity --query Account --output text)"
 
 # 本番環境の追加確認
-if [ "$ENVIRONMENT" == "prod" ] && [ "$NO_CONFIRM" != "true" ] && [ "$DESTROY" != "true" ]; then
+if [ "$ENVIRONMENT" == "prd" ] && [ "$NO_CONFIRM" != "true" ] && [ "$DESTROY" != "true" ]; then
     echo ""
     echo -e "${RED}⚠️  WARNING: You are about to deploy to PRODUCTION environment!${NC}"
     read -p "Are you sure you want to continue? (yes/no): " -r

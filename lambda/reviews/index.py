@@ -217,11 +217,18 @@ def update_review(dynamodb, reviews_table_name, user_id, review_id, data):
 def get_cors_headers(event):
     """CORS対応ヘッダーを生成"""
     origin = event.get('headers', {}).get('origin') or event.get('headers', {}).get('Origin')
-    allowed_origins = ['https://dev.whiskeybar.site', 'https://whiskeybar.site', 'http://localhost:3000']
+    environment = os.environ.get('ENVIRONMENT', 'dev')
+    
+    if environment == 'prd':
+        allowed_origins = ['https://whiskeybar.site', 'https://www.whiskeybar.site']
+        default_origin = 'https://whiskeybar.site'
+    else:
+        allowed_origins = ['https://dev.whiskeybar.site', 'https://www.dev.whiskeybar.site', 'http://localhost:3000']
+        default_origin = 'https://dev.whiskeybar.site'
     
     return {
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': origin if origin in allowed_origins else 'https://dev.whiskeybar.site',
+        'Access-Control-Allow-Origin': origin if origin in allowed_origins else default_origin,
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     }
