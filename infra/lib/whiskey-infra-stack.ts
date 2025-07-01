@@ -547,7 +547,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
             'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',
           },
           StringLike: {
-            'token.actions.githubusercontent.com:sub': 'repo:takahashitomohiko/whiskey:*',
+            'token.actions.githubusercontent.com:sub': 'repo:kter/whiskey:*',
           },
         }
       ),
