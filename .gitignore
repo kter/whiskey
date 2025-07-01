@@ -139,6 +139,8 @@ data/
 .tmp/
 temp/
 tmp/
+*.json
+*.zip
 
 # Backup files
 *.bak
