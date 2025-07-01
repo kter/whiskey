@@ -11,12 +11,16 @@ from datetime import datetime
 
 # プロジェクトルートをパスに追加
 sys.path.append('/opt')
+sys.path.append('/opt/python')
+sys.path.append('.')
+sys.path.append('./python')
 
 try:
     from whiskey_search_service import WhiskeySearchService
     USE_NEW_SERVICE = True
-except ImportError:
-    print("WhiskeySearchService not available, using legacy implementation")
+    print("WhiskeySearchService imported successfully")
+except ImportError as e:
+    print(f"WhiskeySearchService not available: {e}, using legacy implementation")
     USE_NEW_SERVICE = False
 
 

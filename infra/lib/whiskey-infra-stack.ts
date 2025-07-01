@@ -183,7 +183,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
       removalPolicy: environment === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
     });
 
-    // WhiskeySearchテーブル - 検索最適化用
+    // WhiskeySearchテーブル - 検索最適化用（日本語専用）
     const whiskeySearchTable = new dynamodb.Table(this, 'WhiskeySearchTable', {
       tableName: `WhiskeySearch-${environment}`,
       partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
@@ -191,15 +191,15 @@ export class WhiskeyInfraStack extends cdk.Stack {
       removalPolicy: environment === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
     });
 
-    // 検索用GSI（名前のみ - 蒸留所検索は削除済み）
+    // 検索用GSI（日本語専用） - 2つ目のGSIを追加
     whiskeySearchTable.addGlobalSecondaryIndex({
-      indexName: 'NameJaIndex',
-      partitionKey: { name: 'normalized_name_ja', type: dynamodb.AttributeType.STRING },
+      indexName: 'NameIndex',
+      partitionKey: { name: 'normalized_name', type: dynamodb.AttributeType.STRING },
     });
 
     whiskeySearchTable.addGlobalSecondaryIndex({
-      indexName: 'NameEnIndex',
-      partitionKey: { name: 'normalized_name_en', type: dynamodb.AttributeType.STRING },
+      indexName: 'DistilleryIndex',
+      partitionKey: { name: 'normalized_distillery', type: dynamodb.AttributeType.STRING },
     });
 
     // ====================
