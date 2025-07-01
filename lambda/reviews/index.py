@@ -6,8 +6,37 @@ import json
 import boto3
 import os
 import uuid
+import sys
+import time
 from decimal import Decimal
 from datetime import datetime
+
+# プロジェクトルートをパスに追加
+sys.path.append('/opt')
+sys.path.append('/opt/python')
+sys.path.append('.')
+sys.path.append('../common')
+
+try:
+    from logger import get_logger, extract_correlation_id
+except ImportError:
+    # フォールバック用の簡易ロガー
+    class SimpleLogger:
+        def info(self, msg, **kwargs): print(f"INFO: {msg}")
+        def warning(self, msg, **kwargs): print(f"WARNING: {msg}")
+        def error(self, msg, **kwargs): print(f"ERROR: {msg}")
+        def debug(self, msg, **kwargs): print(f"DEBUG: {msg}")
+        def log_api_request(self, **kwargs): print(f"API Request: {kwargs}")
+        def log_api_response(self, **kwargs): print(f"API Response: {kwargs}")
+        def log_database_operation(self, **kwargs): print(f"DB Operation: {kwargs}")
+        def log_jwt_operation(self, **kwargs): print(f"JWT Operation: {kwargs}")
+        def set_correlation_id(self, id): pass
+    
+    def get_logger(**kwargs):
+        return SimpleLogger()
+    
+    def extract_correlation_id(event):
+        return event.get('requestContext', {}).get('requestId')
 
 
 def decimal_default(obj):
@@ -28,7 +57,8 @@ def get_user_id_from_token(event):
         return extract_user_id_from_token(event)
     except ImportError:
         # フォールバック: 古い実装（テスト環境用）
-        print("Warning: Using legacy JWT implementation - should only be used in tests")
+        logger = get_logger()
+        logger.warning("Using legacy JWT implementation - should only be used in tests")
         # まずAPI Gateway Cognito Authorizerからの情報を確認
         claims = event.get('requestContext', {}).get('authorizer', {}).get('claims', {})
         user_id = claims.get('sub')
@@ -54,7 +84,8 @@ def get_user_id_from_token(event):
                     payload = json.loads(decoded)
                     return payload.get('sub')
             except Exception as e:
-                print(f"JWT decode error: {e}")
+                logger = get_logger()
+                logger.error("JWT decode error in legacy implementation", error=str(e))
         
         return None
 
@@ -192,6 +223,25 @@ def lambda_handler(event, context):
     POST /api/reviews → レビュー作成
     PUT /api/reviews/{id} → レビュー更新
     """
+    start_time = time.time()
+    
+    # ロガー初期化
+    correlation_id = extract_correlation_id(event)
+    logger = get_logger(
+        function_name='reviews',
+        correlation_id=correlation_id
+    )
+    
+    # APIリクエストログ
+    method = event.get('httpMethod', 'UNKNOWN')
+    path = event.get('path', 'UNKNOWN')
+    query_params = event.get('queryStringParameters')
+    
+    logger.log_api_request(
+        method=method,
+        path=path,
+        query_params=query_params
+    )
     
     # Response headers with CORS support
     origin = event.get('headers', {}).get('origin') or event.get('headers', {}).get('Origin')
@@ -323,7 +373,16 @@ def lambda_handler(event, context):
             }
         
     except Exception as e:
-        print(f"Error: {str(e)}")
+        duration_ms = (time.time() - start_time) * 1000
+        logger.error("Unhandled error in lambda_handler", 
+                    error=str(e), 
+                    duration_ms=duration_ms)
+        
+        logger.log_api_response(
+            status_code=500,
+            duration_ms=duration_ms
+        )
+        
         return {
             'statusCode': 500,
             'headers': headers,

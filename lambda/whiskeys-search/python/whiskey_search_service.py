@@ -7,16 +7,35 @@ import boto3
 import os
 import uuid
 import time
+import sys
 from datetime import datetime
 from decimal import Decimal
 from typing import Dict, List, Optional, Any
 from boto3.dynamodb.conditions import Key, Attr
+
+# パス追加
+sys.path.append('../common')
+
+try:
+    from logger import get_logger
+except ImportError:
+    # フォールバック用の簡易ロガー
+    class SimpleLogger:
+        def info(self, msg, **kwargs): print(f"INFO: {msg}")
+        def warning(self, msg, **kwargs): print(f"WARNING: {msg}")
+        def error(self, msg, **kwargs): print(f"ERROR: {msg}")
+        def debug(self, msg, **kwargs): print(f"DEBUG: {msg}")
+        def log_database_operation(self, **kwargs): print(f"DB Operation: {kwargs}")
+    
+    def get_logger(**kwargs):
+        return SimpleLogger()
 
 
 class WhiskeySearchService:
     def __init__(self):
         self.region = os.getenv('AWS_REGION', 'ap-northeast-1')
         endpoint_url = os.getenv('AWS_ENDPOINT_URL')
+        self.logger = get_logger(function_name='whiskey-search-service')
         
         # 環境に応じたテーブル名を設定
         environment = os.getenv('ENVIRONMENT', 'dev')
@@ -46,7 +65,9 @@ class WhiskeySearchService:
                 # テーブルの存在確認
                 self._whiskey_table.load()
             except Exception as e:
-                print(f"WhiskeySearch table {self.whiskey_table_name} not found, creating: {e}")
+                self.logger.info("WhiskeySearch table not found, creating new table", 
+                               table_name=self.whiskey_table_name, 
+                               error=str(e))
                 self._create_whiskey_table()
                 # 作成後に少し待機
                 time.sleep(2)
@@ -84,10 +105,13 @@ class WhiskeySearchService:
                 ],
                 BillingMode='PAY_PER_REQUEST'
             )
-            print("Created WhiskeySearch table (Japanese only)")
+            self.logger.info("WhiskeySearch table created successfully", 
+                            table_name=self.whiskey_table_name)
             return table
         except Exception as e:
-            print(f"Error creating WhiskeySearch table: {e}")
+            self.logger.error("Error creating WhiskeySearch table", 
+                            table_name=self.whiskey_table_name, 
+                            error=str(e))
             return None
 
     def _serialize_item(self, item: Dict) -> Dict:
@@ -107,7 +131,9 @@ class WhiskeySearchService:
             self.whiskey_table.put_item(Item=whiskey_data)
             return self._serialize_item(whiskey_data)
         except Exception as e:
-            print(f"Error creating whiskey entry: {e}")
+            self.logger.error("Error creating whiskey entry", 
+                            whiskey_name=whiskey_data.get('name', 'unknown'), 
+                            error=str(e))
             raise
 
     def bulk_insert_whiskeys(self, whiskey_list: List[Dict]) -> int:
@@ -125,7 +151,9 @@ class WhiskeySearchService:
                         batch_writer.put_item(Item=whiskey_data)
                         success_count += 1
                 
-                print(f"バッチ {i//batch_size + 1} 完了: {len(batch)}件")
+                self.logger.info("Batch insert completed", 
+                               batch_number=i//batch_size + 1, 
+                               batch_size=len(batch))
                 
             except Exception as e:
                 print(f"バッチ挿入エラー: {e}")
@@ -201,7 +229,9 @@ class WhiskeySearchService:
             
             return unique_results[:limit]
         except Exception as e:
-            print(f"Error searching whiskeys: {e}")
+            self.logger.error("Error searching whiskeys", 
+                            query=query[:50] + "..." if len(query) > 50 else query,
+                            error=str(e))
             return []
 
     def get_whiskey_by_id(self, whiskey_id: str) -> Optional[Dict]:
@@ -210,7 +240,9 @@ class WhiskeySearchService:
             response = self.whiskey_table.get_item(Key={'id': whiskey_id})
             return self._serialize_item(response.get('Item')) if 'Item' in response else None
         except Exception as e:
-            print(f"Error getting whiskey {whiskey_id}: {e}")
+            self.logger.error("Error getting whiskey by ID", 
+                            whiskey_id=whiskey_id,
+                            error=str(e))
             return None
 
     def get_high_confidence_whiskeys(self, confidence_threshold: float = 0.9, limit: int = 100) -> List[Dict]:
