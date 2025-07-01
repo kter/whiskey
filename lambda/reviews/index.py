@@ -21,36 +21,42 @@ def decimal_default(obj):
 
 def get_user_id_from_token(event):
     """
-    Cognito JWT トークンからuser_idを取得
+    Cognito JWT トークンからuser_idを安全に取得
     """
-    # まずAPI Gateway Cognito Authorizerからの情報を確認
-    claims = event.get('requestContext', {}).get('authorizer', {}).get('claims', {})
-    user_id = claims.get('sub')
-    
-    if user_id:
-        return user_id
-    
-    # 手動でJWTトークンを解析する場合
-    auth_header = event.get('headers', {}).get('Authorization') or event.get('headers', {}).get('authorization')
-    if auth_header and auth_header.startswith('Bearer '):
-        token = auth_header.replace('Bearer ', '')
-        # 簡単なJWTデコード（本来はVerifyすべき）
-        import base64
-        try:
-            # JWT payload部分を取得
-            parts = token.split('.')
-            if len(parts) >= 2:
-                payload_part = parts[1]
-                # Base64パディング調整
-                padded = payload_part + '=' * (4 - len(payload_part) % 4)
-                decoded = base64.b64decode(padded)
-                import json
-                payload = json.loads(decoded)
-                return payload.get('sub')
-        except Exception as e:
-            print(f"JWT decode error: {e}")
-    
-    return None
+    try:
+        from jwt_utils import extract_user_id_from_token
+        return extract_user_id_from_token(event)
+    except ImportError:
+        # フォールバック: 古い実装（テスト環境用）
+        print("Warning: Using legacy JWT implementation - should only be used in tests")
+        # まずAPI Gateway Cognito Authorizerからの情報を確認
+        claims = event.get('requestContext', {}).get('authorizer', {}).get('claims', {})
+        user_id = claims.get('sub')
+        
+        if user_id:
+            return user_id
+        
+        # 手動でJWTトークンを解析する場合（危険 - 本番環境では使用禁止）
+        auth_header = event.get('headers', {}).get('Authorization') or event.get('headers', {}).get('authorization')
+        if auth_header and auth_header.startswith('Bearer '):
+            token = auth_header.replace('Bearer ', '')
+            # 簡単なJWTデコード（本来はVerifyすべき）
+            import base64
+            try:
+                # JWT payload部分を取得
+                parts = token.split('.')
+                if len(parts) >= 2:
+                    payload_part = parts[1]
+                    # Base64パディング調整
+                    padded = payload_part + '=' * (4 - len(payload_part) % 4)
+                    decoded = base64.b64decode(padded)
+                    import json
+                    payload = json.loads(decoded)
+                    return payload.get('sub')
+            except Exception as e:
+                print(f"JWT decode error: {e}")
+        
+        return None
 
 
 def get_public_reviews(dynamodb, reviews_table_name, whiskeys_table_name):

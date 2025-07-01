@@ -404,6 +404,8 @@ export class WhiskeyInfraStack extends cdk.Stack {
       environment: {
         REVIEWS_TABLE: reviewsTable.tableName,
         WHISKEYS_TABLE: whiskeysTable.tableName,
+        COGNITO_USER_POOL_ID: userPool.userPoolId,
+        AWS_REGION: this.region,
       },
     });
 
