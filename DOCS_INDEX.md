@@ -12,16 +12,15 @@
 
 | Document | Description | Target Audience |
 |----------|-------------|-----------------|
-| **[COST_OPTIMIZATION.md](./COST_OPTIMIZATION.md)** | コスト最適化分析・サーバーレス移行効果 | 管理者・アーキテクト |
-| **[AWS_SETUP_GUIDE.md](./AWS_SETUP_GUIDE.md)** | AWS環境構築・権限設定 | DevOps・管理者 |
+| **[AWS_SETUP_GUIDE.md](./AWS_SETUP_GUIDE.md)** | AWS環境構築・権限設定 | DevOps・開発者 |
 | **[FRONTEND_BACKEND_INTEGRATION.md](./FRONTEND_BACKEND_INTEGRATION.md)** | フロントエンド・バックエンド統合 | 開発者 |
 
 ## 📊 Data Management
 
 | Document | Description | Target Audience |
 |----------|-------------|-----------------|
-| **[WHISKEY_DATA_MANAGEMENT.md](./WHISKEY_DATA_MANAGEMENT.md)** | 大規模ウイスキーデータ管理・Nova Lite抽出 | データ管理者・開発者 |
-| **[BEDROCK_MODEL_COST_COMPARISON.md](./BEDROCK_MODEL_COST_COMPARISON.md)** | Bedrockモデル比較・コスト分析 | アーキテクト・データサイエンティスト |
+| **[WHISKEY_DATA_MANAGEMENT.md](./WHISKEY_DATA_MANAGEMENT.md)** | ウイスキーデータ管理・AI抽出手順 | 開発者・データ管理者 |
+| **[BEDROCK_MODEL_COST_COMPARISON.md](./BEDROCK_MODEL_COST_COMPARISON.md)** | Bedrockモデル比較・AI抽出手法 | 開発者・データサイエンティスト |
 
 ## 🔧 API & Development
 
@@ -41,18 +40,17 @@
 ### ✅ Completed Features
 
 #### 🏗️ Infrastructure
-- **Serverless Architecture**: 完全サーバーレス移行完了
-- **Cost Optimization**: 64-83% コスト削減達成
+- **Serverless Architecture**: Lambda + API Gateway
 - **Multi-Environment**: dev/prd 環境分離
+- **Infrastructure as Code**: AWS CDK
 
 #### 🔍 Search & Data
-- **Large-scale Data**: 813件の高品質ウイスキーデータ
+- **Database**: 813件のウイスキーデータ
 - **Multi-language Search**: 英語・日本語対応
 - **AI-powered Extraction**: Nova Lite による自動抽出
 
 #### 🚀 Deployment & CI/CD  
 - **GitHub Actions**: 自動デプロイパイプライン
-- **Infrastructure as Code**: AWS CDK
 - **Environment Management**: 環境別設定・デプロイ
 
 ### 🚧 In Progress
@@ -121,18 +119,17 @@ curl "https://api.whiskeybar.site/api/whiskeys/search/?q=%E3%83%9C%E3%82%A6%E3%8
 |--------|-------|-------------|
 | **Whiskey Database** | 813件 | 高品質ウイスキーデータ |
 | **Search Languages** | 2言語 | 英語・日本語対応 |
-| **Cost Reduction** | 64-83% | サーバーレス移行効果 |
 | **API Response** | <200ms | 高速検索レスポンス |
-| **Uptime** | 99.9%+ | サーバーレス高可用性 |
+| **Architecture** | Serverless | Lambda + API Gateway |
 
 ## 🆕 Recent Updates
 
 ### 2025-07-02
-- ✅ **大規模データ投入**: 813件のウイスキーデータを本番投入
-- ✅ **サーバーレス移行**: Lambda + API Gateway 完全移行
-- ✅ **コスト最適化**: 月額$60-120削減達成
+- ✅ **大規模データ投入**: 813件のウイスキーデータベース構築
+- ✅ **サーバーレス移行**: Lambda + API Gateway アーキテクチャ
 - ✅ **多言語検索**: 英語・日本語高精度検索実装
-- ✅ **ドキュメント充実**: 全ドキュメント最新化
+- ✅ **AI抽出パイプライン**: Nova Lite による自動データ抽出
+- ✅ **ドキュメント充実**: 開発者向けドキュメント整備
 
 ### 2025-06-28
 - ✅ 基本インフラ構築

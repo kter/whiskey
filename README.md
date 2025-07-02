@@ -1,10 +1,10 @@
 # Whiskey Tasting App
 
-ウイスキーテイスティング記録アプリケーション - 大規模データ検索対応サーバーレスアーキテクチャ
+ウイスキーテイスティング記録アプリケーション
 
 ## 🏗️ アーキテクチャ
 
-### サーバーレス・マイクロサービス概要（費用最適化済み）
+### システム概要
 
 ```
 ┌─────────────────┐    ┌─────────────────┐
@@ -22,15 +22,16 @@
                      │
        ┌─────────────▼──────────────┐
        │         DynamoDB           │
-       │  (813件+ウイスキーデータ)   │
-       │   多言語検索・高速応答     │
+       │    ウイスキーデータベース    │
+       │     多言語検索対応        │
        └────────────────────────────┘
 ```
 
-### 🆕 大規模データ対応
-- **813件** の本格ウイスキーデータ（楽天API × Nova Lite抽出）
-- **多言語対応**: 英語・日本語での高精度検索
-- **コスト最適化**: 全サーバーレス・従量課金アーキテクチャ
+### 主要機能
+- **813件** のウイスキーデータベース
+- **多言語検索**: 英語・日本語対応
+- **レビュー機能**: ユーザーレビュー・評価
+- **認証**: AWS Cognito + Google OAuth
 
 ### ドメイン構成
 
@@ -42,33 +43,34 @@
 - フロントエンド: `https://whiskeybar.site`
 - API: `https://api.whiskeybar.site`
 
-### 主要AWSサービス（全て従量課金）
+### 使用技術
 
 #### フロントエンド
-- **S3**: 静的サイトホスティング（ストレージ従量）
-- **CloudFront**: CDN・SSL終端（転送量従量）
-- **Route53**: DNS・ドメイン管理（クエリ従量）
+- **Nuxt.js 3**: Vue.js SPAフレームワーク
+- **TypeScript**: 型安全な開発
+- **Tailwind CSS**: ユーティリティファーストCSS
+- **S3 + CloudFront**: 静的サイトホスティング
 
-#### API (サーバーレス)
-- **Lambda**: マイクロサービス実行環境（実行時のみ課金）
+#### バックエンド API
+- **Lambda Functions**: サーバーレスAPI
   - `whiskey-search`: 多言語検索API
   - `whiskey-list`: ウイスキー一覧API  
   - `reviews`: レビュー管理API
-- **API Gateway**: RESTful API（リクエスト従量）
+- **API Gateway**: RESTful API
+- **Python**: Lambda実行環境
 
-#### データ・認証
-- **DynamoDB**: NoSQLデータベース（アクセス従量）
-  - `WhiskeySearch-prd`: 813件検索最適化データ
-  - `Reviews-prd`: ユーザーレビュー
-  - `Users-prd`: ユーザープロファイル
-- **Cognito**: ユーザー認証（MAU従量）
+#### データベース・認証
+- **DynamoDB**: NoSQLデータベース
+  - `WhiskeySearch`: 検索最適化テーブル
+  - `Reviews`: ユーザーレビュー
+  - `Users`: ユーザープロファイル
+- **AWS Cognito**: ユーザー認証・Google OAuth
 - **Secrets Manager**: 機密情報管理
 
-#### 🚫 削除済み高額リソース
-- ❌ **NAT Gateway**: 削除済み（月額$30-45削減）
-- ❌ **Application Load Balancer**: 削除済み（月額$16-25削減）
-- ❌ **ECS Fargate**: 削除済み（月額$15-50削減）
-- ✅ **総削減額**: 月額$60-120の大幅削減達成
+#### インフラ・デプロイ
+- **AWS CDK**: Infrastructure as Code
+- **GitHub Actions**: CI/CD
+- **Docker**: 開発環境
 
 ## 🚀 デプロイ手順
 
@@ -102,20 +104,18 @@ CDKによる自動デプロイ：
 - API Gateway統合も自動設定
 - 環境変数・IAM権限も自動構成
 
-### 4. 大規模データ投入（本番環境）
+### 4. データ管理（必要に応じて）
 
 ```bash
-# 楽天APIからデータ取得（3,037商品）
+# 楽天APIからデータ取得
 python scripts/fetch_rakuten_names_only.py
 
-# Nova Liteでウイスキー名抽出
+# AI抽出でウイスキー名抽出
 python scripts/extract_whiskey_names_nova_lite.py --input-file rakuten_product_names_*.json
 
-# 本番DynamoDBに投入
-ENVIRONMENT=prd python scripts/insert_whiskeys_to_dynamodb.py nova_lite_extraction_results_*.json
+# DynamoDBに投入
+ENVIRONMENT=dev python scripts/insert_whiskeys_to_dynamodb.py nova_lite_extraction_results_*.json
 ```
-
-**実績: 813件のウイスキーデータを本番投入済み**
 
 ## 📁 プロジェクト構成
 
@@ -127,23 +127,23 @@ whiskey/
 │   ├── pages/         # ページコンポーネント
 │   └── plugins/       # プラグイン
 ├── lambda/            # サーバーレスAPI
-│   ├── whiskeys-search/  # 多言語検索Lambda（メイン）
+│   ├── whiskeys-search/  # 多言語検索Lambda
 │   ├── whiskeys-list/    # ウイスキー一覧Lambda
 │   ├── reviews/          # レビュー管理Lambda
 │   └── common/           # 共通ライブラリ
-├── backend/           # 旧Django（開発用・移行済み）
+├── backend/           # 開発・運用支援
 │   └── api/           # DynamoDBサービス（スクリプトで利用）
 ├── infra/             # AWS CDK
-│   ├── lib/           # CDKスタック定義（サーバーレス）
+│   ├── lib/           # CDKスタック定義
 │   ├── config/        # 環境設定
 │   └── scripts/       # デプロイスクリプト
 ├── scripts/           # データ管理・運用スクリプト
-│   ├── archive/       # 過去の手法（アーカイブ済み）
-│   ├── extract_whiskey_names_nova_lite.py  # Nova Lite抽出
-│   ├── insert_whiskeys_to_dynamodb.py      # DynamoDB投入
-│   └── fetch_rakuten_names_only.py         # 楽天API取得
+│   ├── archive/       # 過去手法のアーカイブ
+│   ├── extract_whiskey_names_nova_lite.py  # AI抽出
+│   ├── insert_whiskeys_to_dynamodb.py      # DB投入
+│   └── fetch_rakuten_names_only.py         # データ取得
 └── .github/
-    └── workflows/     # GitHub Actions（サーバーレス対応）
+    └── workflows/     # GitHub Actions CI/CD
 ```
 
 ## 🔧 開発環境
