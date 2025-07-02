@@ -263,16 +263,31 @@ class WhiskeySearchService:
     def delete_all_whiskeys(self) -> bool:
         """全てのウィスキーデータを削除"""
         try:
-            # まずは全てのアイテムを取得
-            response = self.whiskey_table.scan()
-            items = response['Items']
+            deleted_count = 0
             
-            # バッチ削除
-            with self.whiskey_table.batch_writer() as batch:
-                for item in items:
-                    batch.delete_item(Key={'id': item['id']})
+            # ページネーションを考慮して全てのアイテムを取得
+            last_evaluated_key = None
+            while True:
+                if last_evaluated_key:
+                    response = self.whiskey_table.scan(ExclusiveStartKey=last_evaluated_key)
+                else:
+                    response = self.whiskey_table.scan()
+                
+                items = response.get('Items', [])
+                
+                # バッチ削除
+                if items:
+                    with self.whiskey_table.batch_writer() as batch:
+                        for item in items:
+                            batch.delete_item(Key={'id': item['id']})
+                            deleted_count += 1
+                
+                # 次のページがあるか確認
+                last_evaluated_key = response.get('LastEvaluatedKey')
+                if not last_evaluated_key:
+                    break
             
-            print(f"全ウィスキーデータを削除: {len(items)}件")
+            print(f"全ウィスキーデータを削除: {deleted_count}件")
             return True
         except Exception as e:
             print(f"Error deleting all whiskeys: {e}")

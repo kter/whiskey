@@ -1,0 +1,156 @@
+```json
+{
+  "results": [
+    {
+      "product_name": "サントリー ウイスキー 角瓶 2700ml 2.7L 6本",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリー ウイスキー 角瓶",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー 特製 角瓶 5L 業務用 ペット 4本入り",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリー 特製 角瓶",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー 角ハイボール 濃いめ",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリー 角ハイボール",
+          "distillery": "サントリー",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "サントリーウイスキー 『角瓶』700ml 40度",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリーウイスキー 角瓶",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー 角ハイボール 700ml（ウイスキー 角ハイ）",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリー 角ハイボール",
+          "distillery": "サントリー",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー ウイスキー 飲み比べ 3種 3本セット（角瓶 / トリスクラシック / ジムビーム）",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリー ウイスキー 角瓶",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        },
+        {
+          "name": "サントリー トリスクラシック",
+          "distillery": "サントリー",
+          "confidence": 0.9
+        },
+        {
+          "name": "ジムビーム",
+          "distillery": "Jim Beam",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "角瓶 40度 700ml （箱なし） サントリーウイスキー",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリーウイスキー 角瓶",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー 角瓶 40度 1920ml 6本 ケース販売",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリー 角瓶",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー 角ハイボール缶 500ml缶×2ケース（48本）",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリー 角ハイボール",
+          "distillery": "サントリー",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "角瓶 700ml サントリー ウイスキー",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリー ウイスキー 角瓶",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー 角ハイボール缶 500ml缶×1ケース（24缶）",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリー 角ハイボール",
+          "distillery": "サントリー",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "角瓶 サントリーウイスキー 角瓶2700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリーウイスキー 角瓶",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー 角瓶 700ml ブレンデッド 国産ウイスキー 40度",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリー 角瓶",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリーウイスキー角瓶 700ml瓶　2本セット",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリーウイスキー 角瓶",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    }
+  ]
+}
+```

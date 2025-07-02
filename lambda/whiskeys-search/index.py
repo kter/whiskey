@@ -151,7 +151,8 @@ def create_response(status_code, body, headers, start_time=None, logger=None):
 
 def transform_whiskey_item(item, schema_type='new'):
     """DynamoDBアイテムを統一フォーマットに変換"""
-    if schema_type == 'new' or 'name' in item:
+    if schema_type == 'new' and 'name' in item:
+        # 旧スキーマ（単一言語）
         return {
             'id': item.get('id'),
             'name': item.get('name', ''),
@@ -165,15 +166,33 @@ def transform_whiskey_item(item, schema_type='new'):
             'created_at': item.get('created_at'),
             'updated_at': item.get('updated_at')
         }
-    else:  # 旧スキーマ
+    elif 'name_ja' in item or 'name_en' in item:
+        # 新しいバイリンガルスキーマ
         return {
             'id': item.get('id'),
-            'name': item.get('name_en') or item.get('name_ja'),
+            'name': item.get('name_ja') or item.get('name_en', ''),
             'name_en': item.get('name_en', ''),
             'name_ja': item.get('name_ja', ''),
-            'distillery': item.get('distillery_en') or item.get('distillery_ja'),
+            'distillery': item.get('distillery_ja') or item.get('distillery_en', ''),
             'region': item.get('region', ''),
             'type': item.get('type', ''),
+            'confidence': float(item.get('confidence', 0)),
+            'source': item.get('source', ''),
+            'created_at': item.get('created_at'),
+            'updated_at': item.get('updated_at')
+        }
+    else:
+        # フォールバック
+        return {
+            'id': item.get('id'),
+            'name': '',
+            'name_en': '',
+            'name_ja': '',
+            'distillery': '',
+            'region': item.get('region', ''),
+            'type': item.get('type', ''),
+            'confidence': float(item.get('confidence', 0)),
+            'source': item.get('source', ''),
             'created_at': item.get('created_at'),
             'updated_at': item.get('updated_at')
         }

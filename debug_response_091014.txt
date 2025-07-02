@@ -1,0 +1,206 @@
+```json
+{
+  "results": [
+    {
+      "product_name": "ジャックダニエル ブラック 40度 1L 1000ml あす楽対応 [BF テネシーウイスキー アメリカ 44941]",
+      "extracted_whiskeys": [
+        {
+          "name": "ジャックダニエル ブラック",
+          "distillery": "ジャックダニエル",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ジャックダニエル メールボックス 40度 700ml［並行輸入品］【アメリカ テネシー ウイスキー ギフト 贈り物 父の日】",
+      "extracted_whiskeys": [
+        {
+          "name": "ジャックダニエル メールボックス",
+          "distillery": "ジャックダニエル",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ジャック ダニエル シングルバレル　45％　700ml[ウイスキー][御歳暮 贈り物 御礼 母の日 父の日 御中元]",
+      "extracted_whiskeys": [
+        {
+          "name": "ジャック ダニエル シングルバレル",
+          "distillery": "ジャックダニエル",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "名入れ 酒 ウイスキー ジャックダニエル 700ml 好きな写真で作れる 指名手配書 写真入り 名入れラベル WANTED ウォンテッド 名前入り ギフト 男性 女性 誕生日 プレゼント 結婚祝い 還暦祝い 古希 退職祝い 開店祝い お祝い 贈り物 父の日",
+      "extracted_whiskeys": [
+        {
+          "name": "ジャックダニエル",
+          "distillery": "ジャックダニエル",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ジャックダニエル ブラック 40度 1.75L 1750ml 送料無料(沖縄対象外) [BF バーボン テネシー ウイスキー アメリカ JACK DANIEL'S 44951] ギフト プレゼント 母の日 父の日 お中元 御中元",
+      "extracted_whiskeys": [
+        {
+          "name": "ジャックダニエル ブラック",
+          "distillery": "ジャックダニエル",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【全品P3倍 6/30～7/1限定】送料無料 ジャックダニエル ブラック 40度 1750ml×6本 1ケース ウイスキー バーボン アメリカ テネシー ブラウンフォーマン RSL",
+      "extracted_whiskeys": [
+        {
+          "name": "ジャックダニエル ブラック",
+          "distillery": "ジャックダニエル",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ジャックダニエル レガシー第3弾 700ml 43度 エディション3 Jack Daniel Legacy 1905 Edition テネシーウイスキー Tennessee Whiskey アメリカンウイスキー American バーボンウイスキー Bourbon Whisky ケンタッキー州 USA アメリカ kawahc",
+      "extracted_whiskeys": [
+        {
+          "name": "ジャックダニエル レガシー第3弾",
+          "distillery": "ジャックダニエル",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【ギフト対応可】ジャックダニエル ブラック 並行品 40度700ml テネシーウイスキー 洋酒 ウイスキー お酒 ギフト プレゼント 飲み比べ 内祝い 誕生日 男性 女性 お中元 父の日",
+      "extracted_whiskeys": [
+        {
+          "name": "ジャックダニエル ブラック",
+          "distillery": "ジャックダニエル",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ウイスキー　ジャックダニエル シングルバレル 100プルーフ 700ml (71357)　洋酒 Whisky(21-4)",
+      "extracted_whiskeys": [
+        {
+          "name": "ジャックダニエル シングルバレル",
+          "distillery": "ジャックダニエル",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ジャックダニエル ブラック 40度 1L 1000ml 送料無料(沖縄対象外) あす楽対応 [BF テネシーウイスキー アメリカ 44941]",
+      "extracted_whiskeys": [
+        {
+          "name": "ジャックダニエル ブラック",
+          "distillery": "ジャックダニエル",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ジャックダニエル ブラック 40度 700ml あす楽対応 [BF テネシーウイスキー アメリカ 44938]",
+      "extracted_whiskeys": [
+        {
+          "name": "ジャックダニエル ブラック",
+          "distillery": "ジャックダニエル",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ジャックダニエル テネシー ハニー 700ml 35度 正規品 Jack Daniel`s Tennessee Honey テネシーウイスキー tennessee Whiskey 送って嬉しい kawahc お礼 御礼 ホワイトデー贈って喜ばれるプレゼント ギフト プチギフトにオススメ",
+      "extracted_whiskeys": [
+        {
+          "name": "ジャックダニエル テネシー ハニー",
+          "distillery": "ジャックダニエル",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【全品P3倍＆300円OFFクーポン配布(6/30～7/2 10時迄)】送料無料 ジムビーム 4000ml×4本ケース販売 4L バーボン アメリカン [ウイスキー][ウィスキー][RSL]酒類スタンプラリーP最大5倍対象",
+      "extracted_whiskeys": [
+        {
+          "name": "ジムビーム",
+          "distillery": "ジムビーム",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【全品P3倍＆300円OFFクーポン配布(6/30～7/2 10時迄)】送料無料 ジムビーム 正規 700ml×12本 40度ジンビーム ジム・ビーム ウイスキー バーボン ホワイト Jim Beam RSL酒類スタンプラリーP最大5倍対象",
+      "extracted_whiskeys": [
+        {
+          "name": "ジムビーム",
+          "distillery": "ジムビーム",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー ハイボール ジムビームハイボール 缶( 350ml×24本)【ジムビーム(ジム ビーム)】",
+      "extracted_whiskeys": [
+        {
+          "name": "ジムビーム",
+          "distillery": "ジムビーム",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリーズウイスキー ジムビーム(4000ml)",
+      "extracted_whiskeys": [
+        {
+          "name": "ジムビーム",
+          "distillery": "ジムビーム",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【全品P3倍 6/30～7/1限定】送料無料 ジムビーム 4000ml×4本ケース販売 4L バーボン アメリカン [ウイスキー][ウィスキー] [RSL]",
+      "extracted_whiskeys": [
+        {
+          "name": "ジムビーム",
+          "distillery": "ジムビーム",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー ハイボール ジムビームハイボール 缶(500ml*48本セット)【ジムビーム(ジム ビーム)】",
+      "extracted_whiskeys": [
+        {
+          "name": "ジムビーム",
+          "distillery": "ジムビーム",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー ハイボール ジムビームハイボール 缶(350ml×48本セット)【ジムビーム(ジム ビーム)】",
+      "extracted_whiskeys": [
+        {
+          "name": "ジムビーム",
+          "distillery": "ジムビーム",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "[送無][セット12]ジムビーム 40度 700ml×12本 バーボン サントリー 送料無料【 お酒 ウイスキー ウィスキー ギフト ボンウイスキー 蒸留酒 誕生日 内祝 大容量 御祝 セット 祝い 酒ギフト 記念日 プレゼント お礼 飲み会 祝い酒 洋酒 】【ワインならリカオー]",
+      "extracted_whiskeys": [
+        {
+          "name": "ジムビーム",
+          "distillery": "ジムビーム",
+          "confidence": 0.95
+        }
+      ]
+    }
+  ]
+}
+```

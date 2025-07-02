@@ -1,0 +1,180 @@
+```json
+{
+  "results": [
+    {
+      "product_name": "ハイニッカ 39度 箱なし 720ml 正規 ニッカ ウイスキー",
+      "extracted_whiskeys": [
+        {
+          "name": "ハイニッカ",
+          "distillery": "ニッカ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ニッカ ウイスキー ニッカ デイズ ブレンデッド ウイスキー 40度 箱付 700ml 並行 1梱包6本まで同梱可能 包装不可",
+      "extracted_whiskeys": [
+        {
+          "name": "ニッカ デイズ ブレンデッド ウイスキー",
+          "distillery": "ニッカ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ニッカブランデー XO デラックス 白40度 660ml 箱なし 【 ブランデー お酒 ブランディー nikka ニッカ 誕生日 蒸留酒 ひとり呑み 晩酌 家飲み 記念日 美味しいお酒 さけ 祝い 自宅用 家庭用 宅飲み 飲み会 ひとり飲み 洋酒 】【ワインならリカオー】",
+      "extracted_whiskeys": []
+    },
+    {
+      "product_name": "【送料無料】ザ・ニッカ 700ml 【カタログ掲載品】【他商品同時購入不可]",
+      "extracted_whiskeys": [
+        {
+          "name": "ザ・ニッカ",
+          "distillery": "ニッカ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【箱付 正規品】ニッカ ハイニッカ マイルド ブレンデッド ウイスキー ニッカウイスキ ジャパニーズ ウイスキー 720ml 39％ ハードリカーNIKKA HI NIKKA MALT BLENDED WHISKY NIKKA WHISKY JAPANESE WHISKY 720 39%",
+      "extracted_whiskeys": [
+        {
+          "name": "ハイニッカ マイルド ブレンデッド ウイスキー",
+          "distillery": "ニッカ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【海外流通逆輸入品】 ニッカ フロム ザ バレル 箱無し 51.4度 500ml",
+      "extracted_whiskeys": [
+        {
+          "name": "ニッカ フロム ザ バレル",
+          "distillery": "ニッカ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ウイスキー　ニッカ ザ ニッカ テイラード 箱無 700ml (14036)　洋酒 Whisky(80-0)",
+      "extracted_whiskeys": [
+        {
+          "name": "ニッカ ザ ニッカ テイラード",
+          "distillery": "ニッカ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【7/1(火)全品P2倍】ニッカ ブラックニッカ スペシャル 42度 720ml_[リカーズベスト]_[全品ヤマト宅急便配送]",
+      "extracted_whiskeys": [
+        {
+          "name": "ブラックニッカ スペシャル",
+          "distillery": "ニッカ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "7/1は食フェス300円OFFクーポン取得可 【最強配送】 【送料無料】アサヒ ブラックニッカ リッチブレンド 700ml×1ケース/12本【北海道・沖縄県・東北・四国・九州地方は必ず送料がかかります】",
+      "extracted_whiskeys": [
+        {
+          "name": "ブラックニッカ リッチブレンド",
+          "distillery": "ニッカ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "NIKKA DAYS ニッカ デイズ 700ml 40度 海外限定 ジャパニーズ ブレンデッド ウイスキー ニッカウヰスキー 箱入り 箱付き 洋酒",
+      "extracted_whiskeys": [
+        {
+          "name": "ニッカ デイズ",
+          "distillery": "ニッカ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ニッカ フロンティア 48度 500ml",
+      "extracted_whiskeys": [
+        {
+          "name": "ニッカ フロンティア",
+          "distillery": "ニッカ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ブラックニッカ リッチ ブレンド ニッカウイスキー ブレンデット ウイスキー 正規 700ml 40％ ハードリカーBLACK NIKKA RICH BLEND NIKKA WHISKY　BLEND WHISKY 700ml 40%",
+      "extracted_whiskeys": [
+        {
+          "name": "ブラックニッカ リッチ ブレンド",
+          "distillery": "ニッカ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【ふるさと納税】ニッカ　セッション≪ウイスキー 酒 洋酒 お祝い 誕生日 プレゼント ギフト≫",
+      "extracted_whiskeys": [
+        {
+          "name": "ニッカ セッション",
+          "distillery": "ニッカ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【正規品 オリジナルフロート付き】スーパーニッカ ブレンデッド ウイスキー ニッカウイスキー 700ml 43％ 正規 ハードリカーSUPER NIKKA BLENDED WHISKY NIKKA WHISKY 700ml 43%",
+      "extracted_whiskeys": [
+        {
+          "name": "スーパーニッカ ブレンデッド ウイスキー",
+          "distillery": "ニッカ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【正規品】ニッカ ハイニッカ マイルド ブレンデッド ウイスキー ニッカウイスキ ジャパニーズ ウイスキー 720ml 39％NIKKA HI NIKKA MALT BLENDED WHISKY NIKKA WHISKY JAPANESE WHISKY 720 39%",
+      "extracted_whiskeys": [
+        {
+          "name": "ハイニッカ マイルド ブレンデッド ウイスキー",
+          "distillery": "ニッカ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【正規品】ニッカ カフェ ウォッカ ニッカウイスキー 正規代理店品 700ml 40％ ハードリカー (カフェ ジン) カフェ式NIKKA COFFEY VODKA NIKKA WHISKY 700ml 40%",
+      "extracted_whiskeys": [
+        {
+          "name": "ニッカ カフェ ウォッカ",
+          "distillery": "ニッカ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【送料無料】【正規品 1440ml】ブラックニッカ スペシャル ニッカウイスキー 1440ml×6本 ケース 6本入り 正規代理店輸入品 ジャパニーズウイスキー 1440ml 42％BLACK NIKKA SPECIAL NIKKA WHISKY JAPANESE WHISKY 1440ml 42%",
+      "extracted_whiskeys": [
+        {
+          "name": "ブラックニッカ スペシャル",
+          "distillery": "ニッカ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "送料無料 正規品 ニッカ 90周年記念ウイスキー NIKKADISCOVERY シリーズ 4シリーズ完全版計6本 ニッカウイスキー",
+      "extracted_whiskeys": [
+        {
+          "name": "ニッカ 90周年記念ウイスキー",
+          "distillery": "ニッカ",
+          "confidence": 0.95
+        }
+      ]
+    }
+  ]
+}
+```

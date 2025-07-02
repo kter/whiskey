@@ -1,0 +1,206 @@
+```json
+{
+  "results": [
+    {
+      "product_name": "ロー＆コー アイリッシュウイスキー 45度 700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "R&C Irish Whiskey",
+          "distillery": "R&C Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "ヒンチ 5年 ダブルウッド アイリッシュウイスキー 43度 700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "Hinton 5 Year Old Double Wood Irish Whiskey",
+          "distillery": "Hinton Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "バスカー シングルモルト アイリッシュウイスキー 44.3％ 700ml 限定品 ウイスキー",
+      "extracted_whiskeys": [
+        {
+          "name": "Busker Single Malt Irish Whiskey",
+          "distillery": "Busker Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "ティーリング スモールバッチ ラムカスク フィニッシュ ブレンデッド アイリッシュウイスキー 46度 700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "Teeling Small Batch Rum Cask Finish Blended Irish Whiskey",
+          "distillery": "Teeling Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "ピアース クーパーズ セレクト シェリー カスク フィニッシュ アイリッシュウイスキー 42度 700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "Pearce Cooper's Select Sherry Cask Finish Irish Whiskey",
+          "distillery": "Pearce Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "ジェムソン アイリッシュ 40％ 700ml アイリッシュウイスキー 正規輸入品",
+      "extracted_whiskeys": [
+        {
+          "name": "Jameson Irish Whiskey",
+          "distillery": "Jameson Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "ティーリング・スモールバッチ　ラムカスク　46度　700ml　【正規輸入品】【アイリッシュウイスキー】",
+      "extracted_whiskeys": [
+        {
+          "name": "Teeling Small Batch Rum Cask Irish Whiskey",
+          "distillery": "Teeling Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "ディングル シングルモルト バッチ No.6 アイリッシュウイスキー 46.5度 700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "Dingle Single Malt Batch No.6 Irish Whiskey",
+          "distillery": "Dingle Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【送料無料※一部地域除く】 ブッシュミルズ シングルモルト12年 アイリッシュウイスキー 700ml 40度 6本 1ケース 正規品 箱なし",
+      "extracted_whiskeys": [
+        {
+          "name": "Bushmills 12 Year Old Single Malt Irish Whiskey",
+          "distillery": "Bushmills Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "クロナキルティ ダブルオーク シングルバッチ ダブルオーク ブレンデッド アイリッシュウイスキー 43.6度 700ml 箱付 正規品 アイルランド ^YCCKDOJ0^",
+      "extracted_whiskeys": [
+        {
+          "name": "Cronagort Double Oak Single Batch Double Oak Blended Irish Whiskey",
+          "distillery": "Cronagort Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "ライターズティアーズ コッパーポット 40％ 700ml アイリッシュウイスキー",
+      "extracted_whiskeys": [
+        {
+          "name": "Writer's Tears Copper Pot Irish Whiskey",
+          "distillery": "Writer's Tears Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "ブッシュミルズ シングルモルト10年 アイリッシュウイスキー 700ml 40度 1本 正規品 箱なし",
+      "extracted_whiskeys": [
+        {
+          "name": "Bushmills 10 Year Old Single Malt Irish Whiskey",
+          "distillery": "Bushmills Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "バスカー シングルモルト アイリッシュウイスキー 44.3％ 700ml[ウイスキー][御歳暮 贈り物 御礼 母の日 父の日 御中元]",
+      "extracted_whiskeys": [
+        {
+          "name": "Busker Single Malt Irish Whiskey",
+          "distillery": "Busker Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【正規品アイリッシュブレンデッドウイスキー】ギフト『シンリジィ アイリッシュウイスキー 700ml箱なし』母の日 父の日 敬老の日 誕生日プレゼント御中元 暑中見舞い 御歳暮 御年賀御結婚御祝 内祝 昇進御祝 就任御祝 退職祝い",
+      "extracted_whiskeys": [
+        {
+          "name": "Sinnidhi Irish Whiskey",
+          "distillery": "Sinnidhi Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "ブッシュミルズ/Bushmills ビン・瓶 アイルランド 700ml 40.0% アイリッシュウイスキー ハイボールにおすすめ 12本セット 1箱 業務用 飲食店におすすめ プロ向け 送料無料※別途送料北海道・九州330円、沖縄770円※",
+      "extracted_whiskeys": [
+        {
+          "name": "Bushmills Bottle Irish Whiskey",
+          "distillery": "Bushmills Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【送料無料】ティーリング ブラックピッツ 700ml シングルモルト アイリッシュウイスキー 46度 S 箱付",
+      "extracted_whiskeys": [
+        {
+          "name": "Teeling Black Pig's Irish Whiskey",
+          "distillery": "Teeling Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "ブッシュミルズ ポートカスクリザーヴ スチームシップ コレクション 700ml 40度 箱付 bushmills The Steamship Collection port cask reserve Single Malt Irish Whiskey アイリッシュウイスキー あす楽対応 帰省のお礼 御礼ギフト kawahc ※おひとり様1本限り",
+      "extracted_whiskeys": [
+        {
+          "name": "Bushmills Port Cask Reserve The Steamship Collection Irish Whiskey",
+          "distillery": "Bushmills Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "ブッシュミルズ 10年 シェリーカスクフィニッシュ 1000ml 46度 箱付 bushmills Sherry Cask Finish Irish Single Malt Whiskey アイリッシュウイスキー イギリス英国アイルランド kawahc",
+      "extracted_whiskeys": [
+        {
+          "name": "Bushmills 10 Year Sherry Cask Finish Irish Single Malt Whiskey",
+          "distillery": "Bushmills Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【ワンランク上のスモールバッチシリーズ】 ロイヤルオーク バスカー スモールバッチ シングルポットスチル バッチ2 アイリッシュウイスキー 46.3度 700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "Royal Oak Busker Small Batch Single Pot Still Batch 2 Irish Whiskey",
+          "distillery": "Royal Oak Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【送料無料※一部地域除く】 ブッシュミルズ オリジナル アイリッシュウイスキー 700ml 40度 12本 1ケース 正規品 箱なし",
+      "extracted_whiskeys": [
+        {
+          "name": "Bushmills Original Irish Whiskey",
+          "distillery": "Bushmills Distillery",
+          "confidence": 0.9
+        }
+      ]
+    }
+  ]
+}
+```

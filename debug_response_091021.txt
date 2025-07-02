@@ -1,0 +1,166 @@
+```json
+{
+  "results": [
+    {
+      "product_name": "サントリー ウイスキー ジムビーム デビルズカット(700ml)【ジムビーム(ジム ビーム)】",
+      "extracted_whiskeys": [
+        {
+          "name": "Jim Beam Devil's Cut",
+          "distillery": "Jim Beam",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー ウイスキー ジムビーム ライ(700ml)【ジムビーム(ジム ビーム)】",
+      "extracted_whiskeys": [
+        {
+          "name": "Jim Beam Rye",
+          "distillery": "Jim Beam",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー ジムビーム 4L ペット 4000ml×4本(1ケース) ハイボール ジムハイ バーボン ウイスキー アメリカ【送料無料※一部地域は除く】",
+      "extracted_whiskeys": [
+        {
+          "name": "Jim Beam Bourbon",
+          "distillery": "Jim Beam",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ジムビーム 4l 40度 [PET] 4L 4000ml × 4本[ケース販売] 送料無料(沖縄対象外) 最強配送 [ウイスキー バーボン Jim Beam White アメリカ サントリー] ギフト プレゼント 母の日 父の日 お中元 御中元",
+      "extracted_whiskeys": [
+        {
+          "name": "Jim Beam White",
+          "distillery": "Jim Beam",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー ジムビーム ハイボール 350ml 缶 24本×2ケース（48本）【送料無料（一部地域除く）】 サントリービール",
+      "extracted_whiskeys": [
+        {
+          "name": "Jim Beam Highball",
+          "distillery": "Jim Beam",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "＼終了間近／★800円OFF食フェスクーポン 【本州のみ 送料無料】ウイスキー 1本 4l バーボン サントリー ジムビーム 4L 4000ml×1本『OMS』",
+      "extracted_whiskeys": [
+        {
+          "name": "Jim Beam Bourbon",
+          "distillery": "Jim Beam",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ジムビーム 40度 700ml 箱なし 【 ウィスキー バーボン バーボンウイスキー お酒 ウイスキー バーボンウィスキー 誕生日 蒸留酒 酒 晩酌 歓迎会 家飲み 記念日 美味しいお酒 祝い 自宅用 家庭用 宅飲み ひとり呑み 飲み会 ひとり飲み 洋酒 】【ワインならリカオー】",
+      "extracted_whiskeys": [
+        {
+          "name": "Jim Beam Bourbon",
+          "distillery": "Jim Beam",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー ウイスキー ジムビーム ダブルオーク(700ml)【ジムビーム(ジム ビーム)】",
+      "extracted_whiskeys": [
+        {
+          "name": "Jim Beam Double Oak",
+          "distillery": "Jim Beam",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ウイスキー ジムビーム 4000ml 4L PET 4000ml 4L 2本 のし・ギフト対応不可",
+      "extracted_whiskeys": [
+        {
+          "name": "Jim Beam Bourbon",
+          "distillery": "Jim Beam",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ジムビーム 4l 40度 [PET] 4L 4000ml × 4本[ケース販売] 送料無料(沖縄対象外) 最強配送 [ウイスキー 40度 アメリカ サントリー] ギフト プレゼント 母の日 父の日 お中元",
+      "extracted_whiskeys": [
+        {
+          "name": "Jim Beam Bourbon",
+          "distillery": "Jim Beam",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー ジムビーム ハイボール 500ml 缶 24本 1ケース【送料無料（一部地域除く）】 サントリービール",
+      "extracted_whiskeys": [
+        {
+          "name": "Jim Beam Highball",
+          "distillery": "Jim Beam",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【送料無料】【正規品 2700ml】ジムビーム バーボン ウイスキー 2700ml×6本 ケース[6本入り] ケンタッキー ジェームズ ビーム 2700ml(2.7L) 40％ ハードリカー",
+      "extracted_whiskeys": [
+        {
+          "name": "Jim Beam Bourbon",
+          "distillery": "Jim Beam",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "7/1は食フェス300円OFFクーポン取得可 【最強配送】【送料無料】サントリー ジムビーム ハイボール 350ml×2ケース/48本【北海道・東北・四国・九州・沖縄県は必ず送料がかかります】SUNTORY'S WHISKY Jim Beam ウイスキー",
+      "extracted_whiskeys": [
+        {
+          "name": "Jim Beam Highball",
+          "distillery": "Jim Beam",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【送料無料/12本セット】ジムビーム バーボン ウイスキー 1000ml×12本 ケース [12本入り] 正規 ケンタッキー ジェームズ ビーム 40％ ハードリカー",
+      "extracted_whiskeys": [
+        {
+          "name": "Jim Beam Bourbon",
+          "distillery": "Jim Beam",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【正規品】ジムビーム ライ ウイスキー ケンタッキー ウイスキー ジェームズ ビーム 700ml 40％ ハードリカーJIM BEAM RYE WHISKY KENTUCKY WHISKY JAMES BEAM 700ml 40％【wineuki_JBR】",
+      "extracted_whiskeys": [
+        {
+          "name": "Jim Beam Rye",
+          "distillery": "Jim Beam",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【全品P3倍 6/30～7/1限定】送料無料 ジムビーム 4000ml×4本ケース販売 4L バーボン アメリカン [ウイスキー][ウィスキー] [RSL]酒類スタンプラリーP最大5倍対象",
+      "extracted_whiskeys": [
+        {
+          "name": "Jim Beam Bourbon",
+          "distillery": "Jim Beam",
+          "confidence": 0.95
+        }
+      ]
+    }
+  ]
+}
+```

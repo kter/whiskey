@@ -1,0 +1,206 @@
+```json
+{
+  "results": [
+    {
+      "product_name": "グレンターナー シェリーカスク フィニッシュ シングルモルト スコッチ ウイスキー 40度 正規 箱付 700ml 包装不可",
+      "extracted_whiskeys": [
+        {
+          "name": "Glenturret",
+          "distillery": "Glenturret Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【全品P3倍 6/30～7/1限定】送料無料 スコッチシングルモルトウイスキー 2本入り ウィスキー プロフェッショナル 厳選 8本セット 第47弾 スコッチ 飲み比べ 家飲み 長S",
+      "extracted_whiskeys": [
+        {
+          "name": "Scotch Single Malt Whisky",
+          "distillery": "Various",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【全品P3倍＆300円OFFクーポン配布(6/30～7/2 10時迄)】グレンジストン シェリーカスク 750ml シングルモルト ウイスキー スコッチ [ウイスキー][ウィスキー][長S]",
+      "extracted_whiskeys": [
+        {
+          "name": "Glengyle",
+          "distillery": "Glengyle Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "アイリーク 700ml 40度 箱付 THE ILEACH アイラモルト シングルモルト Islay Single Malt Scotch Whisky IslayMalt イギリス英国スコットランド産 送って嬉しい kawahc お礼 御礼 ホワイトデー贈って喜ばれるプレゼント ギフト プチギフトにオススメ",
+      "extracted_whiskeys": [
+        {
+          "name": "The Ileach",
+          "distillery": "Glen Scotia Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ブッシュミルズ シングルモルト12年 瓶(700ml)【ブッシュミルズ】",
+      "extracted_whiskeys": [
+        {
+          "name": "Bushmills",
+          "distillery": "Bushmills Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "グレンドロナック ハイランド シングルモルト スコッチウイスキー 12年 43度 正規 箱付 700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "GlenDronach",
+          "distillery": "GlenDronach Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "グレンフィディック 15年 ソレラリザーブ シングルモルト スコッチウイスキー 40度 正規 箱付 700ml 包装不可",
+      "extracted_whiskeys": [
+        {
+          "name": "Glenfiddich",
+          "distillery": "Glenfiddich Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ポール ジョン ニルヴァーナ インディアン シングルモルト ウイスキー 40度 正規 箱付 700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "Paul John Nirvana Indian",
+          "distillery": "Unknown",
+          "confidence": 0.85
+        }
+      ]
+    },
+    {
+      "product_name": "【お一人様3本限り】サントリー シングルモルトウイスキー 白州 NV 43度 箱付 700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "Suntory Hakushu",
+          "distillery": "Suntory Hakushu Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "タムナヴーリン シェリーカスク スペイサイド シングルモルト スコッチ ウイスキー 40度 並行 箱付 700ml 包装不可",
+      "extracted_whiskeys": [
+        {
+          "name": "Tamnavulin",
+          "distillery": "Tamnavulin Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "スモークヘッド アイラ シングルモルト 43度 箱付 700ml 正規",
+      "extracted_whiskeys": [
+        {
+          "name": "Smokehead",
+          "distillery": "Glen Ord Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【7/1(火)全品P2倍】並行品 カネマラシングルモルト 700ml_[リカーズベスト]_[全品ヤマト宅急便配送]",
+      "extracted_whiskeys": [
+        {
+          "name": "Kanemore Single Malt",
+          "distillery": "Unknown",
+          "confidence": 0.85
+        }
+      ]
+    },
+    {
+      "product_name": "【企画品】シングルモルト ウイスキー ザ・マッカラン シェリーオーク 12年(700ml)【サントリー】[スコッチ マッカラン12年 マッカラン シェリー]",
+      "extracted_whiskeys": [
+        {
+          "name": "The Macallan Sherry Oak",
+          "distillery": "The Macallan Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ウイスキー　スカラバス アイラ シングルモルト スコッチ ウイスキー 700ml (79910)　洋酒 Whisky(74-2)",
+      "extracted_whiskeys": [
+        {
+          "name": "Scapa",
+          "distillery": "Scapa Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【箱に小傷あり】【正規品 箱入】ラガヴーリン 16年 アイラ シングル モルト スコッチ ウイスキー 700ml 43％LAGAVULIN AGED [16] YEARS SINGLE ISLAY MALT WHISKY 700ml 43%",
+      "extracted_whiskeys": [
+        {
+          "name": "Lagavulin",
+          "distillery": "Lagavulin Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ウイスキー セット 詰め合わせ 飲み比べ 送料無料 シングルトン ダフタウン12年 グレンフィディック12年 ロッホローモンド12年 シングルモルトウィスキー12年熟成 3本セット長Sドリンク 酒",
+      "extracted_whiskeys": [
+        {
+          "name": "Singleton Dufftown 12 Year",
+          "distillery": "Singleton Distillery",
+          "confidence": 0.9
+        },
+        {
+          "name": "Glenfiddich 12 Year",
+          "distillery": "Glenfiddich Distillery",
+          "confidence": 0.9
+        },
+        {
+          "name": "Loch Lomond 12 Year",
+          "distillery": "Loch Lomond Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "シングルモルトウイスキー ボウモア12年 700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "Bowmore",
+          "distillery": "Bowmore Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "[正規品 箱入]グレンモーレンジ キンタ ルバン[14]年 ポートカスクフィニッシュ ハイランド シングル モルト スコッチ ウイスキー 700ml 46％",
+      "extracted_whiskeys": [
+        {
+          "name": "Glenmorangie Quinta Ruban",
+          "distillery": "Glenmorangie Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【シングルモルト】ケイデンヘッドグレントファーズ　2009Y’Sカスク57.5°　スペイサイド　＜700ml＞在庫限り",
+      "extracted_whiskeys": [
+        {
+          "name": "Cadenhead Glenfarclas 2009",
+          "distillery": "Cadenhead Distillery",
+          "confidence": 0.9
+        }
+      ]
+    }
+  ]
+}
+```

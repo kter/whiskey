@@ -1,0 +1,236 @@
+```json
+{
+  "results": [
+    {
+      "product_name": "ボウモア 12年 700mlwhisky_YBW12 ウイスキー スコッチ シングルモルト アイラ 長S",
+      "extracted_whiskeys": [
+        {
+          "name": "Bowmore 12年",
+          "distillery": "Bowmore",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ボウモア 12年 40％ 700ml[ウイスキー][御歳暮 贈り物 御礼 母の日 父の日 御中元]",
+      "extracted_whiskeys": [
+        {
+          "name": "Bowmore 12年",
+          "distillery": "Bowmore",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【量り売り】ボウモア 18年　43度　30ml　ウイスキー　お試し　アイラ",
+      "extracted_whiskeys": [
+        {
+          "name": "Bowmore 18年",
+          "distillery": "Bowmore",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "高級ウイスキー3本セット　響ジャパニーズ ハーモニー43度、ボウモア12年40度、ボウモア15年43度700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "Bowmore 12年",
+          "distillery": "Bowmore",
+          "confidence": 0.95
+        },
+        {
+          "name": "Bowmore 15年",
+          "distillery": "Bowmore",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ボウモア 12年 40% 700ml箱付 シングルモルト スコッチ ウイスキー 正規品ギフト対応可 ラッピング 熨斗 誕生日 プレゼント お祝い [[wrap04]",
+      "extracted_whiskeys": [
+        {
+          "name": "Bowmore 12年",
+          "distillery": "Bowmore",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【送料無料】ボウモア 15年 ゴールデン＆エレガント 1000ml シングルモルト ウイスキー 43度 H 箱付",
+      "extracted_whiskeys": [
+        {
+          "name": "Bowmore 15年 ゴールデン＆エレガント",
+          "distillery": "Bowmore",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ボウモア 10年 ダーク＆インテンス 1000ml 40度 箱付 Bowmore 10Year Old Dark and Intense Travel Exclusive【ボウモア蒸留所】アイラモルト シングルモルト アイラウイスキーウヰスキーウィスキー IslayMalt SingleMalt Scotch Whisky イギリス英国スコットランド産 kawahc",
+      "extracted_whiskeys": [
+        {
+          "name": "Bowmore 10年 ダーク＆インテンス",
+          "distillery": "Bowmore",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【量り売り】ボウモア 15年 ゴールデン＆エレガント　43度　30ml　ウイスキー　お試し　アイラ",
+      "extracted_whiskeys": [
+        {
+          "name": "Bowmore 15年 ゴールデン＆エレガント",
+          "distillery": "Bowmore",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【海のシングルモルト】ギフト ボウモア 12年 700ml 40度 ギフトボックス アイラ シングルモルト ギフト 贈り物 贈答用 プレゼント ギフトボックス入り 包装済み 父の日 送料無料",
+      "extracted_whiskeys": [
+        {
+          "name": "Bowmore 12年",
+          "distillery": "Bowmore",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ウィスキーの棚・6限目 ウィスキー聖地 アイラ島のシングルモルト飲み比べセット （ おうちでBar体験 + セミナー動画 ） 単品プラン ボウモア ラフロイグ アードベッグ カリラ キルホーマン ブルイックラディ セミナー 動画付き 美味しく 学べる おうちで BAR 体験 50ml×6本",
+      "extracted_whiskeys": [
+        {
+          "name": "Bowmore",
+          "distillery": "Bowmore",
+          "confidence": 0.9
+        },
+        {
+          "name": "Laphroaig",
+          "distillery": "Laphroaig",
+          "confidence": 0.9
+        },
+        {
+          "name": "Ardbeg",
+          "distillery": "Ardbeg",
+          "confidence": 0.9
+        },
+        {
+          "name": "Kilchoman",
+          "distillery": "Kilchoman",
+          "confidence": 0.9
+        },
+        {
+          "name": "Bruichladdich",
+          "distillery": "Bruichladdich",
+          "confidence": 0.9
+        },
+        {
+          "name": "Cairistola",
+          "distillery": "Cairistola",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【量り売り】ボウモア 12年　40度　30ml　ウイスキー　お試し",
+      "extracted_whiskeys": [
+        {
+          "name": "Bowmore 12年",
+          "distillery": "Bowmore",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ボウモア 12年 40度 700ml［並行輸入品］【スコットランド シングルモルト スコッチ ウイスキー アイラ モルト]",
+      "extracted_whiskeys": [
+        {
+          "name": "Bowmore 12年",
+          "distillery": "Bowmore",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "お酒 ギフト ウイスキー アイラ シングルモルト ボウモア ダーク アンド インテンス 10年 40° 1000ml ≪専用箱入り≫",
+      "extracted_whiskeys": [
+        {
+          "name": "Bowmore 10年 ダーク＆インテンス",
+          "distillery": "Bowmore",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ボウモア 12年 700mlwhisky_YBW12 ウイスキー スコッチ シングルモルト アイラ 長S お中元 御中元",
+      "extracted_whiskeys": [
+        {
+          "name": "Bowmore 12年",
+          "distillery": "Bowmore",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ボウモア 12年 並行 700ml 40度ウイスキー スコッチ シングルモルト アイラ Whisky 長S",
+      "extracted_whiskeys": [
+        {
+          "name": "Bowmore 12年",
+          "distillery": "Bowmore",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【量り売り】ボウモア 18年　43度　100ml　ウイスキー　お試し　アイラ",
+      "extracted_whiskeys": [
+        {
+          "name": "Bowmore 18年",
+          "distillery": "Bowmore",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ボウモア No.1 40度 700ml RS【ウイスキー】",
+      "extracted_whiskeys": [
+        {
+          "name": "Bowmore No.1",
+          "distillery": "Bowmore",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ボウモア12年 40度 [瓶] 700ml 送料無料(沖縄対象外)[ウイスキー 40度 イギリス サントリー]",
+      "extracted_whiskeys": [
+        {
+          "name": "Bowmore 12年",
+          "distillery": "Bowmore",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ボウモアNo,1 700ml 箱付 並行品 アイラ ウイスキー",
+      "extracted_whiskeys": [
+        {
+          "name": "Bowmore No.1",
+          "distillery": "Bowmore",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【企画品】サントリーウイスキー白州Story of the Distillery2024入り(ボウモア12年/LPロゼ)(1セット)[白州 Story ストーリー 白州ストーリー 白州Story]",
+      "extracted_whiskeys": [
+        {
+          "name": "Bowmore 12年",
+          "distillery": "Bowmore",
+          "confidence": 0.95
+        }
+      ]
+    }
+  ]
+}
+```

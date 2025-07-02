@@ -1,0 +1,200 @@
+```json
+{
+  "results": [
+    {
+      "product_name": "ティーリング シングルモルト アイリッシュウイスキー 46度 700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "Teeling Single Malt Irish Whiskey",
+          "distillery": "Teeling Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ウイスキー バスカー アイリッシュウイスキー 700ml (70830☆)　洋酒 Whisky(74-6)",
+      "extracted_whiskeys": [
+        {
+          "name": "Busker Irish Whiskey",
+          "distillery": "Busker Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "ジェムソン スタウト エディション 40度 700ml[ぺルノ アイルランド ダブリン モルト グレーン アイリッシュ ウイスキー] ギフト プレゼント 母の日 父の日 お中元 御中元",
+      "extracted_whiskeys": [
+        {
+          "name": "Jameson Stout Edition",
+          "distillery": "Jameson Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "＼終了間近／★800円OFF食フェスクーポン 【洋酒 ウイスキー】ブラックブッシュ ブッシュミルズ 40度 700ml【アイリッシュウイスキー】",
+      "extracted_whiskeys": [
+        {
+          "name": "Black Bush Bushmills",
+          "distillery": "Bushmills Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "ブッシュミルズ シングルモルト 12年 40度 700ml 送料無料(沖縄対象外)[アサヒビール アイリッシュウイスキー イギリス 48762] ギフト プレゼント 酒 サケ 敬老の日",
+      "extracted_whiskeys": [
+        {
+          "name": "Bushmills Single Malt 12 Years",
+          "distillery": "Bushmills Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "new【量り売り】グリーンスポット　シングルポットスチル　40度　30ml or 100ml　ウイスキー　お試し　アイリッシュウイスキー",
+      "extracted_whiskeys": [
+        {
+          "name": "Green Spot Single Pot Still",
+          "distillery": "Green Spot Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "ジェムソン ブラックバレル 40度 700ml 送料無料(沖縄対象外) [ぺルノ アイルランド ダブリン モルト グレーン アイリッシュ ウイスキー] ギフト プレゼント 母の日 父の日 お中元 御中元",
+      "extracted_whiskeys": [
+        {
+          "name": "Jameson Black Barrel",
+          "distillery": "Jameson Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【正規品】ブッシュミルズ ザ オリジナル アイリッシュ ウイスキー 700ml 40％ ウィスキー ハードリカーBUSHMILLS THE ORIGINAL IRISH WHISKY 700ml 40% ブッシュ",
+      "extracted_whiskeys": [
+        {
+          "name": "Bushmills The Original Irish Whiskey",
+          "distillery": "Bushmills Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "アイリッシュウイスキー カネマラ 40％ 100ml[ウイスキー][御歳暮 贈り物 御礼 母の日 父の日 御中元]",
+      "extracted_whiskeys": [
+        {
+          "name": "Kanemara Irish Whiskey",
+          "distillery": "Kanemara Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【正規品】ジェムソン アイリッシュウイスキー 正規代理店輸入品 700ml 40％ ハードリカーJAMESON IRISH WHISKY 700ml 40%",
+      "extracted_whiskeys": [
+        {
+          "name": "Jameson Irish Whiskey",
+          "distillery": "Jameson Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【量り売り】ティーリング シングルモルト 　46度　30ml　アイリッシュ　ウイスキー　お試し",
+      "extracted_whiskeys": [
+        {
+          "name": "Teeling Single Malt",
+          "distillery": "Teeling Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "ジェムソン セントパトリックスデー リミテッド [2016] 700ml 40度 正規品 Jameson Irish Whisky アイリッシュ ウイスキー アイリッシュコーヒー にオススメ 紅茶 kawahc 嬉しい お礼 御礼 ギフト プチギフトにオススメ ホワイトデー贈って喜ばれるプレゼント",
+      "extracted_whiskeys": [
+        {
+          "name": "Jameson St. Patrick's Day Limited",
+          "distillery": "Jameson Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "ブッシュミルズ 10年 40％ 100ml[ウイスキー][御歳暮 贈り物 御礼 母の日 父の日 御中元]",
+      "extracted_whiskeys": [
+        {
+          "name": "Bushmills 10 Years",
+          "distillery": "Bushmills Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "ジェムソン スタンダード アイリッシュウイスキー 700ml 40％ 正規 （アイリッシュウイスキー） 家飲み",
+      "extracted_whiskeys": [
+        {
+          "name": "Jameson Standard Irish Whiskey",
+          "distillery": "Jameson Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【全品P3倍 6/30～7/1限定】【送料無料】 新進気鋭の実力派 アイリッシュウイスキー バスカー 入り ウイスキー 6本セット 第13弾 飲み比べ セット ギフト ウイスキー 長S",
+      "extracted_whiskeys": [
+        {
+          "name": "Busker Irish Whiskey",
+          "distillery": "Busker Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "ウイスキー　グレンクリー アイリッシュウイスキー 700ml (70829)　洋酒 Whisky(74-6)",
+      "extracted_whiskeys": [
+        {
+          "name": "Glencree Irish Whiskey",
+          "distillery": "Glencree Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "アイリッシュウイスキー カネマラ 40％ 700ml[ウイスキー][御歳暮 贈り物 御礼 母の日 父の日 御中元]",
+      "extracted_whiskeys": [
+        {
+          "name": "Kanemara Irish Whiskey",
+          "distillery": "Kanemara Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "ジェイコブス・クリーク ダブル・バレル カベルネ・ソーヴィニヨン 赤ワイン 重口(750ml)【ジェイコブス・クリーク(JACOB'S CREEK)】[ワイン樽とアイリッシュウイスキー樽の二重熟成仕上げ]",
+      "extracted_whiskeys": []
+    },
+    {
+      "product_name": "【量り売り】ティーリング スモールバッチ 　46度　30ml　アイリッシュ　ウイスキー　お試し",
+      "extracted_whiskeys": [
+        {
+          "name": "Teeling Small Batch",
+          "distillery": "Teeling Distillery",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "アイリッシュ ウイスキー ジョン ジェムソン 40度 700ml『OMS』",
+      "extracted_whiskeys": [
+        {
+          "name": "John Jameson Irish Whiskey",
+          "distillery": "Jameson Distillery",
+          "confidence": 0.9
+        }
+      ]
+    }
+  ]
+}
+```

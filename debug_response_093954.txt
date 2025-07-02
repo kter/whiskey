@@ -1,0 +1,231 @@
+```json
+{
+  "results": [
+    {
+      "product_name": "サントリーウイスキー2本セット(響JAPANESE HARMONY 知多 サントリーウイスキー シングルグレーンモルト)700ml×2本",
+      "extracted_whiskeys": [
+        {
+          "name": "響JAPANESE HARMONY",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        },
+        {
+          "name": "知多",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ウイスキーくじ　10人に1人必ず知多が当たる！　700ml×1本　ニッカフロンティア 500ml",
+      "extracted_whiskeys": [
+        {
+          "name": "知多",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        },
+        {
+          "name": "ニッカフロンティア",
+          "distillery": "ニッカウヰスキー",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー 知多 700ml 43％ シングルグレーン ウイスキー 箱なし 正規品 父の日",
+      "extracted_whiskeys": [
+        {
+          "name": "知多",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "＼終了間近／★800円OFF食フェスクーポン サントリー シングルグレーン ウイスキー 知多 43度 700ml 箱付き",
+      "extracted_whiskeys": [
+        {
+          "name": "知多",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "知多 還暦 ウイスキー 名入れ 古希 【 名前入り ラベル SUNTORY サントリー 知多 スコッチウイスキー 飲み比べ 700ml セット 】 還暦祝い 赤 祝い 酒 古希 お祝い 男性 退職祝い 退職 お酒 父 父親 お父さん 喜寿 米寿 傘寿 新築祝い 誕生日 記念日 ギフト プレゼント",
+      "extracted_whiskeys": [
+        {
+          "name": "知多",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "お誕生日おめでとう サントリー ウイスキー 知多 700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "知多",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー　ウイスキー　知多　700ml　瓶　ジャパニーズウイスキー　アルコール度数43％　箱なし",
+      "extracted_whiskeys": [
+        {
+          "name": "知多",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【送料無料】サントリー 季 TOKI 700ml 逆輸入ジャパニーズ ブレンディッド ウイスキー 43度 H 箱なし",
+      "extracted_whiskeys": [
+        {
+          "name": "季 TOKI",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "白州/知多 NV 700ml （箱なし） 2本飲み比べセット",
+      "extracted_whiskeys": [
+        {
+          "name": "白州",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        },
+        {
+          "name": "知多",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【全品P3倍＆300円OFFクーポン配布(6/30～7/2 10時迄)】送料無料 スコッチ ジャパニーズ シングルグレーン 飲み比べ 2本セットサントリー 知多 ロッホローモンド シングル グレーン ピーテッド スコッチ ジャパニーズ ウィスキー whisky 長S",
+      "extracted_whiskeys": [
+        {
+          "name": "知多",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        },
+        {
+          "name": "ロッホローモンド",
+          "distillery": "ロッホローモンド蒸溜所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【送料無料（一部地域を除く）】サントリー ウイスキー知多　700ml 箱無し",
+      "extracted_whiskeys": [
+        {
+          "name": "知多",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【新商品】あなたも海賊王に！　海賊風 似顔絵　名入れ 彫刻 【ウイスキー】サントリーウイスキー 知多 700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "知多",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【大量入荷！】【何本でもOK！】　サントリー　知多　グレーンウイスキー　43度　700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "知多",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー知多　　700ml　バレンタイン　お中元　御中元　夏ギフト 　ハロウィン　御歳暮　お歳暮　バレンタイン　ホワイトデー",
+      "extracted_whiskeys": [
+        {
+          "name": "知多",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "スペシャルギフト サントリー美味しいハイボールが簡単に作れる サントリー 知多 ハイボールギフトセット写真のリボン・シール・ラッピングはついています）",
+      "extracted_whiskeys": [
+        {
+          "name": "知多",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー知多 43度 700ml 【正規品】箱付きサントリーウイスキーグレーン",
+      "extracted_whiskeys": [
+        {
+          "name": "知多",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー ウイスキー 知多 シングルグレーン 国産ウイスキー(700ml)",
+      "extracted_whiskeys": [
+        {
+          "name": "知多",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【コストコ】サントリー ウイスキー 知多 700ml ジャパニーズ",
+      "extracted_whiskeys": [
+        {
+          "name": "知多",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "飲み比べウイスキー2本セット 知多 43度700ml、ホワイトホース12年 40度700ml [ギフトボックス入り] 和洋飲み比べ",
+      "extracted_whiskeys": [
+        {
+          "name": "知多",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        },
+        {
+          "name": "ホワイトホース",
+          "distillery": "ディスティラリー・オブ・エディンバラ",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "［ウイスキー］2ケースまで同梱可★サントリー　知多　700ml　1ケース12本入り　（12本セット）（43度・43％）（シングルグレーンウイスキー）（国産）（CHITA）（SUNTORY）",
+      "extracted_whiskeys": [
+        {
+          "name": "知多",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    }
+  ]
+}
+```

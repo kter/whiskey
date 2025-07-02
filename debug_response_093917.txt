@@ -1,0 +1,126 @@
+```json
+{
+  "results": [
+    {
+      "product_name": "ウイスキー サントリー ウイスキー 角瓶 2.7L ペット ジャパニーズウイスキー 2700ml × 6本 2.7l 1ケース ギフト 父親 誕生日 プレゼント 大容量 洋酒 お酒",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリー ウイスキー 角瓶",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー 角ハイボール缶 濃いめ 500ml缶 24本 送料無料 1ケース SUNTORY 角瓶 チューハイ サワー ハイボール ロング缶 AIB",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリー 角瓶",
+          "distillery": "サントリー",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【全品P3倍 6/30～7/1限定】[瓶]サントリー 角瓶 40度 1920ml[ウイスキー][サントリー][日本][ブレンデッド][長S]",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリー 角瓶",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "角 5L 1本 角瓶 サントリー 特製 ペット ウイスキー ウィスキー 業務用 40度 最強配送 あす楽対応 [サントリー] ギフト プレゼント 母の日 父の日 お中元",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリー 角瓶",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー　角瓶　40度　700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリー 角瓶",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー 角ハイボール 缶 濃いめ 350ml 48本(24本×2ケース) 送料無料 48缶 角瓶 チューハイ サワー 濃い 角ハイ ハイボール缶 AIB",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリー 角瓶",
+          "distillery": "サントリー",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【7/1全品P5倍★】◎ サントリー ウイスキー 角瓶 700ml 【12本まで同梱可能】",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリー 角瓶",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "(名入れ ウイスキー) サントリー角瓶 700ml 名入れ 名前入り お酒 酒 ギフト 彫刻 プレゼント 父の日 成人祝い 還暦祝い 古希祝い 誕生日 出産祝い 男性 女性 贈り物 退職祝い 結婚祝い お祝い 開店祝い【送料無料】【名入れ】",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリー 角瓶",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー　角瓶　700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリー 角瓶",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "包装 のし紙 無料 サントリー 角瓶 700mlおすすめ 売れ筋 誕生日 御祝い お祝い 結婚式 家飲み 2〜3人用ウイスキー お酒 ギフト プレゼント 贈り物",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリー 角瓶",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "お中元 夏ギフト 御中元 サントリー ウイスキー 飲み比べ 2本セット ウイスキー 角瓶 700ml ＆ トリス エクストラ 各700ml 度数40％ SUNTORY 誕生日 お供え 内祝い お返し ◆送料無料対象外地域有（店2）",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリー 角瓶",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "[ケース] 角ハイボール 濃いめ サントリー 9度 350ml×24本 缶チューハイ ウイスキーハイボール1個口2ケースまで対応可。3ケース〜は追加送料がかかります。 【 ウイスキー ウィスキー ギフト 洋酒 家呑み 宅呑み 宅飲み 酒 お酒 】【ワインならリカオー]",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリー 角瓶",
+          "distillery": "サントリー",
+          "confidence": 0.9
+        }
+      ]
+    }
+  ]
+}
+```

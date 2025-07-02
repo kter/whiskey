@@ -1,0 +1,176 @@
+```json
+{
+  "results": [
+    {
+      "product_name": "ジャックダニエル シングルバレル ＜正規＞ 750ml 47度 ブラウンフォーマン アメリカ アメリカン テネシー ウイスキー バーボン 長S",
+      "extracted_whiskeys": [
+        {
+          "name": "ジャックダニエル シングルバレル",
+          "distillery": "ブラウンフォーマン",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "送料無料 ジムビーム 4000ml 4L 40度 リニューアルラベル 大容量 バーボン アメリカン ウイスキー 長S酒類スタンプラリーP最大5倍対象",
+      "extracted_whiskeys": [
+        {
+          "name": "ジムビーム",
+          "distillery": "N/A",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "ジムビーム ホワイト 1L(1000ml)[長S]ハイボールにイチオシ♪ [ウイスキー][ウィスキー]",
+      "extracted_whiskeys": [
+        {
+          "name": "ジムビーム ホワイト",
+          "distillery": "N/A",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "ブレットバーボン 正規品 45度 700ml_[リカーズベスト]_[全品ヤマト宅急便配送]",
+      "extracted_whiskeys": [
+        {
+          "name": "ブレットバーボン",
+          "distillery": "N/A",
+          "confidence": 0.85
+        }
+      ]
+    },
+    {
+      "product_name": "エヴァン ウィリアムス ブラックラベル 750ml 43度 正規品 Evan Williams Black Label kentucky straight bourbon whiskey エヴァン ウィリアムズ ブラック ラベル エバン ウイリアムス バーボン ウイスキー kawahc",
+      "extracted_whiskeys": [
+        {
+          "name": "エヴァン ウィリアムス ブラックラベル",
+          "distillery": "N/A",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー バーボンウイスキー ジムビーム(700ml*2本セット)【ジムビーム(ジム ビーム)】",
+      "extracted_whiskeys": [
+        {
+          "name": "ジムビーム",
+          "distillery": "N/A",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "オールドエズラ エズラブルックス 12年 750ml 50.5度 正規品 Ezra Brooks Kentucky Straight Bourbon Whiskey ケンタッキーストレートバーボンウイスキー エズラ バーボン アメリカ米国ケンタッキー州 kawahc ※終売品の為、おひとり様1本限り",
+      "extracted_whiskeys": [
+        {
+          "name": "オールドエズラ エズラブルックス",
+          "distillery": "N/A",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "フォアローゼズ シングルバレル 700ml 50度 フォアローゼス フォア ローゼズ フォア ローゼス バーボン kawahc お礼 御礼 ホワイトデー贈って喜ばれるプレゼント ギフト プチギフトにオススメ",
+      "extracted_whiskeys": [
+        {
+          "name": "フォアローゼズ シングルバレル",
+          "distillery": "N/A",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "ウイスキー　ミクターズ スモールバッチ サワーマッシュ US No.1 700ml (71695)　洋酒 Whisky(76-1)",
+      "extracted_whiskeys": [
+        {
+          "name": "ミクターズ スモールバッチ サワーマッシュ",
+          "distillery": "N/A",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "ラビットホール ケイブヒル プレミアムバーボン 47.5度 箱なし 700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "ラビットホール ケイブヒル プレミアムバーボン",
+          "distillery": "N/A",
+          "confidence": 0.85
+        }
+      ]
+    },
+    {
+      "product_name": "ノブ クリーク ケンタッキー ストレート バーボン ウイスキー スモール バッチ 100プルーフ 750ml 50％ ハードリカー クラフトバーボン スモールバッチバーボン サントリー【wineuki_KBC】",
+      "extracted_whiskeys": [
+        {
+          "name": "ノブ クリーク ケンタッキー ストレート バーボン",
+          "distillery": "N/A",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "[木箱入]ブッカーズ 60〜65度 750ml 2024 クラフトバーボン【 ウィスキー バーボンウイスキー ギフト お酒 ウイスキー ボンウィスキー 内祝い 誕生日プレゼント プレゼント 酒ギフト 蒸留酒 祝い 記念日 お礼 飲み会 祝い酒 洋酒 】【ワインならリカオー】",
+      "extracted_whiskeys": [
+        {
+          "name": "ブッカーズ",
+          "distillery": "N/A",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "[箱入] IWハーパー 12年 43度 750ml【 ウィスキー バーボン バーボンウイスキー ギフト お酒 ウイスキー ハーパー 蒸留酒 プレゼント 祝い 父親 酒ギフト お祝い 贈り物 誕生日 記念日 お礼 飲み会 祝い酒 贈答品 手土産 洋酒 】【ワインならリカオー】",
+      "extracted_whiskeys": [
+        {
+          "name": "IWハーパー 12年",
+          "distillery": "N/A",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー バーボンウイスキー メーカーズマーク(700ml)【メーカーズマーク】",
+      "extracted_whiskeys": [
+        {
+          "name": "メーカーズマーク",
+          "distillery": "N/A",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "ノアーズミル 57.15度 750ml RS 【アメリカン ウイスキー】",
+      "extracted_whiskeys": [
+        {
+          "name": "ノアーズミル",
+          "distillery": "N/A",
+          "confidence": 0.85
+        }
+      ]
+    },
+    {
+      "product_name": "ジャックダニエル シングルバレル セレクト 45度 700ml 箱なし テネシー ウィスキー アメリカ【 ウイスキー お酒 酒 お礼 蒸留酒 パーティ 宅飲み おしゃれ 家飲み 晩酌 さけ 祝い 家庭用 飲み会 ひとり呑み ひとり飲み 洋酒 】【ワインならリカオー】",
+      "extracted_whiskeys": [
+        {
+          "name": "ジャックダニエル シングルバレル セレクト",
+          "distillery": "ブラウンフォーマン",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "メーカーズマーク 46 700ml 47度 正規品 maker's mark 46 メーカーズ 46 バーボンウイスキー Bourbon Whisky バーボン ウイスキー kawahc 嬉しい お礼 御礼 ギフト プチギフトにオススメ 贈って喜ばれるプレゼント",
+      "extracted_whiskeys": [
+        {
+          "name": "メーカーズマーク 46",
+          "distillery": "N/A",
+          "confidence": 0.9
+        }
+      ]
+    }
+  ]
+}
+```

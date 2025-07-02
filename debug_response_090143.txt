@@ -1,0 +1,196 @@
+```json
+{
+  "results": [
+    {
+      "product_name": "ザ グレンリベット ファウンダーズリザーブ 40度 700ml[ペルノ スコットランド シングルモルトウイスキー]",
+      "extracted_whiskeys": [
+        {
+          "name": "ザ グレンリベット ファウンダーズリザーブ",
+          "distillery": "グレンリベット",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "[箱入] グレンモーレンジ キンタルバン 14年 700ml 【 ウイスキー ウィスキー スコッチ スコッチウイスキー お酒 シングルモルト シングルモルトウイスキー スコッチウィスキー 記念日 祝い 宅飲み 蒸留酒 飲み会 洋酒 】【ワインならリカオー】",
+      "extracted_whiskeys": [
+        {
+          "name": "グレンモーレンジ キンタルバン",
+          "distillery": "グレンモーレンジ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【ふるさと納税】キリンシングルモルトジャパニーズウイスキー富士　3本【お酒 アルコール 国産】◇",
+      "extracted_whiskeys": [
+        {
+          "name": "キリンシングルモルトジャパニーズウイスキー富士",
+          "distillery": "キリン",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "[箱入]グレングラント 10年 40度 700ml モルト スコッチ【 シングルモルト シングルモルトウイスキー スコッチウイスキー ウイスキー ウィスキー お酒 スコッチ ギフト 酒ギフト 蒸留酒 祝い 誕生日 記念日 プレゼント お礼 飲み会 洋酒】【ワインならリカオー】",
+      "extracted_whiskeys": [
+        {
+          "name": "グレングラント",
+          "distillery": "グレングラント",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【ふるさと納税】 マツイシングルモルトウイスキー「松井 ピーテッド」700ml （ ピート麦芽 お酒 洋酒 ウイスキー ハイボール シングルモルト マツイウイスキー ジャパニーズウイスキー 水割り ロック ）",
+      "extracted_whiskeys": [
+        {
+          "name": "マツイシングルモルトウイスキー「松井 ピーテッド」",
+          "distillery": "マツイ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【箱入 正規品]ベンリアック 10年 スペイサイド シングル モルト スコッチ ウイスキー スリーカスクマチュアード 700ml 43%BENRIACH AGED 10 YEAR SPEYSIDE SINGLE MALT SCOTCH WHISKY THREE CASK MATURED 700ml 43%",
+      "extracted_whiskeys": [
+        {
+          "name": "ベンリアック 10年 スペイサイド",
+          "distillery": "ベンリアック",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【正規品 箱入】ザ バルヴェニー カリビアンカスク 14年 バーボンカスク＆ラムカスク シングル モルト スコッチ ウイスキー 700ml 43%THE BALVENIE CARIBBEAN CASK AGED 14 YEAR【wineuki_BVC】",
+      "extracted_whiskeys": [
+        {
+          "name": "ザ バルヴェニー カリビアンカスク",
+          "distillery": "バルヴェニー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ウイスキー　ピーツビースト シングルモルト 700ml (70191)　洋酒 Whisky(33-3)",
+      "extracted_whiskeys": [
+        {
+          "name": "ピーツビースト",
+          "distillery": "ピーツ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【並行輸入品】フィンラガン・オールドリザーヴ　40度　700ml　【箱入り】【ウイスキー】【シングルモルト】【スコットランド】【アイラ]",
+      "extracted_whiskeys": [
+        {
+          "name": "フィンラガン・オールドリザーヴ",
+          "distillery": "フィンラガン",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ザ・グレンリベット 18年 シングルモルト スコッチウイスキー ウィスキー 化粧箱入り(700ml)【ザ・グレンリベット(THE GLENLIVET)】[ギフト プレゼント 酒 誕生日 御礼 贈答 高級 正規品]",
+      "extracted_whiskeys": [
+        {
+          "name": "ザ・グレンリベット 18年",
+          "distillery": "グレンリベット",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "[箱入]アイル オブ ジュラ ジャーニー 40度 700ml スコッチ シングルモルト ウイスキー【 スコッチウィスキー スコッチウイスキー お酒 ウィスキー 家 ギフト 手土産 酒ギフト 蒸留酒 祝い 誕生日 記念日 プレゼント お礼 飲み会 洋酒 】【ワインならリカオー】",
+      "extracted_whiskeys": [
+        {
+          "name": "アイル オブ ジュラ ジャーニー",
+          "distillery": "アイル オブ ジュラ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【7/1(火)全品P2倍】グレンファーン・ハイランドシングルモルト 40度 700ml_[リカーズベスト]_[全品ヤマト宅急便配送]",
+      "extracted_whiskeys": [
+        {
+          "name": "グレンファーン・ハイランドシングルモルト",
+          "distillery": "グレンファーン",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【全品P3倍＆300円OFFクーポン配布(6/30～7/2 10時迄)】ハイランドパーク 12年 ヴァイキングオナー 700ml 40度 ウイスキー スコッチ シングルモルト アイランズ ウィスキー 長S",
+      "extracted_whiskeys": [
+        {
+          "name": "ハイランドパーク 12年 ヴァイキングオナー",
+          "distillery": "ハイランドパーク",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【ふるさと納税】ウイスキー シングルモルト 江井ヶ嶋 バーボンバレル 8年 500ml 化粧箱入 数量限定 [ ジャパニーズウイスキー ] お酒 家飲み 晩酌 ピート麦芽 スモーキー 国産ウイスキー 8年熟成 甘い香り",
+      "extracted_whiskeys": [
+        {
+          "name": "江井ヶ嶋 バーボンバレル",
+          "distillery": "江井ヶ嶋",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "バルブレア 12年 シングル モルト 46度 箱付 700ml 正規品 スコッチウイスキー ハイランド ^YCBB12J0^",
+      "extracted_whiskeys": [
+        {
+          "name": "バルブレア 12年",
+          "distillery": "バルブレア",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "アベラワー アブーナ アルバ シングルモルト スコッチウイスキー ウィスキー 箱入り(700ml×2本セット)【アベラワー (ABERLOUR)】[ボックス入り カスクストレングス ホワイトオーク樽]",
+      "extracted_whiskeys": [
+        {
+          "name": "アベラワー アブーナ アルバ",
+          "distillery": "アベラワー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【全品P3倍＆300円OFFクーポン配布(6/30～7/2 10時迄)】ザ グレンリベット ファウンダーズ リザーブ 700ml [ウイスキー][ウィスキー]スコッチ スペイサイド シングルモルト [長S]",
+      "extracted_whiskeys": [
+        {
+          "name": "ザ グレンリベット ファウンダーズ リザーブ",
+          "distillery": "グレンリベット",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "7/1限定【P10倍＆食フェス300円CP】ウイスキー グレンスコシア ダブルカスク 700ml シングルモルト 箱付き ギフト ウィスキー スコッチウィスキー",
+      "extracted_whiskeys": [
+        {
+          "name": "グレンスコシア ダブルカスク",
+          "distillery": "グレンスコシア",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ハイランドパーク 12年 ヴァイキングオナー 700ml 40度 箱付 アイランズモルト シングルモルトウイスキー HIGHLAND PARK 12year VIKING HONOUR Single Malt Whisky Whiskey kawahc お礼 ギフト プチギフトにオススメ",
+      "extracted_whiskeys": [
+        {
+          "name": "ハイランドパーク 12年 ヴァイキングオナー",
+          "distillery": "ハイランドパーク",
+          "confidence": 0.95
+        }
+      ]
+    }
+  ]
+}
+```

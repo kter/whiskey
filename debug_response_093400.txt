@@ -1,0 +1,201 @@
+```json
+{
+  "results": [
+    {
+      "product_name": "サントリー 響 ブレンダーズチョイス 43% 700ml 箱付 ウイスキーギフト対応可 ラッピング 熨斗 誕生日 プレゼント お祝い [[wrap04]",
+      "extracted_whiskeys": [
+        {
+          "name": "響 ブレンダーズチョイス",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【企画品】サントリーウイスキーセット(響Japanese Harmony／バランタインマスターズ)(1セット)",
+      "extracted_whiskeys": [
+        {
+          "name": "響Japanese Harmony",
+          "distillery": "サントリー",
+          "confidence": 0.9
+        },
+        {
+          "name": "バランタインマスターズ",
+          "distillery": "バランタイン",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー 響 17年 700ml 箱なし ウイスキー 【中古】",
+      "extracted_whiskeys": [
+        {
+          "name": "響 17年",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "＼終了間近／★800円OFF食フェスクーポン 高級 ウイスキー 【本州のみ 送料無料】サントリー ウイスキー 響 ブロッサム ハーモニー BLOSSOM HARMONY 2025 700ml 箱付き",
+      "extracted_whiskeys": [
+        {
+          "name": "響 ブロッサム ハーモニー 2025",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【東京都内配送限定・即納】サントリーウイスキー 響 JAPANESE HARMONY 700ml瓶｜アルコール度数43％ 【箱無し】",
+      "extracted_whiskeys": [
+        {
+          "name": "響 JAPANESE HARMONY",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【景品おまけ付・条件あり・数量限定】サントリー ウイスキー 響ジャパニーズハーモニー 響JH カートン付 1本 箱付 内容量700ml アルコール分43％ ジャパニーズウイスキー 贈答品 プレゼント プレミアム品 お酒 礼品 レア 入手難 送料無料 女子会 飲み会",
+      "extracted_whiskeys": [
+        {
+          "name": "響ジャパニーズハーモニー",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー ウイスキー 響ブロッサムハーモニー2021 化粧箱付 1本 ブレンデッドウイスキー 内容量700ml アルコール分43％ 国産 贈答品 プレゼント プレミアム品 お酒 礼品 レア 大人プレゼント 入手難 送料無料 プレゼント 贈り物 パーティー",
+      "extracted_whiskeys": [
+        {
+          "name": "響ブロッサムハーモニー2021",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー 響 100周年 アニバーサリーブレンド ウイスキー 43% 700ml 瓶 1本 箱付き",
+      "extracted_whiskeys": [
+        {
+          "name": "響 100周年 アニバーサリーブレンド",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリーウイスキー 響 BLOSSOM HARMONY 2024 1本 内容量700ml アルコール分43％ ブレンデッドウイスキー ジャパニーズウィスキー 贈答品 プレゼント プレミアム品 お酒 礼品 レア 大人プレゼント 希少 入手難 送料無料 女子会 飲み会 贈り物",
+      "extracted_whiskeys": [
+        {
+          "name": "響 BLOSSOM HARMONY 2024",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【箱付】サントリー 響 ジャパニーズハーモニー 700ml ウイスキー 【中古】",
+      "extracted_whiskeys": [
+        {
+          "name": "響 ジャパニーズハーモニー",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー響 ジャパニーズ ハーモニー43% 700ml箱なし ウイスキー アウトレットギフト対応可 ラッピング 誕生日 プレゼント お祝い [[wrap03]",
+      "extracted_whiskeys": [
+        {
+          "name": "響 ジャパニーズ ハーモニー",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー 響 2022 ブロッサムハーモニー 700ml 箱付 ジャパニーズ ウイスキーギフト対応可 ラッピング 熨斗 誕生日 プレゼント お祝い [[wrap04]",
+      "extracted_whiskeys": [
+        {
+          "name": "響 2022 ブロッサムハーモニー",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【箱なし】サントリー 響 ジャパニーズハーモニー 43度 700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "響 ジャパニーズハーモニー",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "[お一人様2本限り] サントリー 響 21年 700ml 43度 箱入 ジャパニーズ ブレンデッド ウイスキー SUNTORY HIBIKI ヒビキ ウィスキー 日本 【送料無料※一部地域は除く】",
+      "extracted_whiskeys": [
+        {
+          "name": "響 21年",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー ウイスキー 響 BLENDER'S CHOICE 【ブレンダーズ チョイス】700ml 『日本　ジャパニーズ ウイスキー』",
+      "extracted_whiskeys": [
+        {
+          "name": "響 BLENDER'S CHOICE",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー ウイスキー 響 ブレンダーズチョイス　700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "響 ブレンダーズチョイス",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "響 JAPANESE HARMONY ジャパニーズハーモニー 700ml 箱無 ブレンデッドウイスキー 日本 【1本】",
+      "extracted_whiskeys": [
+        {
+          "name": "響 JAPANESE HARMONY",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【数量限定】サントリー 響 ジャパニーズ ハーモニー 43度 700ml（箱なし）",
+      "extracted_whiskeys": [
+        {
+          "name": "響 ジャパニーズ ハーモニー",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "[お一人様2本限り] サントリー 響 ジャパニーズハーモニー 700ml 43度 箱なし ジャパニーズ ブレンデッド ウイスキー SUNTORY HIBIKI JAPANESE HARMONY ウィスキー 日本 【送料無料※一部地域は除く】",
+      "extracted_whiskeys": [
+        {
+          "name": "響 ジャパニーズハーモニー",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    }
+  ]
+}
+```

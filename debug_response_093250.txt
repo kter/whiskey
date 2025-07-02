@@ -1,0 +1,211 @@
+```json
+{
+  "results": [
+    {
+      "product_name": "100周年限定ラベル 山崎 12年 700ml サントリー シングルモルト 箱付 ウイスキー ウィスキー 正規品　お歳暮 のし 包装無料 御中元 お中元 敬老の日 母の日 100周年記念蒸溜所ラベルで限定発売 自社出荷",
+      "extracted_whiskeys": [
+        {
+          "name": "山崎",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "スターリカーズ福袋Bセットサントリー 山崎 700ml 43度 WINE ギフト フランス赤ワイン 750ml 1本 合計2本セット 誕生日プレゼント お楽しみ袋 洋酒福袋 ウィスキー山崎 サントリーウィスキー 父の日ギフト 御中元 赤ワイン1本 山崎1本",
+      "extracted_whiskeys": [
+        {
+          "name": "山崎",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "送料無料　数量限定　サントリー　山崎　専用箱付き　ウィスキー　シングルモルトウイスキー　1本　700ml　山崎蒸留所　ヤマザキ　yamazaki　whisky",
+      "extracted_whiskeys": [
+        {
+          "name": "山崎",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー　シングルモルトウイスキー　山崎 18年43度　700mlTHE YAMAZAKI SINGLE MALT WHISKY",
+      "extracted_whiskeys": [
+        {
+          "name": "山崎",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【ジャパニーズウイスキー＆シャンパンセット】ギフト サントリー『A】山崎12年 700ml＆ロイヤルリビエラ紅白 750ml×3本』合計4本※山崎12年は通常ラベルで専用カートンなしです。辛口 ロイヤルリビエラ シャンパン ブリュット＆ロゼ",
+      "extracted_whiskeys": [
+        {
+          "name": "山崎",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "お誕生日おめでとう サントリー 山崎＆白州（全て180ml）飲み比べ2本セット(2)",
+      "extracted_whiskeys": [
+        {
+          "name": "山崎",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        },
+        {
+          "name": "白州",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "白州 NV 700ml サントリー 43度 シングルモルト 箱付 新品 正規品 御中元 お中元 敬老の日 のし 包装無料 自社出荷 クーポン詳細は商品説明バナーより",
+      "extracted_whiskeys": [
+        {
+          "name": "白州",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "白州　700ml 箱無し",
+      "extracted_whiskeys": [
+        {
+          "name": "白州",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【お一人様3本限り】サントリー シングルモルトウイスキー 白州 12年 43度 箱付 700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "白州",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー シングルモルト ウイスキー 白州NV カートンなし 1本 化粧箱なし ノンビンテージ 内容量700ml アルコール分43％ 希少 入手難 送料無料 女子会 飲み会 プレゼント 贈り物 パーティー",
+      "extracted_whiskeys": [
+        {
+          "name": "白州",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー シングルモルトウイスキー 白州 NV 専用化粧箱付き 43度 700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "白州",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー 白州 NV ノンヴィンテージ 700ml 箱なし シングルモルト ウイスキー 【中古】",
+      "extracted_whiskeys": [
+        {
+          "name": "白州",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー シングルモルト ウイスキー 白州NV カートンなし 3本セット 化粧箱なし ノンビンテージ 内容量700ml アルコール分43％ 贈答品 プレゼント プレミアム品 お酒 礼品 レア 大人プレゼント 入手難 送料無料 女子会 飲み会 贈り物",
+      "extracted_whiskeys": [
+        {
+          "name": "白州",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー シングルモルト 白州 700ml×12本(1ケース) 箱無 ジャパニーズウイスキー 山梨県 日本 【送料無料※一部地域は除く】",
+      "extracted_whiskeys": [
+        {
+          "name": "白州",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【景品おまけ付・条件あり・数量限定】サントリー シングルモルト ウイスキー 白州NV カートンなし 1本 化粧箱なし ノンビンテージ 内容量700ml アルコール分43％ 希少 入手難 送料無料 女子会 飲み会 プレゼント 贈り物 パーティー",
+      "extracted_whiskeys": [
+        {
+          "name": "白州",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー 白州 12年 43% シングルモルト 700ml箱なし ウイスキー アウトレットギフト対応可 ラッピング ボックス 1本用 2本用 熨斗 誕生日 プレゼント お祝い [[wrap01][wrap03]",
+      "extracted_whiskeys": [
+        {
+          "name": "白州",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー シングルモルト ウイスキー 白州NV カートンなし 12本セット ノンビンテージ 内容量700ml アルコール分43％ 贈答品 プレゼント プレミアム品 お酒 礼品 入手難 送料無料 女子会 飲み会 贈り物",
+      "extracted_whiskeys": [
+        {
+          "name": "白州",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリーシングルモルトウイスキー 白州 700ml（化粧箱入り）| 正規品 国産ウイスキー 白州 Non Age 父の日 母の日 御中元 御歳暮 プレゼント",
+      "extracted_whiskeys": [
+        {
+          "name": "白州",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "白州 シングルモルトウイスキー 43° 700ml 国産正規品 (化粧箱付) ジャパニーズウイスキー",
+      "extracted_whiskeys": [
+        {
+          "name": "白州",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー シングルモルト ウイスキー 白州12年 カートンなし 1本 化粧箱なし 内容量700ml アルコール分43％ ジャパニーズウイスキー 贈答品 プレミアム品 お酒 礼品 レア 大人プレゼント 希少 入手難 送料無料 女子会 飲み会 プレゼント",
+      "extracted_whiskeys": [
+        {
+          "name": "白州",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    }
+  ]
+}
+```

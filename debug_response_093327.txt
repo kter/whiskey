@@ -1,0 +1,166 @@
+```json
+{
+  "results": [
+    {
+      "product_name": "サントリー 白州 Story of the Distillery 2024 EDITION 700ml 43度 シングルモルト ストーリー オブ ザ ディスティラリー 2024 エディション ウイスキー ウィスキー 日本 【送料無料※一部地域は除く】",
+      "extracted_whiskeys": [
+        {
+          "name": "白州 Story of the Distillery 2024 EDITION",
+          "distillery": "白州",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー シングルモルト ウイスキー 白州 700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "白州",
+          "distillery": "白州",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【企画品】サントリー プレミアムセレクション 白州Story of the Distilly 2024入り(1セット)",
+      "extracted_whiskeys": [
+        {
+          "name": "白州 Story of the Distilly 2024",
+          "distillery": "白州",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー 白州 ジャパニーズ・フォレスト ビター・スウィート 43度 700ml(箱付き)",
+      "extracted_whiskeys": [
+        {
+          "name": "白州 ジャパニーズ・フォレスト ビター・スウィート",
+          "distillery": "白州",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "全商品ポイント10倍!エントリー不要! サントリー シングルモルト ウイスキー 白州NV 1本 箱付 化粧箱付 ノンビンテージ 内容量700ml アルコール分43％ 希少 入手難 送料無料 女子会 飲み会 プレゼント 贈り物 パーティー 業務 ジャパニーズウィスキー",
+      "extracted_whiskeys": [
+        {
+          "name": "白州NV",
+          "distillery": "白州",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "シングルモルトウイスキー白州NV【箱入り】43度　700ml　THE HAKUSHU SINGLE MALT WHISKY",
+      "extracted_whiskeys": [
+        {
+          "name": "白州NV",
+          "distillery": "白州",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【ラッピング無料】山崎/白州/知多 NV 700ml 3本箱入ギフトセット",
+      "extracted_whiskeys": [
+        {
+          "name": "白州",
+          "distillery": "白州",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【大量入荷！】【何本でもOK！】　サントリー　白州　ノンビンテージ　シングルモルトウイスキー　43度　700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "白州 ノンビンテージ",
+          "distillery": "白州",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ウイスキーくじ　10人に1人必ず白州が当たる！　700ml×1本　碧AO",
+      "extracted_whiskeys": [
+        {
+          "name": "白州",
+          "distillery": "白州",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【神奈川県内配送限定】サントリー シングルモルトウイスキー 白州12年 カートン付 700ml 2021リリース新パッケージ",
+      "extracted_whiskeys": [
+        {
+          "name": "白州12年",
+          "distillery": "白州",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【ウイスキー くじ 第80弾】【120口限定】激レアウイスキー入手困難なウイスキーを当てよう 響き21 山崎12年 白州12年 山崎2024 白州2024 山崎2025 白州2025 響きチョイス 竹鶴 ダルモア 余市 スプリングバンク 等 送料込み",
+      "extracted_whiskeys": [
+        {
+          "name": "白州12年",
+          "distillery": "白州",
+          "confidence": 0.95
+        },
+        {
+          "name": "白州2024",
+          "distillery": "白州",
+          "confidence": 0.95
+        },
+        {
+          "name": "白州2025",
+          "distillery": "白州",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【送料無料/12本セット】白州NV 43度 700ml （箱なし）",
+      "extracted_whiskeys": [
+        {
+          "name": "白州NV",
+          "distillery": "白州",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー シングルモルト 白州 700ml 箱なし ウイスキー 日本",
+      "extracted_whiskeys": [
+        {
+          "name": "白州",
+          "distillery": "白州",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "7/1は食フェス300円OFFクーポン取得可 【送料無料】【数量限定】サントリー シングルモルトウイスキー 白州 Story of the Distillery 2024 43度 ギフトBOX付 700ml 1本",
+      "extracted_whiskeys": [
+        {
+          "name": "白州 Story of the Distillery 2024",
+          "distillery": "白州",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "シングルモルト山崎NV　43度　700mlシングルモルト白州NV　43度　700ml【ギフトセット】【のし対応】【箱入り包装代金含む】",
+      "extracted_whiskeys": [
+        {
+          "name": "白州NV",
+          "distillery": "白州",
+          "confidence": 0.95
+        }
+      ]
+    }
+  ]
+}
+```

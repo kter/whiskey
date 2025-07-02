@@ -1,0 +1,136 @@
+```json
+{
+  "results": [
+    {
+      "product_name": "サントリー ウイスキーチ多　700ml 箱なし　サントリー ウイスキー 知多 700ml シングルグレーン ウイスキー 日本の風香る 柔らかく甘美な余韻 滑らかな口当たり 熟成酒 人気 贈答用 ギフト",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリー ウイスキー 知多",
+          "distillery": "知多蒸溜所",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "国産ウイスキー飲み比べ　知多(ちた)　＆　季 TOKI(とき)　700ml×2本セット",
+      "extracted_whiskeys": [
+        {
+          "name": "知多",
+          "distillery": "知多蒸溜所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "プレゼント ラッピング お酒 おしゃれ ギフト ジョニーウォーカー ブラックラベル 12年 / 知多 高級 ウイスキー 2本セット ウイスキー 飲み比べ #giftw435 alc",
+      "extracted_whiskeys": [
+        {
+          "name": "知多",
+          "distillery": "知多蒸溜所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "3本セット 知多蒸留所謹製 知多 サントリーウイスキー シングルグレーンモルト ギフトBOX入り 700ml×3本",
+      "extracted_whiskeys": [
+        {
+          "name": "知多",
+          "distillery": "知多蒸溜所",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "夏の贈り物お中元 知多蒸留所謹製 サントリー グレーンウイスキー 知多(専用ギフトボックス付) 700ml×1本(ギフト対応可能)",
+      "extracted_whiskeys": [
+        {
+          "name": "知多",
+          "distillery": "知多蒸溜所",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【ラッピング無料】竹鶴 白ラベル/知多 NV 700ml 2本箱入ギフトセット",
+      "extracted_whiskeys": [
+        {
+          "name": "知多",
+          "distillery": "知多蒸溜所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "シングルモルト白州NV　43度　700mlシングルグレーン知多　43度　700ml【ギフトセット】【のし対応】【箱入り包装代金含む】",
+      "extracted_whiskeys": [
+        {
+          "name": "知多",
+          "distillery": "知多蒸溜所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "プレゼント ラッピング お酒 おしゃれ ギフト ソープフラワー ＆ 知多 高級 ウイスキー 花 シャボンフラワー #giftw553 alc",
+      "extracted_whiskeys": [
+        {
+          "name": "知多",
+          "distillery": "知多蒸溜所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "遅れてごめんね♪父の日 おとうさんありがとう木箱セット 知多蒸留所謹製知多43度 700ml 父の日カード付",
+      "extracted_whiskeys": [
+        {
+          "name": "知多",
+          "distillery": "知多蒸溜所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "夏の贈り物お中元 サントリー ウイスキー知多(知多専用ギフトボックス付 700ml×1)",
+      "extracted_whiskeys": [
+        {
+          "name": "知多",
+          "distillery": "知多蒸溜所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー　知多　43度　700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "知多",
+          "distillery": "知多蒸溜所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー ウイスキー 知多【箱なし】43度 700ml【SUNTORY 国産 知多蒸溜所]",
+      "extracted_whiskeys": [
+        {
+          "name": "知多",
+          "distillery": "知多蒸溜所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー シングルグレーンウイスキー 知多 43度 700ml ジャパニーズウィスキー",
+      "extracted_whiskeys": [
+        {
+          "name": "知多",
+          "distillery": "知多蒸溜所",
+          "confidence": 0.9
+        }
+      ]
+    }
+  ]
+}
+```

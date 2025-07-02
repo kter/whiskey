@@ -1,0 +1,206 @@
+```json
+{
+  "results": [
+    {
+      "product_name": "長濱蒸留所 AMAHAGAN アマハガン ワールドモルト エディション No.2 47％ 700ml[ウイスキー][御歳暮 贈り物 御礼 母の日 父の日 御中元]",
+      "extracted_whiskeys": [
+        {
+          "name": "アマハガン ワールドモルト エディション No.2",
+          "distillery": "長濱蒸留所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "アマハガン ワールドモルト エディション ピーテッド 700ml 47% 長濱蒸留所 AMAHAGAN World Malt Edition Peated 正規品 ジャパニーズウイスキー",
+      "extracted_whiskeys": [
+        {
+          "name": "アマハガン ワールドモルト エディション ピーテッド",
+          "distillery": "長濱蒸留所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "長濱蒸溜所 / アマハガン ワールドモルト エディション ピーテッド 化粧箱入り 700ml / ウイスキー / 日本 滋賀県長浜市 NAGAHAMA DISTILLERY AMAHAGAN WORLD MALT EDITION PEATED オリジナルボックス 国産ウイスキー 日本ウイスキー",
+      "extracted_whiskeys": [
+        {
+          "name": "アマハガン ワールドモルト エディション ピーテッド",
+          "distillery": "長濱蒸溜所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【全品P3倍＆300円OFFクーポン配布(6/30～7/2 10時迄)】お一人様1本限り シン・アマハガン ワールドブレンデッド エディション 仮面ライダー第2号 700ml 47度 長濱蒸溜所 ブレンデッドモルト ウイスキー ジャパニーズ 日本 アマハガン 限定 長濱 長S",
+      "extracted_whiskeys": [
+        {
+          "name": "シン・アマハガン ワールドブレンデッド エディション 仮面ライダー第2号",
+          "distillery": "長濱蒸溜所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "ウイスキー 長濱蒸溜所 アマハガン ワールドモルト エディションNo.1 700ml 1本",
+      "extracted_whiskeys": [
+        {
+          "name": "アマハガン ワールドモルト エディションNo.1",
+          "distillery": "長濱蒸溜所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【全品P3倍 6/30～7/1限定】AMAHAGAN World Malt Edition No.1 アマハガン ワールドモルト 700ml 47度 長濱蒸溜所 ブレンデッドモルト 第一弾 ノンチル ノンカラー 箱付 日本 滋賀 長浜",
+      "extracted_whiskeys": [
+        {
+          "name": "アマハガン ワールドモルト エディション No.1",
+          "distillery": "長濱蒸溜所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "国産【ジャパニーズブレンデッドモルトウイスキー】『 アマハガン アトマイザー ヘビリーピーテッド 40ml箱入 』ワンプッシュで「追い」ピート。 簡単に味変が愉しめる母の日 父の日 敬老の日 誕生日プレゼント御中元 御歳暮 御年賀 内祝 記念日",
+      "extracted_whiskeys": [
+        {
+          "name": "アマハガン アトマイザー ヘビリーピーテッド",
+          "distillery": "長濱蒸溜所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【全品P3倍＆300円OFFクーポン配布(6/30～7/2 10時迄)】お一人様2本限りAMAHAGAN アトマイザー ヘビリーピーテッド 40ml 47度50ppm スプレータイプ 追いピート アマハガン ワールドブレンデッドモルト ウイスキー 日本 滋賀 長浜 長濱蒸溜所 長S",
+      "extracted_whiskeys": [
+        {
+          "name": "アマハガン アトマイザー ヘビリーピーテッド",
+          "distillery": "長濱蒸溜所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【全品P3倍 6/30～7/1限定】AMAHAGAN World Malt Edition No.2 Red Wine Wood Finish アマハガン ワールドモルト 第ニ弾 レッドワインウッドフィニッシュ 700ml 47度 長濱蒸溜所 ブレンデッドモルト ノンチル ノンカラー 箱付 日本 滋賀 長浜",
+      "extracted_whiskeys": [
+        {
+          "name": "アマハガン ワールドモルト 第ニ弾 レッドワインウッドフィニッシュ",
+          "distillery": "長濱蒸溜所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "7/1限定【P10倍＆食フェス300円CP】ウイスキー アマハガン ワールドモルト エディション NO.3 700ml ウィスキー ブレンデッド モルト AMAHAGAN ジャパニーズウイスキー",
+      "extracted_whiskeys": [
+        {
+          "name": "アマハガン ワールドモルト エディション No.3",
+          "distillery": "長濱蒸溜所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "アマハガン アトマイザー ヘビリーピーテッド 47％ 40ml スプレー式 ガラス瓶 限定品",
+      "extracted_whiskeys": [
+        {
+          "name": "アマハガン アトマイザー ヘビリーピーテッド",
+          "distillery": "長濱蒸溜所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【量り売り】アマハガン ワールドモルト エディションNo.3　100ml　47度　長濱蒸留所　ウイスキー　お試し",
+      "extracted_whiskeys": [
+        {
+          "name": "アマハガン ワールドモルト エディション No.3",
+          "distillery": "長濱蒸留所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "長濱蒸留所 AMAHAGAN アマハガン アトマイザー へビリーピーテッド 47度 40ml",
+      "extracted_whiskeys": [
+        {
+          "name": "アマハガン アトマイザー へビリーピーテッド",
+          "distillery": "長濱蒸留所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "長濱蒸溜所【ブレンデッドモルトウイスキー】『 アマハガン No.1 47度 700ml箱入 』ワールドモルトエディション御結婚御祝 内祝 記念日 開店御祝 周年記念母の日 父の日 敬老の日 誕生日プレゼント ギフト御中元 御歳暮 御年賀 出産御祝",
+      "extracted_whiskeys": [
+        {
+          "name": "アマハガン No.1",
+          "distillery": "長濱蒸溜所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【量り売り】アマハガン ワールドモルト エディション山桜　100ml　47度　長濱蒸留所　ウイスキー　お試し",
+      "extracted_whiskeys": [
+        {
+          "name": "アマハガン ワールドモルト エディション山桜",
+          "distillery": "長濱蒸留所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "アマハガン ワールドモルトエディション山桜 [瓶] 47度 700ml 送料無料(沖縄対象外) [TK 日本 ウイスキー 514150]",
+      "extracted_whiskeys": [
+        {
+          "name": "アマハガン ワールドモルトエディション山桜",
+          "distillery": "長濱蒸留所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "長濱蒸留所 AMAHAGAN アマハガン ワールドモルト 第4弾 山桜ウ ッドフィニッシュ 700ml 47度 ブレンデッドモルト 箱付",
+      "extracted_whiskeys": [
+        {
+          "name": "アマハガン ワールドモルト 第4弾 山桜ウッドフィニッシュ",
+          "distillery": "長濱蒸留所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【 送料無料※限定 】 アマハガン　ワールドモルト　エディション　ピーテッド　47度　700ml　/長濱蒸留所",
+      "extracted_whiskeys": [
+        {
+          "name": "アマハガン ワールドモルト エディション ピーテッド",
+          "distillery": "長濱蒸留所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "AMAHAGAN World Malt Edition No.1 アマハガン ワールドモルト 700ml 47度 長濱蒸溜所 ブレンデッドモルト 第一弾 ノンチル ノンカラー 箱付 日本 滋賀 長浜",
+      "extracted_whiskeys": [
+        {
+          "name": "アマハガン ワールドモルト エディション No.1",
+          "distillery": "長濱蒸溜所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【送料無料※】 アマハガン　ワールドモルト　エディション　山桜　山桜フィニッシュ　47度　700ml　/長濱蒸留所",
+      "extracted_whiskeys": [
+        {
+          "name": "アマハガン ワールドモルト エディション 山桜 山桜フィニッシュ",
+          "distillery": "長濱蒸留所",
+          "confidence": 0.9
+        }
+      ]
+    }
+  ]
+}
+```

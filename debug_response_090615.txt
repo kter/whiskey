@@ -1,0 +1,236 @@
+```json
+{
+  "results": [
+    {
+      "product_name": "グレンフィディック ファイアー & ケーン 43度 700ml RS 【ウイスキー】",
+      "extracted_whiskeys": [
+        {
+          "name": "Glenfiddich Fire & Cane",
+          "distillery": "Glenfiddich",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "グレンフィディック 18年 パーペチュアコレクション VAT04 47.8度 700ml［並行輸入品］【スコットランド シングルモルト スコッチ ウイスキー スペイサイド】",
+      "extracted_whiskeys": [
+        {
+          "name": "Glenfiddich 18 Year Old Perpetual Collection",
+          "distillery": "Glenfiddich",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "グレンフィディック 18年 シングル モルト ウィスキー スモールバッチリザーブ 700mlGlenfiddich Single Malt Scotch Whisky 18 years oldNo.67160",
+      "extracted_whiskeys": [
+        {
+          "name": "Glenfiddich 18 Year Old Single Malt Scotch Whisky",
+          "distillery": "Glenfiddich",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【送料無料】スコッチウイスキー飲み比べ6本セット ラフロイグ10年 700ml/シーバスリーガル 12年 700ml/バランタイン ファイネスト 700ml/グレンフィディック 12年 700ml/デュワーズ 700ml/ジョニーウォーカー 700ml 40度※クール便・一部地域は別途送料",
+      "extracted_whiskeys": [
+        {
+          "name": "Laphroaig 10 Year Old",
+          "distillery": "Laphroaig",
+          "confidence": 0.9
+        },
+        {
+          "name": "Seabass Regal 12 Year Old",
+          "distillery": "Seabass Regal",
+          "confidence": 0.9
+        },
+        {
+          "name": "Ballantine's Finest",
+          "distillery": "Ballantine's",
+          "confidence": 0.9
+        },
+        {
+          "name": "Glenfiddich 12 Year Old",
+          "distillery": "Glenfiddich",
+          "confidence": 0.9
+        },
+        {
+          "name": "Dewar's",
+          "distillery": "Dewar's",
+          "confidence": 0.9
+        },
+        {
+          "name": "Johnny Walker",
+          "distillery": "Johnny Walker",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "グレンフィディック モルトマスターズエディション 43度 700ml［並行輸入品］【スコットランド シングルモルト スコッチ ウイスキー スペイサイド】",
+      "extracted_whiskeys": [
+        {
+          "name": "Glenfiddich Malt Masters Edition",
+          "distillery": "Glenfiddich",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "★送料無料★(一部地域除く)グレンフィディック　23年　グランクリュ　700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "Glenfiddich 23 Year Old Grand Cru",
+          "distillery": "Glenfiddich",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "グレンフィディック 12年 スペシャルリザーブ",
+      "extracted_whiskeys": [
+        {
+          "name": "Glenfiddich 12 Year Old Special Reserve",
+          "distillery": "Glenfiddich",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "グレンフィディック 12年 スペシャルリザーブ 40％ 700ml[ウイスキー][御歳暮 贈り物 御礼 母の日 父の日 御中元]",
+      "extracted_whiskeys": [
+        {
+          "name": "Glenfiddich 12 Year Old Special Reserve",
+          "distillery": "Glenfiddich",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "グレンフィディック 18年 スモールバッチ 40％ 700ml [並行輸入品][ウイスキー][御歳暮 贈り物 御礼 母の日 父の日 御中元]",
+      "extracted_whiskeys": [
+        {
+          "name": "Glenfiddich 18 Year Old Small Batch",
+          "distillery": "Glenfiddich",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "グレンフィディック　12年　40度　700ml　箱入り　シングルモルト スコッチ ウイスキー",
+      "extracted_whiskeys": [
+        {
+          "name": "Glenfiddich 12 Year Old",
+          "distillery": "Glenfiddich",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【箱入】ザ グレンリヴェット[18]年 正規代理店輸入品 シングル モルト スコッチ ウィスキー オフィシャル 700ml 40度THE GLENLIVET 18 YEARS SIGLE MALT SCOTCH WHISKY 700ml 40%",
+      "extracted_whiskeys": [
+        {
+          "name": "The Glenlivet 18 Year Old",
+          "distillery": "The Glenlivet",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【全品P3倍＆300円OFFクーポン配布(6/30～7/2 10時迄)】ザ・グレンリベット 12年 40度 700ml[ウイスキー][ウィスキー][長S]",
+      "extracted_whiskeys": [
+        {
+          "name": "The Glenlivet 12 Year Old",
+          "distillery": "The Glenlivet",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【全品P3倍＆300円OFFクーポン配布(6/30～7/2 10時迄)】ザ・グレンリベット 12年 40度 700ml×12本【ケース12本入】【送料無料】[ウイスキー][ウィスキー][長S]",
+      "extracted_whiskeys": [
+        {
+          "name": "The Glenlivet 12 Year Old",
+          "distillery": "The Glenlivet",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【7/1(火)全品P2倍】グレンリベット 12年 700ml箱付 グレンリヴェット_[リカーズベスト]_[全品ヤマト宅急便配送]お家 家飲み ロック whisky ウイスキー whiskey",
+      "extracted_whiskeys": [
+        {
+          "name": "Glenlivet 12 Year Old",
+          "distillery": "Glenlivet",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ザ・グレンリベット 21年 シングルモルト スコッチウイスキー ウィスキー 化粧箱入り(700ml)【ザ・グレンリベット(THE GLENLIVET)】[ギフト プレゼント お酒 高級 御礼 お祝 還暦 正規品]",
+      "extracted_whiskeys": [
+        {
+          "name": "The Glenlivet 21 Year Old",
+          "distillery": "The Glenlivet",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【正規品・箱入】ザ グレンリヴェット 14年 コニャックカスク セレクション シングル モルト スコッチ ウイスキー 750ml 40％THE GLENLIVET AGED14YEAR COGNAC CASK SELECTION SINGLE MALT SCOTCH WHISKY 750ml 40%",
+      "extracted_whiskeys": [
+        {
+          "name": "The Glenlivet 14 Year Old Cognac Cask Selection",
+          "distillery": "The Glenlivet",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【企画品】ザ・グレンリベット カリビアンリザーブ シングルモルト スコッチウイスキー ギフト(700ml)【ザ・グレンリベット(THE GLENLIVET)】[ウィスキー ラム樽熟成 ギフト プレゼント 誕生日 酒]",
+      "extracted_whiskeys": [
+        {
+          "name": "The Glenlivet Caribbean Reserve",
+          "distillery": "The Glenlivet",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ザ・グレンリベット 15年 フレンチオークリザーヴ シングルモルト スコッチ 箱入り(700ml)【ザ・グレンリベット(THE GLENLIVET)】[スコッチウイスキー ウィスキー ギフト プレゼント 酒]",
+      "extracted_whiskeys": [
+        {
+          "name": "The Glenlivet 15 Year Old French Oak Reserve",
+          "distillery": "The Glenlivet",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "高級ウイスキー2本セット　シングルモルト山崎43度、グレンリベット18年40度700ml　ギフトボックス付き",
+      "extracted_whiskeys": [
+        {
+          "name": "Yamazaki 43%",
+          "distillery": "Yamazaki",
+          "confidence": 0.9
+        },
+        {
+          "name": "The Glenlivet 18 Year Old",
+          "distillery": "The Glenlivet",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【全品P3倍 6/30～7/1限定】グレンリベット 18年 700ml 40度 正規 ウイスキー シングルモルト グレンリヴェット スペイサイド 長S",
+      "extracted_whiskeys": [
+        {
+          "name": "The Glenlivet 18 Year Old",
+          "distillery": "The Glenlivet",
+          "confidence": 0.95
+        }
+      ]
+    }
+  ]
+}
+```

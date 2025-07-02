@@ -1,0 +1,196 @@
+```json
+{
+  "results": [
+    {
+      "product_name": "[大容量]ジャックダニエル 40度 1000ml 箱なし 【 ウイスキー ウィスキー テネシー お酒 ジャック・ダニエル バーボン バーボンウイスキー 酒 記念日 晩酌 美味しいお酒 祝い 家庭用 宅飲み 蒸留酒 ひとり呑み 飲み会 ひとり飲み 洋酒 】【ワインならリカオー】",
+      "extracted_whiskeys": [
+        {
+          "name": "Jack Daniel's",
+          "distillery": "Jack Daniel's Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "シナトラ、ザ・ベスト!ジャックダニエル シナトラ 1000ml 45度 箱付 Jack Daniel`s SSINATRA SELECT テネシーウイスキー Tennessee Whiskey アメリカンウイスキー American バーボンウイスキー Bourbon Whisky kawahc",
+      "extracted_whiskeys": [
+        {
+          "name": "Jack Daniel's Sinatra Select",
+          "distillery": "Jack Daniel's Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【正規品 1750ml×2本 オリジナルトートバッグ付】ジャック ダニエル ブラックラベル オールド No.7 テネシーウイスキー 正規代理店輸入品",
+      "extracted_whiskeys": [
+        {
+          "name": "Jack Daniel's Black Label",
+          "distillery": "Jack Daniel's Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ジャックダニエル アメリカン シングルモルト 1000ml 45度 オロロソシェリーカスク テネシーウイスキー Jack Daniel's American Single Malt Oloroso Sherry Casks tennessee Whiskey アメリカ USA テネシー州 kawahc",
+      "extracted_whiskeys": [
+        {
+          "name": "Jack Daniel's American Single Malt",
+          "distillery": "Jack Daniel's Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【全品P3倍 6/30～7/1限定】ジャックダニエル ブラック 正規 40度 700ml×12本【ケース12本販売】【送料無料】[ウイスキー][ウィスキー][長S]",
+      "extracted_whiskeys": [
+        {
+          "name": "Jack Daniel's Black",
+          "distillery": "Jack Daniel's Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【正規品 1750ml×2本 オリジナルマフラータオル付】ジャック ダニエル ブラックラベル オールド No.7 テネシーウイスキー 正規代理店輸入品",
+      "extracted_whiskeys": [
+        {
+          "name": "Jack Daniel's Black Label",
+          "distillery": "Jack Daniel's Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ジャックダニエル テネシーアップル (Jack Daniel's Tennessee Apple) 700ml 35度 | ウイスキー ウィスキー フレーバー アップル リキュール 並行 アメリカ バーボン テネシー 洋酒 フルーティー 青りんご 甘口 ギフト プレゼント 贈り物 誕生日 父の日 ハイボール",
+      "extracted_whiskeys": [
+        {
+          "name": "Jack Daniel's Tennessee Apple",
+          "distillery": "Jack Daniel's Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ウイスキー　ジャックダニエル シナトラ セレクト 1000ml (71437☆)　洋酒 Whisky(76-2)",
+      "extracted_whiskeys": [
+        {
+          "name": "Jack Daniel's Sinatra Select",
+          "distillery": "Jack Daniel's Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ジャックダニエル ブラック 40度 1L 1000ml 送料無料(沖縄対象外) あす楽対応 当日発送 [BF バーボン テネシー ウイスキー アメリカ JACK DANIEL'S 44941] ギフト プレゼント 母の日 父の日 お中元 御中元",
+      "extracted_whiskeys": [
+        {
+          "name": "Jack Daniel's Black",
+          "distillery": "Jack Daniel's Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "[送無][セット6][大容量]ジャックダニエル 40度 1750ml×6本 黒 送料無料 ブラックラベル 1.75L【 ウイスキー ウィスキー バーボンウイスキー ボン お酒 ギフト セット 蒸留酒 祝い 酒ギフト 誕生日 記念日 プレゼント お礼 飲み会 洋酒】【ワインならリカオー】",
+      "extracted_whiskeys": [
+        {
+          "name": "Jack Daniel's Black Label",
+          "distillery": "Jack Daniel's Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "[大容量]ジャックダニエル 40度 1750ml 1.75L バーボン ウィスキー【 お酒 ギフト 彼氏 ウイスキー 誕生日 プレゼント 蒸留酒 贈答品 内祝 手土産 還暦祝い 酒ギフト 祝い 記念日 お礼 飲み会 祝い酒 バーボンウイスキー 洋酒 】【ワインならリカオー】",
+      "extracted_whiskeys": [
+        {
+          "name": "Jack Daniel's Bourbon",
+          "distillery": "Jack Daniel's Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "[送無][セット12][大容量]ジャックダニエル 40度 1000ml×12本 黒 送料無料 ブラックラベル 1L【 ウイスキー ウィスキー バーボンウイスキー ボン お酒 ギフト 蒸留酒 セット 祝い 酒ギフト 誕生日 記念日 プレゼント お礼 飲み会 洋酒 】【ワインならリカオー】",
+      "extracted_whiskeys": [
+        {
+          "name": "Jack Daniel's Black Label",
+          "distillery": "Jack Daniel's Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ジャックダニエル ブラック 40度 正規品 700ml 送料無料(沖縄対象外) あす楽対応 当日発送 [BF バーボン テネシー ウイスキー アメリカ JACK DANIEL'S] ギフト プレゼント 母の日 父の日 お中元 御中元",
+      "extracted_whiskeys": [
+        {
+          "name": "Jack Daniel's Black",
+          "distillery": "Jack Daniel's Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【送料無料】ジャックダニエル シングルバレル 700ml ウイスキー 45度 H 箱なし",
+      "extracted_whiskeys": [
+        {
+          "name": "Jack Daniel's Single Barrel",
+          "distillery": "Jack Daniel's Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "最強のジャックダニエル64.5度 ジャックダニエル バレルストレングス 700ml 64.5度 箱付 シングルバレル Jack Daniel's Single Barrel Barrel Strength tennessee Whiskey アメリカ USA テネシー州 kawahc",
+      "extracted_whiskeys": [
+        {
+          "name": "Jack Daniel's Barrel Strength",
+          "distillery": "Jack Daniel's Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【正規品】ジャック ダニエル ブラックラベル オールド No.7 テネシーウイスキー ジャック ダニエル蒸留所 正規代理店輸入品 700ml 40％ ハードリカーJACK DANIELS TENNESSEE WHISKY JACK DANIEL'S 700ml 40%",
+      "extracted_whiskeys": [
+        {
+          "name": "Jack Daniel's Black Label",
+          "distillery": "Jack Daniel's Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ジャックダニエル シングルバレル 700ml 45度 テネシーウイスキー Jack Daniel tennessee Whiskey アメリカ合衆国ケンタッキー州 kawahc",
+      "extracted_whiskeys": [
+        {
+          "name": "Jack Daniel's Single Barrel",
+          "distillery": "Jack Daniel's Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "送料無料 ジャックダニエル ブラック 40度 1750ml×6本 1ケース ウイスキー バーボン アメリカ テネシー ブラウンフォーマン RSL",
+      "extracted_whiskeys": [
+        {
+          "name": "Jack Daniel's Black",
+          "distillery": "Jack Daniel's Distillery",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ジャックダニエル レガシー第1弾 700ml 43度 1905 エディション1 Jack Daniel Legacy 1905 Edition1 テネシーウイスキー Tennessee Whiskey アメリカンウイスキー American バーボンウイスキー Bourbon Whisky ケンタッキー州 USA アメリカ kawahc",
+      "extracted_whiskeys": [
+        {
+          "name": "Jack Daniel's Legacy 1905 Edition 1",
+          "distillery": "Jack Daniel's Distillery",
+          "confidence": 0.95
+        }
+      ]
+    }
+  ]
+}
+```

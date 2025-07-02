@@ -1,0 +1,196 @@
+```json
+{
+  "results": [
+    {
+      "product_name": "カナディアンクラブ クラシック12年 700ml 40度 ブレンデッド カナディアンウイスキー ハイボール",
+      "extracted_whiskeys": [
+        {
+          "name": "カナディアンクラブ クラシック12年",
+          "distillery": "カナディアンクラブ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【送料無料】6本セット【正規品】カナディアンクラブ クラシック 12年/Canadian Club サントリー正規品 ビン・瓶 カナダ 700ml 40.0% カナディアンウイスキー ハイボールにおすすめ 業務用※クール便・一部地域は追加送料※",
+      "extracted_whiskeys": [
+        {
+          "name": "カナディアンクラブ クラシック 12年",
+          "distillery": "カナディアンクラブ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【世界的に有名なカナディアンウイスキーの12年物！】　カナディアンクラブ　クラシック　12年　40度　700ml(正規輸入品)",
+      "extracted_whiskeys": [
+        {
+          "name": "カナディアンクラブ クラシック 12年",
+          "distillery": "カナディアンクラブ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【送料無料】12本セット/1箱【正規品】カナディアンクラブ クラシック 12年/Canadian Club サントリー正規品 ビン・瓶 カナダ 700ml 40.0% カナディアンウイスキー ハイボールにおすすめ 業務用※クール便・一部地域は追加送料※",
+      "extracted_whiskeys": [
+        {
+          "name": "カナディアンクラブ クラシック 12年",
+          "distillery": "カナディアンクラブ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "カナディアン ヘリテージ 21年 センチュリー リザーヴ 750ml 60度 Canadian Heritage Whisky century reserve Super Premium Small Batch カナディアンウイスキー スモールバッチ ウイスキー カナダ canada kawahc",
+      "extracted_whiskeys": [
+        {
+          "name": "カナディアン ヘリテージ 21年 センチュリー リザーヴ",
+          "distillery": "カナディアン ヘリテージ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "[送無][セット12]カナディアンクラブ 20年 40度 750ml×12本 カナディアンウイスキー 送料無料【 ウィスキー お酒 ギフト 引っ越し 蒸留酒 大容量 セット ウイスキー 祝い 酒ギフト 誕生日 記念日 プレゼント お礼 飲み会 祝い酒 洋酒 】【ワインならリカオー】",
+      "extracted_whiskeys": [
+        {
+          "name": "カナディアンクラブ 20年",
+          "distillery": "カナディアンクラブ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "CANADIAN CLUB カナディアンクラブ スタンダード 700ml カートンなし カナディアンウイスキー",
+      "extracted_whiskeys": [
+        {
+          "name": "カナディアンクラブ スタンダード",
+          "distillery": "カナディアンクラブ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "カナディアンクラブ 20年 750ml 40度 箱付 カナディアンウイスキー Canadian Club 20 Year Old Whisky Canada Issue no4 カナディアン クラブ カナダ産 cc kawahc",
+      "extracted_whiskeys": [
+        {
+          "name": "カナディアンクラブ 20年",
+          "distillery": "カナディアンクラブ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "カナディアンクラブ 42年 クロニカル 750ml 45度 箱付 cc カナディアンウイスキー canadianclub 42years カナディアン クラブ kawahc おひとり様1ヶ月に1本限り",
+      "extracted_whiskeys": [
+        {
+          "name": "カナディアンクラブ 42年 クロニカル",
+          "distillery": "カナディアンクラブ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "カナディアンクラブ 700ml 40度 正規品 カナディアンウイスキー Canadian Club Whisky Canada Issue no4 カナディアン クラブ カナダ産 kawahc",
+      "extracted_whiskeys": [
+        {
+          "name": "カナディアンクラブ",
+          "distillery": "カナディアンクラブ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【正規品】カナディアンクラブ Canadian Club Canadian Whisky カナダ/カナディアンウイスキー/700ml/40度",
+      "extracted_whiskeys": [
+        {
+          "name": "カナディアンクラブ",
+          "distillery": "カナディアンクラブ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "カナディアンクラブ クラシック12年 40％ 700ml[ウイスキー][御歳暮 贈り物 御礼 母の日 父の日 御中元]",
+      "extracted_whiskeys": [
+        {
+          "name": "カナディアンクラブ クラシック12年",
+          "distillery": "カナディアンクラブ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "カナディアンクラブ 42年 クロニクルズ 45％ 750ml[ウイスキー][御歳暮 贈り物 御礼 母の日 父の日 御中元]",
+      "extracted_whiskeys": [
+        {
+          "name": "カナディアンクラブ 42年 クロニクルズ",
+          "distillery": "カナディアンクラブ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "カナディアンクラブ　ドック　NO57　スパイスドウイスキー　750ml　40%",
+      "extracted_whiskeys": [
+        {
+          "name": "カナディアンクラブ　ドック　NO57",
+          "distillery": "カナディアンクラブ",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "レア パーフェクション 15年 カスクストレングス 750ml カナディアン ウイスキー H 箱なし",
+      "extracted_whiskeys": [
+        {
+          "name": "レア パーフェクション 15年 カスクストレングス",
+          "distillery": "カナディアン",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "レア パーフェクション 15年 カスクストレングス 59.85度 750ml［並行輸入品］【カナディアン ウイスキー グレーン モルト】",
+      "extracted_whiskeys": [
+        {
+          "name": "レア パーフェクション 15年 カスクストレングス",
+          "distillery": "カナディアン",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【 コストコ 】カークランド シグネチャー カナディアン ウイスキー 1750 ml",
+      "extracted_whiskeys": [
+        {
+          "name": "カークランド シグネチャー カナディアン ウイスキー",
+          "distillery": "カークランド",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "カナディアン　ミスト　750ml　40%",
+      "extracted_whiskeys": [
+        {
+          "name": "カナディアン　ミスト",
+          "distillery": "カナディアン",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "カナディアンクラブ 700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "カナディアンクラブ",
+          "distillery": "カナディアンクラブ",
+          "confidence": 0.95
+        }
+      ]
+    }
+  ]
+}
+```

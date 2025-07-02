@@ -92,7 +92,7 @@ class WhiskeyDatabaseInserter:
         return all_whiskeys
 
     def remove_duplicates(self, whiskey_list: List[Dict]) -> List[Dict]:
-        """重複除去（正規化された名前+蒸溜所でユニーク化）"""
+        """重複除去（完全一致のみ除去、年数等のバリエーションは残す）"""
         seen_keys: Set[str] = set()
         unique_whiskeys = []
         
@@ -104,10 +104,9 @@ class WhiskeyDatabaseInserter:
                 print(f"空のウイスキー名をスキップ: {whiskey}")
                 continue
             
-            # 重複チェック用キー
-            normalized_name = self.normalize_text(name)
-            normalized_distillery = self.normalize_text(distillery)
-            duplicate_key = f"{normalized_name}#{normalized_distillery}"
+            # 重複チェック用キー（完全一致のみ）
+            # 正規化はせず、元の名前をそのまま使用（大文字小文字のみ統一）
+            duplicate_key = f"{name.lower()}#{distillery.lower()}"
             
             if duplicate_key not in seen_keys:
                 seen_keys.add(duplicate_key)

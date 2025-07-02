@@ -1,0 +1,196 @@
+```json
+{
+  "results": [
+    {
+      "product_name": "国産モルトウイスキーセット 飲み比べ 3本セット タイプ別 ジャパニーズウイスキー",
+      "extracted_whiskeys": [
+        {
+          "name": "国産モルトウイスキーセット",
+          "distillery": "不明",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "new【量り売り】キリン シングルブレンデッド ジャパニーズウイスキー 富士　43度　30ml or 100nl　ウイスキー　お試し",
+      "extracted_whiskeys": [
+        {
+          "name": "キリン シングルブレンデッド ジャパニーズウイスキー 富士",
+          "distillery": "キリン",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "サブ ナイトブラック SAB. NIGHT BLACK ウイスキー 700ml 46％ ブラック 若鶴酒造 三郎丸蒸留所 ジャパニーズウイスキー ウィスキー",
+      "extracted_whiskeys": [
+        {
+          "name": "サブ ナイトブラック",
+          "distillery": "若鶴酒造 三郎丸蒸留所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "サントリーウイスキー 角瓶 40度 700ml 瓶 【 ブレンデッド ジャパニーズウイスキー ウィスキー サントリー角 】",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリーウイスキー 角瓶",
+          "distillery": "サントリー",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【ジャパニーズシングルモルトウイスキー】ギフト『 シングルモルト富士 &YUZA 2024 2本組』キリン ジャパニーズウイスキー 富士遊佐蒸留所 ユザ ゆざ御結婚御祝 記念日 内祝 周年記念 開店御祝母の日 父の日 敬老の日 誕生日プレゼント",
+      "extracted_whiskeys": [
+        {
+          "name": "シングルモルト富士 &YUZA",
+          "distillery": "キリン 富士遊佐蒸留所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "★専用化粧箱入★　YAMAZAKURA シングルモルト ジャパニーズウイスキー　安積　カベルネ・ソーヴィ二ヨンカスクリザーブ　50度　700ml　/安積蒸溜所/安積蒸留所/笹の川酒造/山桜シングルモルトジャパニーズウイスキー安積",
+      "extracted_whiskeys": [
+        {
+          "name": "YAMAZAKURA シングルモルト ジャパニーズウイスキー　安積",
+          "distillery": "笹の川酒造",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "CASK Number 108 プライベートカスク ジャパニーズウィスキー 43度 700ml ウィスキー 鹿児島県",
+      "extracted_whiskeys": [
+        {
+          "name": "CASK Number 108 プライベートカスク ジャパニーズウィスキー",
+          "distillery": "鹿児島県",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "翼知 ソラチウイスキー SORACHI 500ml ヒノキ樽 国産ウイスキー ブレンデッドウイスキー箱入り【ギフト プレゼントにどうぞ 高級ウイスキー ジャパニーズウイスキー】",
+      "extracted_whiskeys": [
+        {
+          "name": "翼知 ソラチウイスキー",
+          "distillery": "不明",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "日の丸ウイスキー Signature 1823 ジャパニーズウイスキー 日本 高級 ギフト 贈り物 お祝い プレゼント 内祝い 還暦祝い 誕生日 贈答用 送別 プレゼント 父の日 母の日",
+      "extracted_whiskeys": [
+        {
+          "name": "日の丸ウイスキー Signature 1823",
+          "distillery": "不明",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【白州NV100周年 箱なし】サントリー 白州 NV 100周年記念蒸溜所ラベル ノンヴィンテージ 700ml 43度 箱なし Suntory hakusyu シングルモルト 国産ウイスキー ジャパニーズウイスキー SingleMalt Japanese Whisky おひとり様1ヶ月に1本限り 送って嬉しい kawahc",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリー 白州 NV 100周年記念蒸溜所ラベル",
+          "distillery": "サントリー",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー ウイスキー 知多 シングルグレーン 国産ウイスキー(700ml*12本セット)[ジャパニーズウイスキー グレーン]",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリー ウイスキー 知多 シングルグレーン",
+          "distillery": "サントリー",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "お中元ギフト ピーク スペシャル ウイスキー 720ml 43度 ジャパニーズウイスキー 国産 玉泉堂 Whiskey Gift ウイスキー ギフト プレゼント 御中元 お中元 父の日 お酒 ギフト 父の日 ウイスキー プレゼント 箱入り 酒 洋酒 男性 お父さん 父親 誕生日プレゼント",
+      "extracted_whiskeys": [
+        {
+          "name": "ピーク スペシャル ウイスキー",
+          "distillery": "玉泉堂",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【並行輸入品】サントリーウイスキー　季　TOKI（とき） 43度 700ml （箱なし）【ジャパニーズウイスキー】",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリーウイスキー　季　TOKI（とき）",
+          "distillery": "サントリー",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "翼知 SORACHI ソラチウイスキー メーカー公式 限定マドラー付き ウイスキー 500ml 檜 ヒノキ樽 国産ウイスキー ブレンデッド 箱入りWORLD WHISKIES AWARDS 2024 ブレンデッド部門 銀賞受賞【ギフト プレゼント 誕生日祝い 還暦祝い 高級ウイスキー ジャパニーズウイスキー】",
+      "extracted_whiskeys": [
+        {
+          "name": "翼知 SORACHI ソラチウイスキー",
+          "distillery": "不明",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【送料無料】サントリー HAKUSHU 白州 シングルモルト 1973 ノンヴィンテージ 700ml 箱 正規品 高級 ジャパニーズウイスキー ギフト プレゼント 人気 日本 正月 母の日 父の日 お中元 お歳暮 クリスマス 誕生日 ※酒販免許をお持ちで無い場合は愛知県限定発送になります。",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリー HAKUSHU 白州 シングルモルト 1973",
+          "distillery": "サントリー",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー シングルモルトウイスキー 白州12年 700ml 箱なし シングルモルト 山梨県 ジャパニーズウイスキー 【送料無料※一部地域は除く】",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリー シングルモルトウイスキー 白州12年",
+          "distillery": "サントリー",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "白州 1本 さがみの夢ワイン レギュラー 1本 【セット販売】 ジャパニーズウイスキー シングルモルトウイスキー 日本ワイン 赤ワイン",
+      "extracted_whiskeys": [
+        {
+          "name": "白州 シングルモルトウイスキー",
+          "distillery": "不明",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "ガイアフロー シングルモルト日本ウイスキー 静岡 ユナイテッド S 2024 サマー　《専用箱入》　50.5％　500ml　/GAIAFLOW SINGLE MALT JAPANESE WHISKY SHIZUOKA UNITED S 2024 summer　/静岡蒸溜所/ジャパニーズウイスキー",
+      "extracted_whiskeys": [
+        {
+          "name": "ガイアフロー シングルモルト日本ウイスキー 静岡 ユナイテッド S 2024 サマー",
+          "distillery": "静岡蒸溜所",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "全商品ポイント10倍!エントリー不要! サントリーウイスキー 響BCと山崎NV 飲み比べ2本セット 内容量700ml ノンビンテージ ブレンダーズチョイス 43％ 化粧箱なし 入手難 飲み会 プレゼント 贈り物 業務 社用 仕入れ ジャパニーズウィスキー 楽しめセット",
+      "extracted_whiskeys": [
+        {
+          "name": "サントリーウイスキー 響BCと山崎NV",
+          "distillery": "サントリー",
+          "confidence": 0.9
+        }
+      ]
+    }
+  ]
+}
+```

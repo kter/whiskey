@@ -1,0 +1,211 @@
+```json
+{
+  "results": [
+    {
+      "product_name": "サントリー ジムビーム ホワイト 正規品 700ml×12本",
+      "extracted_whiskeys": [
+        {
+          "name": "ジムビーム ホワイト",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー ジムビーム ハイボール 350ml×1ケース/24本",
+      "extracted_whiskeys": [
+        {
+          "name": "ジムビーム ハイボール",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ジムビーム アップル 32.5度 700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "ジムビーム アップル",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ノブクリーク 750ml 50度",
+      "extracted_whiskeys": [
+        {
+          "name": "ノブクリーク",
+          "distillery": "不明",
+          "confidence": 0.85
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー ジムビーム 700ml×2本",
+      "extracted_whiskeys": [
+        {
+          "name": "ジムビーム",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー ジムビーム 瓶 40度 700ml×2本",
+      "extracted_whiskeys": [
+        {
+          "name": "ジムビーム",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ジムビームアップル 700ml 32.5度",
+      "extracted_whiskeys": [
+        {
+          "name": "ジムビームアップル",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー ジムビーム アップル 32度 700ml 1本",
+      "extracted_whiskeys": [
+        {
+          "name": "ジムビーム アップル",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ジムビーム バーボン ウイスキー ケンタッキー ジェームズ ビーム 700ml 40%",
+      "extracted_whiskeys": [
+        {
+          "name": "ジムビーム バーボン ウイスキー",
+          "distillery": "ジェームズ ビーム",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ジムビーム 正規 700ml 40度",
+      "extracted_whiskeys": [
+        {
+          "name": "ジムビーム",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ハイボール缶 サントリー ジムビーム アップルハイボール 350ml×3ケース/72本",
+      "extracted_whiskeys": [
+        {
+          "name": "ジムビーム アップルハイボール",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ニッカ フロム ザ バレル 51度 500ml",
+      "extracted_whiskeys": [
+        {
+          "name": "ニッカ フロム ザ バレル",
+          "distillery": "ニッカウイスキー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ニッカ カフェ モルト＆ニッカ カフェ グレーン 飲み比べセット 700ml×2本",
+      "extracted_whiskeys": [
+        {
+          "name": "ニッカ カフェ モルト",
+          "distillery": "ニッカウイスキー",
+          "confidence": 0.95
+        },
+        {
+          "name": "ニッカ カフェ グレーン",
+          "distillery": "ニッカウイスキー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ザ ニッカ プレミアム ブレンデッド ジャパニーズ ウイスキー 700ml 43%",
+      "extracted_whiskeys": [
+        {
+          "name": "ザ ニッカ プレミアム ブレンデッド ジャパニーズ ウイスキー",
+          "distillery": "ニッカウイスキー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ニッカ ウイスキー フロンティア 500ml×12本",
+      "extracted_whiskeys": [
+        {
+          "name": "ニッカ ウイスキー フロンティア",
+          "distillery": "ニッカウイスキー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ニッカ セッション 奏楽 43度 700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "ニッカ セッション 奏楽",
+          "distillery": "ニッカウイスキー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ニッカ セッション 43度 700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "ニッカ セッション",
+          "distillery": "ニッカウイスキー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ニッカ・フロンティア 48度 500ml",
+      "extracted_whiskeys": [
+        {
+          "name": "ニッカ・フロンティア",
+          "distillery": "ニッカウイスキー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ニッカ セッション 43度 箱なし 700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "ニッカ セッション",
+          "distillery": "ニッカウイスキー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ニッカ シングルモルト 宮城峡 700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "ニッカ シングルモルト 宮城峡",
+          "distillery": "ニッカウイスキー",
+          "confidence": 0.95
+        }
+      ]
+    }
+  ]
+}
+```

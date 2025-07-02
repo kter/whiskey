@@ -1,0 +1,136 @@
+```json
+{
+  "results": [
+    {
+      "product_name": "デュワーズ ホワイトラベル ウイスキー 700ml 箱なし【 ウィスキー お酒 スコッチウイスキー スコッチウィスキー スコッチ 酒 蒸留酒 晩酌 歓迎会 家飲み 祝い酒 記念日 美味しいお酒 さけ 祝い ひとり呑み 宅飲み 飲み会 ひとり飲み 洋酒 】【ワインならリカオー】",
+      "extracted_whiskeys": [
+        {
+          "name": "Dufftown White Label",
+          "distillery": "Dufftown",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【あす楽】【箱入 正規品】ハイランドパーク 12年 ヴァイキング オナー シングル モルト スコッチ ウイスキー 700ml 40％ ハードリカー",
+      "extracted_whiskeys": [
+        {
+          "name": "Highland Park 12 Year Viking Honor",
+          "distillery": "Highland Park",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【正規品】ディンプル 12年 ブレンデッド スコッチ ウイスキー スペシャルセレクト 700ml 40％Dimple Aged 12 Years Specially Selected Blended Scotch Whisky",
+      "extracted_whiskeys": [
+        {
+          "name": "Dimple 12 Year Blended Scotch Whisky",
+          "distillery": "Dimple",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "[箱入] アードベッグ コリーブレッカン 57度 700ml [お一人様1本]【 ウィスキー スコッチウイスキー ギフト 洋酒 お酒 ウイスキー アイラ スコッチ アードベック 酒 スコッチウィスキー プレゼント アイラウイスキー 蒸留酒 祝い 誕生日】【ワインならリカオー】",
+      "extracted_whiskeys": [
+        {
+          "name": "Ardbeg Corryvreckan",
+          "distillery": "Ardbeg",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "[正規] シーバスリーガル 12年 40度 700ml 箱なし 【 スコッチウイスキー お酒 シーバス リーガル ウィスキー スコッチ スコッチウィスキー 自宅 記念日 ウイスキー 祝い 家庭用 宅飲み 蒸留酒 ひとり呑み 飲み会 ひとり飲み 洋酒 】【ワインならリカオー】",
+      "extracted_whiskeys": [
+        {
+          "name": "Seabass Regal 12 Year",
+          "distillery": "Seabass Regal",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "ティーチャーズ ハイランド クリーム 40度 700ml 箱なし 【 ウィスキー スコッチウイスキー お酒 ウイスキー スコッチ 酒 スコッチウィスキー 蒸留酒 家飲み 晩酌 記念日 祝い 家庭用 宅飲み ひとり呑み 飲み会 ひとり飲み 洋酒 】【ワインならリカオー】",
+      "extracted_whiskeys": [
+        {
+          "name": "Teacher's Highland Cream",
+          "distillery": "Teacher's",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "[箱入] グレンフィディック 12年 40度 700ml 【ウィスキー スコッチウイスキー ギフト 洋酒 お酒 ウイスキー スコッチ シングルモルト シングルモルトウイスキー 酒 記念日 プレゼント お中元 夏ギフト 手土産 帰省 帰省土産 祭り 】【ワインならリカオー】",
+      "extracted_whiskeys": [
+        {
+          "name": "Glenfiddich 12 Year",
+          "distillery": "Glenfiddich",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【7/1(火)全品P2倍】グレンフィディック 12年 スペシャルリザーブ 700ml 正規品_[リカーズベスト]_[全品ヤマト宅急便配送]スコッチ ウイスキー 誕生日 プレゼント ギフト 贈り物 お祝",
+      "extracted_whiskeys": [
+        {
+          "name": "Glenfiddich 12 Year Special Reserve",
+          "distillery": "Glenfiddich",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "[箱入]ハイランドパーク 12年 ヴァイキングオナー バイキングオナー 40度 700ml【 ウィスキー スコッチウイスキー ギフト お酒 ウイスキー スコッチ 誕生日 プレゼント 酒ギフト 蒸留酒 祝い 記念日 お礼 飲み会 祝い酒 洋酒 】【ワインならリカオー】",
+      "extracted_whiskeys": [
+        {
+          "name": "Highland Park 12 Year Viking Honor",
+          "distillery": "Highland Park",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "[箱入] オールドパー 12年 40度 750ml 【 ウィスキー お酒 ウイスキー スコッチウイスキー スコッチウィスキー スコッチ 誕生日 蒸留酒 晩酌 家飲み 自宅用 宅飲み 家庭用 アルコール飲料 ひとり呑み 飲み会 ひとり飲み 洋酒 】【ワインならリカオー】",
+      "extracted_whiskeys": [
+        {
+          "name": "Old Parr 12 Year",
+          "distillery": "Old Parr",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "[箱入]グレンドロナック 12年 43度 700ml【 お酒 ギフト 内祝い ウィスキー ウイスキー スコッチウイスキー スコッチウィスキー スコッチ プレゼント 新築祝い 結婚祝い 酒ギフト 祝い 蒸留酒 誕生日 記念日 お礼 飲み会 祝い酒 洋酒 】【ワインならリカオー】",
+      "extracted_whiskeys": [
+        {
+          "name": "Glendronach 12 Year",
+          "distillery": "Glendronach",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "[大容量][箱入]グレンモーレンジ 16年 トリビュート 43度 1000ml シングルモルト ウイスキー 1L スコッチ【 お酒 蒸留酒 ウィスキー プレゼント ギフト お祝い 手土産 誕生日 酒ギフト 祝い 記念日 お礼 飲み会 祝い酒 洋酒 】【ワインならリカオー】",
+      "extracted_whiskeys": [
+        {
+          "name": "Glenmorangie 16 Year Tribute",
+          "distillery": "Glenmorangie",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "product_name": "【7/1(火)全品P2倍】ラベル混在します ベル スコッチウイスキー オリジナル 700ml_[リカーズベスト]_[全品ヤマト宅急便配送]",
+      "extracted_whiskeys": [
+        {
+          "name": "Bell Scotch Whisky Original",
+          "distillery": "Bell",
+          "confidence": 0.9
+        }
+      ]
+    }
+  ]
+}
+```

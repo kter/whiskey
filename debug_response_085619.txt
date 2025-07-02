@@ -1,0 +1,146 @@
+```json
+{
+  "results": [
+    {
+      "product_name": "ザ グレンリベット ファウンダーズ・リザーブ 40度 700ml 箱なし 【 ウィスキー スコッチウイスキー お酒 ウイスキー スコッチ スコッチウィスキー 晩酌 酒飲み 記念日 さけ 祝い 家庭用 宅飲み 蒸留酒 ひとり呑み 飲み会 ひとり飲み 洋酒 】【ワインならリカオー】",
+      "extracted_whiskeys": [
+        {
+          "name": "ザ グレンリベット ファウンダーズ・リザーブ",
+          "distillery": "The Glenlivet",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【正規品】デュワーズ ホワイトラベル ブレンデッド スコッチ ウイスキー 700ml 40% イギリス スコットランド ハードリカーDEWARS WHITE LABEL BLENDED SCOTCH WHISKY 700ml 40%",
+      "extracted_whiskeys": [
+        {
+          "name": "デュワーズ ホワイトラベル",
+          "distillery": "Dewar's",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "[箱不良]タリスカー 10年 45.8度 700ml モルト ウイスキー アイランズ【 ウィスキー お酒 スコッチウィスキー スコッチ スコッチウイスキー ワケあり 訳あり アイラウイスキー 家用 宅飲み 蒸留酒 ひとり呑み 飲み会 ひとり飲み 洋酒 】【ワインならリカオー】",
+      "extracted_whiskeys": [
+        {
+          "name": "タリスカー 10年",
+          "distillery": "Talisker",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【12本セット送料無料】[正規品] ジョニーウォーカー レッドラベル 赤 40度 700ml×12本 [1ケース]＜洋酒＞＜ウイスキー＞[T.020.2216.1.SE]",
+      "extracted_whiskeys": [
+        {
+          "name": "ジョニーウォーカー レッドラベル",
+          "distillery": "John Walker",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "シングルモルト スコッチウイスキー グレンターナー ポートカスク フィニッシュ(700ml)",
+      "extracted_whiskeys": [
+        {
+          "name": "グレンターナー ポートカスク フィニッシュ",
+          "distillery": "Glentauchers",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【送料無料】 グレンフィディック 12年 スペシャルリザーブ シングルモルト スコッチウイスキー 40度 正規 箱付 700ml 包装不可",
+      "extracted_whiskeys": [
+        {
+          "name": "グレンフィディック 12年 スペシャルリザーブ",
+          "distillery": "Glenfiddich",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "カティサーク プロヒビジョン 50度 700ml スコッチ 箱なし ブレンデッド ウイスキー 【 ウィスキー お酒 スコッチウイスキー 蒸留酒 スコッチウィスキー 家飲み 晩酌 記念日 祝い 家庭用 宅飲み ひとり呑み 飲み会 ひとり飲み 洋酒 】【ワインならリカオー】",
+      "extracted_whiskeys": [
+        {
+          "name": "カティサーク プロヒビジョン",
+          "distillery": "Cutty Sark",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【正規品 箱入】ロイヤルハウスホールド ブレンデッド スコッチ ウイスキー 正規代理店輸入品 ジェームズ ブキャナン社 750ml 43％ROYAL HOUSE HOLD BLENDED SCOTCH WHISKY JAMES BUCHANAN 750ml 43%",
+      "extracted_whiskeys": [
+        {
+          "name": "ロイヤルハウスホールド",
+          "distillery": "James Buchanan",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【日本限定販売品】シーバスリーガル ミズナラ 12年 スペシャル エディション 正規代理店輸入品 ブレンデッド スコッチ ウイスキー 700ml 40％CHIVAS REGAL MIZUNARA SPECIAL EDITION BLENDED SCOTCH WHISKY 700ML 40%",
+      "extracted_whiskeys": [
+        {
+          "name": "シーバスリーガル ミズナラ 12年 スペシャル エディション",
+          "distillery": "Chivas Regal",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "ジョニー ウォーカー ブラックラベル 黒 ラベル 12年 1000ml 1L 正規品 ジョニ黒 スコッチウイスキー ^YCJWBLK0^",
+      "extracted_whiskeys": [
+        {
+          "name": "ジョニー ウォーカー ブラックラベル",
+          "distillery": "John Walker",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "[箱不良]ザ グレンリベット 12年 40度 700ml 【 ウィスキー スコッチウイスキー お酒 ウイスキー スコッチ シングルモルトウイスキー シングルモルト スコッチウィスキー 訳あり ワケあり 宅飲み 蒸留酒 飲み会 ひとり飲み 洋酒 】【ワインならリカオー】",
+      "extracted_whiskeys": [
+        {
+          "name": "ザ グレンリベット 12年",
+          "distillery": "The Glenlivet",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【正規品 豪華箱入】ジョニー ウォーカー ブルー ラベル 正規代理店輸入品 ブレンデッド スコッチ ウイスキー シリアルナンバー入り 750ml 40% ハードリカー誕生日 ギフト プレゼント 結婚祝 贈り物 結婚 お祝い 記念品",
+      "extracted_whiskeys": [
+        {
+          "name": "ジョニー ウォーカー ブルー ラベル",
+          "distillery": "John Walker",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "カティサーク EC 40度 700ml 箱なし 【 ウィスキー スコッチウイスキー お酒 スコッチウィスキー ウイスキー スコッチ 誕生日 蒸留酒 酒 晩酌 歓迎会 家飲み 記念日 祝い 自宅用 家庭用 宅飲み ひとり呑み 飲み会 ひとり飲み 洋酒 】【ワインならリカオー】",
+      "extracted_whiskeys": [
+        {
+          "name": "カティサーク EC",
+          "distillery": "Cutty Sark",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "クレイモア 40度 700ml 箱なし 【 ウィスキー スコッチウイスキー お酒 スコッチウィスキー ウイスキー スコッチ 酒 誕生日 おしゃれ 記念日 家飲み 晩酌 美味しいお酒 さけ 祝い 家庭用 宅飲み 蒸留酒 ひとり呑み 飲み会 ひとり飲み 洋酒 】【ワインならリカオー】",
+      "extracted_whiskeys": [
+        {
+          "name": "クレイモア",
+          "distillery": "Clydesdale",
+          "confidence": 0.95
+        }
+      ]
+    }
+  ]
+}
+```

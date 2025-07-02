@@ -1,0 +1,196 @@
+```json
+{
+  "results": [
+    {
+      "product_name": "サントリー シングルモルト ウイスキー 山崎 Story of the Distillery 2024 EDITION 1本 内容量700ml アルコール分43％ 贈答品 プレゼント プレミアム品 お酒 礼品 レア 大人プレゼント 希少 入手難 送料無料 女子会 飲み会 贈り物",
+      "extracted_whiskeys": [
+        {
+          "name": "山崎",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "山崎　NV　箱入り　700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "山崎",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "送料無料 【数量限定】山崎 LIMITED EDITION 2022 & 響 BLOSSOM HARMONY 2022 2本セット【送料無料※一部地域は除く】",
+      "extracted_whiskeys": [
+        {
+          "name": "山崎",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー 山崎 12年 100周年記念蒸溜所ラベル 700ml 箱なし シングルモルト ウイスキー 【中古】",
+      "extracted_whiskeys": [
+        {
+          "name": "山崎",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "『送料無料！』（地域限定）サントリーウイスキー 山崎 100周年記念 シングルモルト 43度 700ml瓶 箱付き【ジャパニーズウイスキー ヤマザキ ノンビンテージ カートン付き】※お1人様1本まで！[si][qw][ypc]",
+      "extracted_whiskeys": [
+        {
+          "name": "山崎",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【箱付】サントリー 山崎 NV ノンヴィンテージ 100周年記念蒸溜所ラベル 700ml シングルモルト ウイスキー 【中古】",
+      "extracted_whiskeys": [
+        {
+          "name": "山崎",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー 山崎 12年 43% シングルモルト 700ml箱なし ジャパニーズ ウイスキー アウトレットギフト対応可 ラッピング ボックス 1本用 2本用 熨斗 誕生日 プレゼント お祝い [[wrap01][wrap03]",
+      "extracted_whiskeys": [
+        {
+          "name": "山崎",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【箱付】サントリー 山崎 NV ノンヴィンテージ 700ml シングルモルト ウイスキー 【中古】",
+      "extracted_whiskeys": [
+        {
+          "name": "山崎",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー山崎 12年 43% 100周年記念 蒸留所 ラベル 700ml箱なし シングルモルト ウイスキーギフト対応可 ラッピング ボックス 1本用 2本用 熨斗 誕生日 プレゼント お祝い [[wrap01][wrap03]",
+      "extracted_whiskeys": [
+        {
+          "name": "山崎",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー 山崎 Story of the Distillery 2024 EDITION 700ml 43度 シングルモルト ストーリー オブ ザ ディスティラリー 2024 エディション ウイスキー ウィスキー 日本 【送料無料※一部地域は除く】",
+      "extracted_whiskeys": [
+        {
+          "name": "山崎",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "シングルモルトウイスキー山崎NV【山崎100周年記念ラベル】43度　700mlTHE YAMAZAKI SINGLE MALT WHISKY14637",
+      "extracted_whiskeys": [
+        {
+          "name": "山崎",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【大量入荷！】【何本でもOK！】　サントリー　山崎　ノンビンテージ　シングルモルトウイスキー　43度　700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "山崎",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "山崎12年 43度 700ml （箱なし）",
+      "extracted_whiskeys": [
+        {
+          "name": "山崎",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリーシングルモルトウイスキー 山崎 700ml（化粧箱入り）| 正規品 国産ウイスキー 山崎 Non Age 父の日 御中元 御歳暮 プレゼント",
+      "extracted_whiskeys": [
+        {
+          "name": "山崎",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【神奈川県内配送限定】 サントリー シングルモルトウイスキー 山崎12年 700ml カートン付き",
+      "extracted_whiskeys": [
+        {
+          "name": "山崎",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "＼終了間近／★800円OFF食フェスクーポン 高級 ウイスキー ギフト 【本州のみ 送料無料】サントリー シングルモルトウイスキー 山崎 ストーリー ディスティラリー Story of the Distillery 2025 箱付き 700ml",
+      "extracted_whiskeys": [
+        {
+          "name": "山崎",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "【ラッピング無料】山崎NV/山崎12年 700ml 2本箱入ギフトセット",
+      "extracted_whiskeys": [
+        {
+          "name": "山崎",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリーシングルモルトウイスキー山崎シェリーカスク 【2016】48%700ml　THE YAMAZAKI SINGLE MALT WHISKY【銀行振り込み決済・クレジット決済に対応】【代引き決済不可】",
+      "extracted_whiskeys": [
+        {
+          "name": "山崎",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "product_name": "サントリー 山崎 NV 43% 100周年記念 蒸留所 ラベル 700ml箱なし シングルモルト ウイスキーギフト対応可 ラッピング ボックス 1本用 2本用 熨斗 誕生日 プレゼント お祝い [[wrap01][wrap03]",
+      "extracted_whiskeys": [
+        {
+          "name": "山崎",
+          "distillery": "サントリー",
+          "confidence": 0.95
+        }
+      ]
+    }
+  ]
+}
+```
