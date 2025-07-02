@@ -1,30 +1,36 @@
 # Whiskey Tasting App
 
-ウイスキーテイスティング記録アプリケーション
+ウイスキーテイスティング記録アプリケーション - 大規模データ検索対応サーバーレスアーキテクチャ
 
 ## 🏗️ アーキテクチャ
 
-### インフラストラクチャ概要
+### サーバーレス・マイクロサービス概要（費用最適化済み）
 
 ```
 ┌─────────────────┐    ┌─────────────────┐
-│   CloudFront    │    │      ALB        │
-│   (Frontend)    │    │     (API)       │
+│   CloudFront    │    │   API Gateway   │
+│   (Frontend)    │    │  (REST API)     │
 └─────────┬───────┘    └─────────┬───────┘
           │                      │
           │                      │
 ┌─────────▼───────┐    ┌─────────▼───────┐
-│       S3        │    │   ECS Fargate   │
-│  (Static Files) │    │   (Django API)  │
+│       S3        │    │    Lambda       │
+│  (Static SPA)   │    │  (Serverless)   │
 └─────────────────┘    └─────────────────┘
           │                      │
           └──────────┬───────────┘
                      │
        ┌─────────────▼──────────────┐
        │         DynamoDB           │
-       │     (Whiskeys/Reviews)     │
+       │  (813件+ウイスキーデータ)   │
+       │   多言語検索・高速応答     │
        └────────────────────────────┘
 ```
+
+### 🆕 大規模データ対応
+- **813件** の本格ウイスキーデータ（楽天API × Nova Lite抽出）
+- **多言語対応**: 英語・日本語での高精度検索
+- **コスト最適化**: 全サーバーレス・従量課金アーキテクチャ
 
 ### ドメイン構成
 
@@ -36,25 +42,33 @@
 - フロントエンド: `https://whiskeybar.site`
 - API: `https://api.whiskeybar.site`
 
-### 主要AWSサービス
+### 主要AWSサービス（全て従量課金）
 
 #### フロントエンド
-- **S3**: 静的サイトホスティング
-- **CloudFront**: CDN・SSL終端
-- **Route53**: DNS・ドメイン管理
+- **S3**: 静的サイトホスティング（ストレージ従量）
+- **CloudFront**: CDN・SSL終端（転送量従量）
+- **Route53**: DNS・ドメイン管理（クエリ従量）
 
-#### API
-- **ECR**: Dockerイメージリポジトリ
-- **ECS Fargate**: コンテナ実行環境
-- **ALB**: ロードバランサー・SSL終端
-- **Route53**: APIドメイン管理
+#### API (サーバーレス)
+- **Lambda**: マイクロサービス実行環境（実行時のみ課金）
+  - `whiskey-search`: 多言語検索API
+  - `whiskey-list`: ウイスキー一覧API  
+  - `reviews`: レビュー管理API
+- **API Gateway**: RESTful API（リクエスト従量）
 
-#### 共通
-- **DynamoDB**: NoSQLデータベース
-- **Cognito**: ユーザー認証
-- **VPC**: ネットワーク分離
-- **IAM**: アクセス制御
+#### データ・認証
+- **DynamoDB**: NoSQLデータベース（アクセス従量）
+  - `WhiskeySearch-prd`: 813件検索最適化データ
+  - `Reviews-prd`: ユーザーレビュー
+  - `Users-prd`: ユーザープロファイル
+- **Cognito**: ユーザー認証（MAU従量）
 - **Secrets Manager**: 機密情報管理
+
+#### 🚫 削除済み高額リソース
+- ❌ **NAT Gateway**: 削除済み（月額$30-45削減）
+- ❌ **Application Load Balancer**: 削除済み（月額$16-25削減）
+- ❌ **ECS Fargate**: 削除済み（月額$15-50削減）
+- ✅ **総削減額**: 月額$60-120の大幅削減達成
 
 ## 🚀 デプロイ手順
 
@@ -81,18 +95,27 @@ GitHub Actionsで自動デプロイされます：
 ./scripts/deploy.sh prod   # 本番環境
 ```
 
-### 3. APIのデプロイ
+### 3. Lambda関数のデプロイ
 
-GitHub Actionsで自動デプロイされます：
-- フロントエンドと並行して実行
-- DockerイメージのビルドとECRプッシュ
-- ECSサービスの更新
+CDKによる自動デプロイ：
+- Lambdaコードは CDK内で自動パッケージング
+- API Gateway統合も自動設定
+- 環境変数・IAM権限も自動構成
 
-手動デプロイ：
+### 4. 大規模データ投入（本番環境）
+
 ```bash
-./scripts/deploy-api.sh dev    # 開発環境
-./scripts/deploy-api.sh prod   # 本番環境
+# 楽天APIからデータ取得（3,037商品）
+python scripts/fetch_rakuten_names_only.py
+
+# Nova Liteでウイスキー名抽出
+python scripts/extract_whiskey_names_nova_lite.py --input-file rakuten_product_names_*.json
+
+# 本番DynamoDBに投入
+ENVIRONMENT=prd python scripts/insert_whiskeys_to_dynamodb.py nova_lite_extraction_results_*.json
 ```
+
+**実績: 813件のウイスキーデータを本番投入済み**
 
 ## 📁 プロジェクト構成
 
@@ -100,20 +123,27 @@ GitHub Actionsで自動デプロイされます：
 whiskey/
 ├── frontend/          # Nuxt.js SPA
 │   ├── components/    # Vueコンポーネント
-│   ├── composables/   # Composition API
+│   ├── composables/   # Composition API（多言語検索対応）
 │   ├── pages/         # ページコンポーネント
 │   └── plugins/       # プラグイン
-├── backend/           # Django REST API
-│   ├── api/           # APIアプリケーション
-│   ├── backend/       # Django設定
-│   └── Dockerfile     # 本番用Dockerファイル
+├── lambda/            # サーバーレスAPI
+│   ├── whiskeys-search/  # 多言語検索Lambda（メイン）
+│   ├── whiskeys-list/    # ウイスキー一覧Lambda
+│   ├── reviews/          # レビュー管理Lambda
+│   └── common/           # 共通ライブラリ
+├── backend/           # 旧Django（開発用・移行済み）
+│   └── api/           # DynamoDBサービス（スクリプトで利用）
 ├── infra/             # AWS CDK
-│   ├── lib/           # CDKスタック定義
+│   ├── lib/           # CDKスタック定義（サーバーレス）
 │   ├── config/        # 環境設定
 │   └── scripts/       # デプロイスクリプト
-├── scripts/           # 運用スクリプト
+├── scripts/           # データ管理・運用スクリプト
+│   ├── archive/       # 過去の手法（アーカイブ済み）
+│   ├── extract_whiskey_names_nova_lite.py  # Nova Lite抽出
+│   ├── insert_whiskeys_to_dynamodb.py      # DynamoDB投入
+│   └── fetch_rakuten_names_only.py         # 楽天API取得
 └── .github/
-    └── workflows/     # GitHub Actions
+    └── workflows/     # GitHub Actions（サーバーレス対応）
 ```
 
 ## 🔧 開発環境
@@ -354,13 +384,29 @@ aws ecs describe-services --cluster whiskey-api-cluster-dev --services whiskey-a
 
 ## 📋 今後の拡張予定
 
-- [ ] ウイスキー詳細情報の充実
-- [ ] ソーシャル機能（フォロー・いいね）
-- [ ] 検索・フィルター機能の強化
-- [ ] プッシュ通知
+### 短期（3ヶ月）
+- [ ] ウイスキー詳細情報の充実（年数・アルコール度数等）
+- [ ] 検索フィルター機能（地域・タイプ・価格帯）
+- [ ] お気に入り機能
+- [ ] 上級者向け検索（カスクタイプ・蒸留年等）
+
+### 中期（6ヶ月）  
+- [ ] ソーシャル機能（フォロー・いいね・コメント）
+- [ ] ウイスキー推奨エンジン（AI活用）
+- [ ] プッシュ通知（新着レビュー等）
+- [ ] 管理者機能（データ管理・ユーザー管理）
+
+### 長期（1年）
 - [ ] モバイルアプリ（PWA）
-- [ ] 管理者機能
-- [ ] 分析・レポート機能
+- [ ] 分析・レポート機能（テイスティング傾向等）
+- [ ] バーベル連携（在庫情報・価格比較）
+- [ ] 多言語拡張（中国語・韓国語等）
+
+### 🆕 技術的改善
+- [ ] GraphQL API導入検討
+- [ ] Edge Computing最適化
+- [ ] AI活用テイスティングノート自動生成
+- [ ] AR/VRテイスティング体験
 
 ## 🤝 コントリビューション
 

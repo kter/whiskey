@@ -4,13 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Application Overview
 
-This is a whiskey tasting review application built with:
+This is a whiskey tasting review application built with a cost-optimized serverless architecture:
 - **Frontend**: Nuxt.js 3 SPA (TypeScript, Tailwind CSS)
 - **Backend**: Serverless Lambda functions with DynamoDB
 - **Infrastructure**: AWS CDK (Lambda, API Gateway, S3, CloudFront, Cognito)
 - **Authentication**: AWS Cognito with Google OAuth
-- **Search**: Multi-language (English/Japanese) whiskey search
+- **Search**: Multi-language (English/Japanese) whiskey search with 813+ whiskey database
+- **Data**: Large-scale whiskey data extracted from Rakuten API using Amazon Bedrock Nova Lite
 - **Deployment**: GitHub Actions CI/CD
+- **Cost Savings**: 64-83% cost reduction through serverless migration
 
 ## AWS Account Configuration
 
@@ -54,12 +56,18 @@ npm run synth:dev     # Synthesize CloudFormation
 
 ### Data Management
 ```bash
-# Process whiskey data from external API
+# 🆕 Large-scale data processing with Bedrock Nova Lite
+python scripts/fetch_rakuten_names_only.py  # Fetch 3,037 products from Rakuten
+python scripts/extract_whiskey_names_nova_lite.py --input-file rakuten_product_names_*.json  # Extract with AI
+ENVIRONMENT=prd python scripts/insert_whiskeys_to_dynamodb.py nova_lite_extraction_results_*.json  # Insert to prod
+
+# Legacy method (archived)
 python scripts/fetch_whiskey_data.py --mode fetch --whiskeys 100
 python scripts/fetch_whiskey_data.py --mode process --file raw_whiskey_data_YYYYMMDD_HHMMSS.json
 
 # Check DynamoDB data
 PAGER=cat AWS_PROFILE=dev aws dynamodb scan --table-name WhiskeySearch-dev --select COUNT
+PAGER=cat AWS_PROFILE=prd aws dynamodb scan --table-name WhiskeySearch-prd --select COUNT  # Production
 ```
 
 ### Testing
