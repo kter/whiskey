@@ -1,85 +1,174 @@
 openapi: 3.0.0
 info:
   title: Whiskey Log API
-  version: 1.0.0
-  description: ウイスキー記録アプリのAPI仕様
+  version: 2.0.0
+  description: ウイスキー記録アプリのAPI仕様（サーバーレスアーキテクチャ版）
 servers:
-  - url: https://api.example.com
+  - url: https://api.dev.whiskeybar.site
+    description: Development server
+  - url: https://api.whiskeybar.site
+    description: Production server
 security:
   - bearerAuth: []
 paths:
-  /reviews:
+  /api/whiskeys:
     get:
-      summary: 自分のウイスキー記録を取得
-      parameters:
-        - name: page
-          in: query
-          description: ページ番号（1から開始）
-          schema:
-            type: integer
-            minimum: 1
-            default: 1
-        - name: per_page
-          in: query
-          description: 1ページあたりの件数
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: start_date
-          in: query
-          description: 開始日（YYYY-MM-DD）
-          schema:
-            type: string
-            format: date
-        - name: end_date
-          in: query
-          description: 終了日（YYYY-MM-DD）
-          schema:
-            type: string
-            format: date
-        - name: min_rating
-          in: query
-          description: 最小評価
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 5
-        - name: style
-          in: query
-          description: 飲み方（複数指定可）
-          schema:
-            type: array
-            items:
-              type: string
-              enum: [Neat, Rock, Twice Up, High Ball, On the Rocks, Water, Hot, Cocktail]
+      summary: ウイスキー一覧を取得
+      security: []
+      tags:
+        - Whiskeys
       responses:
         '200':
-          description: 記録一覧
-          headers:
-            X-Total-Count:
-              description: 全件数
+          description: ウイスキー一覧
+          content:
+            application/json:
               schema:
-                type: integer
-            X-Rate-Limit-Remaining:
-              description: 残りのAPI呼び出し回数
+                type: array
+                items:
+                  $ref: '#/components/schemas/Whiskey'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/whiskeys/search:
+    get:
+      summary: ウイスキーを検索（多言語対応）
+      security: []
+      tags:
+        - Whiskeys
+      parameters:
+        - name: q
+          in: query
+          description: 検索クエリ（英語・日本語対応）
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 検索結果
+          content:
+            application/json:
               schema:
-                type: integer
+                type: object
+                properties:
+                  whiskeys:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WhiskeySearchResult'
+                  count:
+                    type: integer
+                  query:
+                    type: string
+                  distillery:
+                    type: string
+                    description: 蒸留所フィルター（削除済み、常に空文字）
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/whiskeys/suggest:
+    get:
+      summary: ウイスキー名のサジェスト検索
+      security: []
+      tags:
+        - Whiskeys
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: サジェスト結果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  whiskeys:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WhiskeySearchResult'
+                  count:
+                    type: integer
+                  query:
+                    type: string
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/whiskeys/search/suggest:
+    get:
+      summary: ウイスキー名のサジェスト検索（フロントエンド互換用）
+      security: []
+      tags:
+        - Whiskeys
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: サジェスト結果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  whiskeys:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WhiskeySearchResult'
+                  count:
+                    type: integer
+                  query:
+                    type: string
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/whiskeys/ranking:
+    get:
+      summary: 評価が高いウイスキーのランキング取得
+      security: []
+      tags:
+        - Whiskeys
+      responses:
+        '200':
+          description: ランキング一覧（上位20件）
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RankingItem'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/reviews:
+    get:
+      summary: レビューを取得（認証ユーザーまたはパブリック）
+      security:
+        - bearerAuth: []
+        - []
+      tags:
+        - Reviews
+      parameters:
+        - name: public
+          in: query
+          description: パブリックレビューを取得する場合はtrue
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: レビュー一覧
           content:
             application/json:
               schema:
                 type: array
                 items:
                   $ref: '#/components/schemas/Review'
-        '400':
-          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
     post:
-      summary: 新しいウイスキー記録を作成
+      summary: 新しいレビューを作成
+      tags:
+        - Reviews
       requestBody:
         required: true
         content:
@@ -97,36 +186,19 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
-  /reviews/{id}:
-    get:
-      summary: 特定の記録を取得
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: 記録の詳細
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Review'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/reviews/{id}:
     put:
-      summary: 記録を更新
+      summary: レビューを更新
+      tags:
+        - Reviews
       parameters:
         - name: id
           in: path
           required: true
           schema:
-            type: integer
+            type: string
       requestBody:
         required: true
         content:
@@ -144,125 +216,36 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
-    delete:
-      summary: 記録を削除
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '204':
-          description: 削除成功
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-  /whiskeys/suggest:
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/reviews/public:
     get:
-      summary: ウイスキー名のサジェスト検索
-      parameters:
-        - name: q
-          in: query
-          required: true
-          schema:
-            type: string
-            minLength: 2
+      summary: パブリックレビューを取得（後方互換性用）
+      security: []
+      tags:
+        - Reviews
       responses:
         '200':
-          description: 候補一覧
+          description: パブリックレビュー一覧
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  type: string
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-  /whiskeys/ranking:
-    get:
-      summary: 評価が高いウイスキーのランキング取得
-      parameters:
-        - name: page
-          in: query
-          schema:
-            type: integer
-            minimum: 1
-            default: 1
-        - name: per_page
-          in: query
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: min_reviews
-          in: query
-          description: 最小レビュー数
-          schema:
-            type: integer
-            minimum: 1
-      responses:
-        '200':
-          description: ランキング一覧
-          headers:
-            X-Total-Count:
-              description: 全件数
-              schema:
-                type: integer
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/RankingItem'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-  /stats/alcohol:
-    get:
-      summary: アルコール摂取量の統計（要ユーザー認証）
-      parameters:
-        - name: period
-          in: query
-          required: true
-          schema:
-            type: string
-            enum: [daily, weekly, monthly]
-            default: monthly
-        - name: start_date
-          in: query
-          required: true
-          schema:
-            type: string
-            format: date
-        - name: end_date
-          in: query
-          required: true
-          schema:
-            type: string
-            format: date
-      responses:
-        '200':
-          description: 集計結果
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AlcoholStats'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
+                  $ref: '#/components/schemas/Review'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+      description: AWS Cognito JWT token
   responses:
     BadRequest:
       description: リクエストが不正です
@@ -276,19 +259,20 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: アクセス権限がありません
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
     NotFound:
       description: リソースが見つかりません
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
-    TooManyRequests:
-      description: リクエスト制限を超過しました
-      headers:
-        X-Rate-Limit-Reset:
-          description: 制限がリセットされる時刻（Unix timestamp）
-          schema:
-            type: integer
+    InternalServerError:
+      description: サーバー内部エラー
       content:
         application/json:
           schema:
@@ -297,48 +281,100 @@ components:
     Error:
       type: object
       required:
-        - code
+        - error
         - message
       properties:
-        code:
+        error:
           type: string
         message:
           type: string
         details:
           type: object
+    Whiskey:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        distillery:
+          type: string
+        region:
+          type: string
+        type:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    WhiskeySearchResult:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          description: 表示用名前（日本語優先）
+        name_en:
+          type: string
+          description: 英語名
+        name_ja:
+          type: string
+          description: 日本語名
+        distillery:
+          type: string
+          description: 蒸留所名（日本語優先）
+        region:
+          type: string
+        type:
+          type: string
+        confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        source:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
     Review:
       type: object
       properties:
         id:
-          type: integer
+          type: string
+        whiskey_id:
+          type: string
         whiskey_name:
           type: string
-          minLength: 1
-          maxLength: 200
-        distillery:
+        user_id:
           type: string
-          maxLength: 200
+        user_name:
+          type: string
         notes:
           type: string
           maxLength: 2000
         rating:
-          type: integer
+          type: number
+          format: float
           minimum: 1
           maximum: 5
           description: 評価（1-5）
-        style:
-          type: array
-          items:
-            type: string
-            enum: [Neat, Rock, Twice Up, High Ball, On the Rocks, Water, Hot, Cocktail]
-          description: 飲み方（複数指定可）
+        serving_style:
+          type: string
+          enum: [neat, rocks, water, highball, other]
+          description: 飲み方
         date:
           type: string
           format: date
         image_url:
           type: string
           format: uri
-          maxLength: 2083
+        is_public:
+          type: boolean
+          default: false
         created_at:
           type: string
           format: date-time
@@ -347,72 +383,59 @@ components:
           format: date-time
     ReviewInput:
       type: object
-      required: [whiskey_name, rating, date]
+      required: [whiskey_id, rating, date]
       properties:
-        whiskey_name:
+        whiskey_id:
           type: string
-          minLength: 1
-          maxLength: 200
-        distillery:
-          type: string
-          maxLength: 200
+          description: ウイスキーID
         notes:
           type: string
           maxLength: 2000
         rating:
-          type: integer
+          type: number
+          format: float
           minimum: 1
           maximum: 5
           description: 評価（1-5）
-        style:
-          type: array
-          items:
-            type: string
-            enum: [Neat, Rock, Twice Up, High Ball, On the Rocks, Water, Hot, Cocktail]
-          description: 飲み方（複数指定可）
+        serving_style:
+          type: string
+          enum: [neat, rocks, water, highball, other]
+          description: 飲み方
         date:
           type: string
           format: date
         image_url:
           type: string
           format: uri
-          maxLength: 2083
+        is_public:
+          type: boolean
+          default: false
     RankingItem:
       type: object
       required:
-        - whiskey_name
-        - avg_rating
+        - id
+        - name
+        - average_rating
         - review_count
       properties:
-        whiskey_name:
+        id:
           type: string
-        avg_rating:
+        name:
+          type: string
+        distillery:
+          type: string
+        region:
+          type: string
+        average_rating:
           type: number
           format: float
-          minimum: 1
+          minimum: 0
           maximum: 5
         review_count:
           type: integer
-          minimum: 1
-    AlcoholStats:
-      type: object
-      required:
-        - period
-        - total_volume_ml
-        - total_reviews
-      properties:
-        period:
-          type: string
-          enum: [daily, weekly, monthly]
-        total_volume_ml:
-          type: number
           minimum: 0
-        total_reviews:
-          type: integer
-          minimum: 0
-        daily_average_ml:
-          type: number
-          minimum: 0
-        max_daily_volume_ml:
-          type: number
-          minimum: 0
+tags:
+  - name: Whiskeys
+    description: ウイスキー関連のエンドポイント
+  - name: Reviews
+    description: レビュー関連のエンドポイント

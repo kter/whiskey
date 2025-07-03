@@ -32,13 +32,6 @@ AWS_PROFILE=dev npx cdk deploy WhiskeyApp-Dev --require-approval never
 
 ### Local Development
 ```bash
-# Start all services with Docker Compose
-make up               # or ./dev.sh up
-make down             # Stop all services
-make build            # Rebuild containers
-make logs             # View logs
-make shell            # Access backend shell
-
 # Frontend development (in frontend/)
 npm run dev           # Start Nuxt dev server
 npm run build         # Build for production
@@ -72,9 +65,8 @@ PAGER=cat AWS_PROFILE=prd aws dynamodb scan --table-name WhiskeySearch-prd --sel
 
 ### Testing
 ```bash
-# Backend tests
-make test             # Run Django tests via Docker
-./dev.sh test         # Alternative method
+# Frontend tests
+cd frontend && npm test  # Run Vitest tests
 
 # Infrastructure tests
 cd infra && npm test  # Run CDK tests
@@ -109,15 +101,8 @@ curl "https://api.dev.whiskeybar.site/api/whiskeys/search/?q=%E3%83%9C%E3%82%A6%
 - **Cognito**: User authentication + Google OAuth（MAU従量）
 - **Route53**: DNS management with custom domains（クエリ従量）
 
-### 費用削減済みリソース
-- ❌ **NAT Gateway**: 削除済み（月額$30-45削減）
-- ❌ **ALB**: 削除済み（月額$16-25削減）
-- ❌ **ECS Fargate**: 削除済み（月額$15-50削減）
-- ❌ **蒸留所検索機能**: 削除済み（GSI削減でコスト最適化）
-- ✅ **総削減額**: 月額$60-120の大幅削減達成
-
 ### Environment Configuration
-- **Local**: Docker Compose with LocalStack
+- **Local**: Direct frontend development with npm
 - **Dev**: `dev.whiskeybar.site` + `api.dev.whiskeybar.site`
 - **Prod**: `whiskeybar.site` + `api.whiskeybar.site`
 
