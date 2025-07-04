@@ -4,13 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Application Overview
 
-This is a whiskey tasting review application built with:
+This is a whiskey tasting review application built with a cost-optimized serverless architecture:
 - **Frontend**: Nuxt.js 3 SPA (TypeScript, Tailwind CSS)
 - **Backend**: Serverless Lambda functions with DynamoDB
 - **Infrastructure**: AWS CDK (Lambda, API Gateway, S3, CloudFront, Cognito)
 - **Authentication**: AWS Cognito with Google OAuth
-- **Search**: Multi-language (English/Japanese) whiskey search
+- **Search**: Multi-language (English/Japanese) whiskey search with 813+ whiskey database
+- **Data**: Large-scale whiskey data extracted from Rakuten API using Amazon Bedrock Nova Lite
 - **Deployment**: GitHub Actions CI/CD
+- **Cost Savings**: 64-83% cost reduction through serverless migration
 
 ## AWS Account Configuration
 
@@ -30,13 +32,6 @@ AWS_PROFILE=dev npx cdk deploy WhiskeyApp-Dev --require-approval never
 
 ### Local Development
 ```bash
-# Start all services with Docker Compose
-make up               # or ./dev.sh up
-make down             # Stop all services
-make build            # Rebuild containers
-make logs             # View logs
-make shell            # Access backend shell
-
 # Frontend development (in frontend/)
 npm run dev           # Start Nuxt dev server
 npm run build         # Build for production
@@ -54,19 +49,24 @@ npm run synth:dev     # Synthesize CloudFormation
 
 ### Data Management
 ```bash
-# Process whiskey data from external API
+# 🆕 Large-scale data processing with Bedrock Nova Lite
+python scripts/fetch_rakuten_names_only.py  # Fetch 3,037 products from Rakuten
+python scripts/extract_whiskey_names_nova_lite.py --input-file rakuten_product_names_*.json  # Extract with AI
+ENVIRONMENT=prd python scripts/insert_whiskeys_to_dynamodb.py nova_lite_extraction_results_*.json  # Insert to prod
+
+# Legacy method (archived)
 python scripts/fetch_whiskey_data.py --mode fetch --whiskeys 100
 python scripts/fetch_whiskey_data.py --mode process --file raw_whiskey_data_YYYYMMDD_HHMMSS.json
 
 # Check DynamoDB data
 PAGER=cat AWS_PROFILE=dev aws dynamodb scan --table-name WhiskeySearch-dev --select COUNT
+PAGER=cat AWS_PROFILE=prd aws dynamodb scan --table-name WhiskeySearch-prd --select COUNT  # Production
 ```
 
 ### Testing
 ```bash
-# Backend tests
-make test             # Run Django tests via Docker
-./dev.sh test         # Alternative method
+# Frontend tests
+cd frontend && npm test  # Run Vitest tests
 
 # Infrastructure tests
 cd infra && npm test  # Run CDK tests
@@ -101,15 +101,8 @@ curl "https://api.dev.whiskeybar.site/api/whiskeys/search/?q=%E3%83%9C%E3%82%A6%
 - **Cognito**: User authentication + Google OAuth（MAU従量）
 - **Route53**: DNS management with custom domains（クエリ従量）
 
-### 費用削減済みリソース
-- ❌ **NAT Gateway**: 削除済み（月額$30-45削減）
-- ❌ **ALB**: 削除済み（月額$16-25削減）
-- ❌ **ECS Fargate**: 削除済み（月額$15-50削減）
-- ❌ **蒸留所検索機能**: 削除済み（GSI削減でコスト最適化）
-- ✅ **総削減額**: 月額$60-120の大幅削減達成
-
 ### Environment Configuration
-- **Local**: Docker Compose with LocalStack
+- **Local**: Direct frontend development with npm
 - **Dev**: `dev.whiskeybar.site` + `api.dev.whiskeybar.site`
 - **Prod**: `whiskeybar.site` + `api.whiskeybar.site`
 
