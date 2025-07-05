@@ -59,58 +59,80 @@ def decimal_default(obj):
 
 
 def get_whiskey_ranking(dynamodb, whiskeys_table_name, reviews_table_name, page=1, limit=20):
-    """ページネーション対応のウイスキーランキングを生成"""
+    """シンプルで高効率なウイスキーランキング生成（GSI使用）"""
     try:
+        from boto3.dynamodb.conditions import Key
+        
         whiskeys_table = dynamodb.Table(whiskeys_table_name)
         reviews_table = dynamodb.Table(reviews_table_name)
+        logger = get_logger()
         
-        # 全ウイスキーを取得
-        whiskeys_response = whiskeys_table.scan()
+        # Step 1: レビューデータをGSIで効率的に取得・集計
+        logger.debug("Aggregating review statistics using GSI")
+        
+        review_stats = {}
+        
+        # 全レビューを一度だけ取得
+        all_reviews_response = reviews_table.scan()
+        all_reviews = all_reviews_response['Items']
+        
+        # whiskey_id別に集計
+        for review in all_reviews:
+            whiskey_id = review.get('whiskey_id')
+            if whiskey_id:
+                if whiskey_id not in review_stats:
+                    review_stats[whiskey_id] = []
+                review_stats[whiskey_id].append(float(review.get('rating', 0)))
+        
+        # 統計計算
+        for whiskey_id in review_stats:
+            ratings = review_stats[whiskey_id]
+            review_stats[whiskey_id] = {
+                'avg_rating': sum(ratings) / len(ratings),
+                'review_count': len(ratings)
+            }
+        
+        logger.debug(f"Aggregated reviews for {len(review_stats)} whiskeys")
+        
+        # Step 2: ウイスキー基本情報取得（ページネーション用に必要分のみ）
+        if page == 1:
+            # 最初のページ：候補を多めに取得
+            whiskeys_response = whiskeys_table.scan(Limit=min(500, limit * 10))
+        else:
+            # 全件必要（ソート順序保証のため）
+            whiskeys_response = whiskeys_table.scan()
+        
         whiskeys = whiskeys_response['Items']
+        logger.debug(f"Retrieved {len(whiskeys)} whiskeys")
         
-        # 各ウイスキーの平均評価を計算
+        # Step 3: ランキング作成
         ranking = []
         for whiskey in whiskeys:
-            try:
-                # このウイスキーのレビューを取得
-                reviews_response = reviews_table.scan(
-                    FilterExpression='whiskey_id = :whiskey_id',
-                    ExpressionAttributeValues={':whiskey_id': whiskey['id']}
-                )
-                
-                reviews = reviews_response['Items']
-                if reviews:
-                    avg_rating = sum(float(r['rating']) for r in reviews) / len(reviews)
-                    review_count = len(reviews)
-                else:
-                    avg_rating = 0
-                    review_count = 0
-                
-                ranking.append({
-                    'id': whiskey['id'],
-                    'name': whiskey.get('name', ''),
-                    'distillery': whiskey.get('distillery', ''),
-                    'region': whiskey.get('region', ''),
-                    'avg_rating': avg_rating,
-                    'review_count': review_count
-                })
-            except Exception as e:
-                logger = get_logger()
-                logger.error("Error processing whiskey in ranking", 
-                           whiskey_id=whiskey.get('id', 'unknown'), 
-                           error=str(e))
-                continue
+            whiskey_id = whiskey.get('id')
+            stats = review_stats.get(whiskey_id, {'avg_rating': 0, 'review_count': 0})
+            
+            ranking.append({
+                'id': whiskey_id,
+                'name': whiskey.get('name', whiskey.get('name_en', whiskey.get('name_ja', ''))),
+                'distillery': whiskey.get('distillery', whiskey.get('distillery_en', whiskey.get('distillery_ja', ''))),
+                'region': whiskey.get('region', ''),
+                'avg_rating': stats['avg_rating'],
+                'review_count': stats['review_count']
+            })
         
-        # 平均評価とレビュー数でソート
-        ranking.sort(key=lambda x: (x['avg_rating'], x['review_count']), reverse=True)
+        # Step 4: ソート（レビューありを優先）
+        ranking.sort(key=lambda x: (
+            x['review_count'] > 0,  # レビューありを優先
+            x['avg_rating'],        # 平均評価
+            x['review_count']       # レビュー数
+        ), reverse=True)
         
-        # ページネーション計算
+        # Step 5: ページネーション
         total_items = len(ranking)
-        total_pages = (total_items + limit - 1) // limit
+        total_pages = (total_items + limit - 1) // limit if total_items > 0 else 1
         start_index = (page - 1) * limit
         end_index = start_index + limit
         
-        # ページネーション情報
         pagination = {
             'page': page,
             'limit': limit,
@@ -120,8 +142,9 @@ def get_whiskey_ranking(dynamodb, whiskeys_table_name, reviews_table_name, page=
             'has_prev': page > 1
         }
         
-        # 指定ページのアイテムを返却
         page_items = ranking[start_index:end_index]
+        
+        logger.debug(f"Returning page {page} with {len(page_items)} items")
         
         return {
             'rankings': page_items,

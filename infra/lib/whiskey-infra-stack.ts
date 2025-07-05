@@ -162,6 +162,12 @@ export class WhiskeyInfraStack extends cdk.Stack {
       sortKey: { name: 'date', type: dynamodb.AttributeType.STRING },
     });
 
+    // GSI for whiskey ranking - ランキング機能最適化用
+    reviewsTable.addGlobalSecondaryIndex({
+      indexName: 'WhiskeyIndex',
+      partitionKey: { name: 'whiskey_id', type: dynamodb.AttributeType.STRING },
+    });
+
     // UsersテーブルUser profile table
     const usersTable = new dynamodb.Table(this, 'UsersTable', {
       tableName: `Users-${environment}`,
