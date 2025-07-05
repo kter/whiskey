@@ -146,19 +146,6 @@ export class WhiskeyInfraStack extends cdk.Stack {
     // DynamoDB Tables
     // ====================
     
-    // Whiskeysテーブル
-    const whiskeysTable = new dynamodb.Table(this, 'WhiskeysTable', {
-      tableName: `Whiskeys-${environment}`,
-      partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy: environment === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
-    });
-
-    // GSI for name search
-    whiskeysTable.addGlobalSecondaryIndex({
-      indexName: 'NameIndex',
-      partitionKey: { name: 'name', type: dynamodb.AttributeType.STRING },
-    });
 
     // Reviewsテーブル
     const reviewsTable = new dynamodb.Table(this, 'ReviewsTable', {
@@ -335,7 +322,6 @@ export class WhiskeyInfraStack extends cdk.Stack {
     });
 
     // DynamoDB アクセス権限
-    whiskeysTable.grantReadWriteData(lambdaExecutionRole);
     reviewsTable.grantReadWriteData(lambdaExecutionRole);
     usersTable.grantReadWriteData(lambdaExecutionRole);
     whiskeySearchTable.grantReadWriteData(lambdaExecutionRole);
@@ -371,7 +357,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
       memorySize: 256,
       role: lambdaExecutionRole,
       environment: {
-        WHISKEYS_TABLE: whiskeysTable.tableName,
+        WHISKEYS_TABLE: whiskeySearchTable.tableName,  // WhiskeySearchテーブルを使用
       },
     });
 
@@ -385,7 +371,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
       memorySize: 256,
       role: lambdaExecutionRole,
       environment: {
-        WHISKEYS_TABLE: whiskeysTable.tableName,
+        WHISKEYS_TABLE: whiskeySearchTable.tableName,  // WhiskeySearchテーブルに統一
         REVIEWS_TABLE: reviewsTable.tableName, // ランキング機能のため追加
         WHISKEY_SEARCH_TABLE: whiskeySearchTable.tableName,
         ENVIRONMENT: environment,
@@ -403,7 +389,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
       role: lambdaExecutionRole,
       environment: {
         REVIEWS_TABLE: reviewsTable.tableName,
-        WHISKEYS_TABLE: whiskeysTable.tableName,
+        WHISKEYS_TABLE: whiskeySearchTable.tableName,  // WhiskeySearchテーブルに統一
         COGNITO_USER_POOL_ID: userPool.userPoolId,
         ENVIRONMENT: environment,
       },
@@ -671,7 +657,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
     }
 
     new cdk.CfnOutput(this, 'WhiskeysTableName', {
-      value: whiskeysTable.tableName,
+      value: whiskeySearchTable.tableName,  // WhiskeySearchテーブルに統一
       exportName: `whiskey-whiskeys-table-${environment}`,
     });
 

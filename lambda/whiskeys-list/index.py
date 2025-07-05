@@ -50,8 +50,8 @@ def lambda_handler(event, context):
         for item in response['Items']:
             whiskey = {
                 'id': item['id'],
-                'name': item['name'],
-                'distillery': item['distillery'],
+                'name': item.get('name_en', item.get('name', '')),  # WhiskeySearchテーブルのスキーマに対応
+                'distillery': item.get('distillery_en', item.get('distillery', '')),  # WhiskeySearchテーブルのスキーマに対応
                 'created_at': item.get('created_at', ''),
                 'updated_at': item.get('updated_at', '')
             }

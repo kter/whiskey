@@ -30,12 +30,10 @@ if (envConfig.domain) {
     // Hosted Zone IDは後でlookupできるので、一旦ドメイン名のみで作成
     hostedZoneId: '', // 空文字の場合はlookupを使用
     hostedZoneName: envConfig.domain,
-    crossRegionReferences: true, // クロスリージョン参照を有効化
     tags: {
       Project: 'WhiskeyApp',
       Environment: env
     }
-
   });
 }
 

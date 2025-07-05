@@ -29,5 +29,9 @@
   "hosted-zone:account=401731371959:domainName=whiskeybar.site:region=ap-northeast-1": {
     "Id": "/hostedzone/Z01374187OVR4DE0RMHC",
     "Name": "whiskeybar.site."
-  }
+  },
+  "acknowledged-issue-numbers": [
+    34892,
+    34892
+  ]
 }
