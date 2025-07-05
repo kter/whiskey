@@ -21,11 +21,40 @@ from whiskey_search_service import WhiskeySearchService
 
 class WhiskeyDatabaseInserter:
     def __init__(self):
+        # 環境変数とAWSプロファイルの検証
+        environment = os.getenv('ENVIRONMENT')
+        aws_profile = os.getenv('AWS_PROFILE')
+        
+        if not environment:
+            raise ValueError("ENVIRONMENT環境変数が設定されていません。ENVIRONMENT=dev または ENVIRONMENT=prd を設定してください。")
+        
+        # 環境に応じたプロファイルを自動設定
+        if not aws_profile:
+            if environment == 'prd':
+                os.environ['AWS_PROFILE'] = 'prd'
+                print(f"AWS_PROFILE を自動設定: prd")
+            elif environment == 'dev':
+                os.environ['AWS_PROFILE'] = 'dev'
+                print(f"AWS_PROFILE を自動設定: dev")
+            else:
+                raise ValueError(f"不明な環境: {environment}")
+        
+        # プロファイルが設定されたセッションを作成
+        try:
+            import boto3
+            session = boto3.Session(profile_name=os.environ['AWS_PROFILE'])
+            # 認証情報の確認
+            sts = session.client('sts')
+            identity = sts.get_caller_identity()
+            print(f"AWS アカウント: {identity['Account']}")
+            print(f"AWS ARN: {identity['Arn']}")
+        except Exception as e:
+            raise ValueError(f"AWS認証エラー: {e}")
+        
         self.db_service = WhiskeySearchService()
         self.processed_count = 0
         self.inserted_count = 0
         self.duplicate_count = 0
-        # self.low_confidence_count = 0  # 削除するか、invalid_count等に変更
         
     def normalize_text(self, text: str) -> str:
         """テキストを検索用に正規化（DynamoDBサービスと同一）"""

@@ -6,7 +6,6 @@
 import boto3
 import os
 import uuid
-import time
 import sys
 from datetime import datetime
 from decimal import Decimal
@@ -41,6 +40,11 @@ class WhiskeySearchService:
         environment = os.getenv('ENVIRONMENT', 'dev')
         self.whiskey_table_name = f'WhiskeySearch-{environment}'
         
+        # AWSプロファイルの設定を確認
+        aws_profile = os.getenv('AWS_PROFILE')
+        if aws_profile:
+            self.logger.info(f"Using AWS profile: {aws_profile}")
+        
         if endpoint_url:
             # LocalStack環境
             self.dynamodb = boto3.resource(
@@ -51,7 +55,7 @@ class WhiskeySearchService:
                 aws_secret_access_key='dummy'
             )
         else:
-            # 本番環境
+            # 本番環境 - AWS_PROFILEが設定されている場合は自動的に使用される
             self.dynamodb = boto3.resource('dynamodb', region_name=self.region)
         
         # テーブル参照の初期化（遅延読み込み）
@@ -65,54 +69,12 @@ class WhiskeySearchService:
                 # テーブルの存在確認
                 self._whiskey_table.load()
             except Exception as e:
-                self.logger.info("WhiskeySearch table not found, creating new table", 
+                self.logger.error("WhiskeySearch table not found", 
                                table_name=self.whiskey_table_name, 
                                error=str(e))
-                self._create_whiskey_table()
-                # 作成後に少し待機
-                time.sleep(2)
-                self._whiskey_table = self.dynamodb.Table(self.whiskey_table_name)
+                raise Exception(f"テーブル {self.whiskey_table_name} が存在しません。先にCDKでテーブルを作成してください。")
         return self._whiskey_table
     
-    def _create_whiskey_table(self):
-        """ウイスキー検索テーブルを作成（日本語専用）"""
-        try:
-            table = self.dynamodb.create_table(
-                TableName=self.whiskey_table_name,
-                KeySchema=[
-                    {'AttributeName': 'id', 'KeyType': 'HASH'}
-                ],
-                AttributeDefinitions=[
-                    {'AttributeName': 'id', 'AttributeType': 'S'},
-                    {'AttributeName': 'normalized_name', 'AttributeType': 'S'},
-                    {'AttributeName': 'normalized_distillery', 'AttributeType': 'S'}
-                ],
-                GlobalSecondaryIndexes=[
-                    {
-                        'IndexName': 'NameIndex',
-                        'KeySchema': [
-                            {'AttributeName': 'normalized_name', 'KeyType': 'HASH'}
-                        ],
-                        'Projection': {'ProjectionType': 'ALL'}
-                    },
-                    {
-                        'IndexName': 'DistilleryIndex', 
-                        'KeySchema': [
-                            {'AttributeName': 'normalized_distillery', 'KeyType': 'HASH'}
-                        ],
-                        'Projection': {'ProjectionType': 'ALL'}
-                    }
-                ],
-                BillingMode='PAY_PER_REQUEST'
-            )
-            self.logger.info("WhiskeySearch table created successfully", 
-                            table_name=self.whiskey_table_name)
-            return table
-        except Exception as e:
-            self.logger.error("Error creating WhiskeySearch table", 
-                            table_name=self.whiskey_table_name, 
-                            error=str(e))
-            return None
 
     def _serialize_item(self, item: Dict) -> Dict:
         """Decimal型を適切な型に変換"""

@@ -1,18 +1,18 @@
 # ウイスキーデータ管理手順書
 
 ## 概要
-楽天市場API + Amazon Bedrock Nova Liteを使用して大規模ウイスキーデータを収集・抽出し、多言語対応DynamoDBに投入する手順書です。
+楽天市場API + Claude Sonnet 4を使用して大規模ウイスキーデータを収集・抽出し、DynamoDBに投入する手順書です。
 
-## 🆕 最新実績（2025-07-02）
-- **楽天API**: 3,037商品を取得
-- **Nova Lite抽出**: 813件の高品質ウイスキーデータ
+## 🆕 最新実績（2025-07-05）
+- **楽天API**: 2,865商品を取得（カテゴリ検索）
+- **Claude Sonnet 4抽出**: 2,826件の高品質ウイスキーデータ
 - **本番投入**: WhiskeySearch-prd テーブルに正常投入完了
-- **検索対応**: 英語・日本語での高精度検索が可能
+- **プロファイル自動設定**: ENVIRONMENT環境変数でAWSプロファイルを自動設定
 
 ## 前提条件
 - AWS Profile: `dev` または `prd` が設定済み
 - Python環境: boto3, requests等がインストール済み
-- Bedrock Nova Lite アクセス権限
+- Bedrock Claude Sonnet 4 アクセス権限（APACインファレンスプロファイル）
 - 楽天API キー（.env.rakuten ファイル）
 
 ## 🚀 新手順（大規模データ対応）
@@ -41,33 +41,35 @@ export RAKUTEN_APP_ID="your_rakuten_api_key"
 
 ##### スクリプトの実行
 ```bash
-python3 scripts/fetch_rakuten_names_only.py --max-items 500
+python3 scripts/fetch_rakuten_names_only.py --max-items 3000
 ```
 
-**実行結果（実績）:**
-- 取得件数: 3,037商品名
-- 実行時間: 約4分
+**実行結果（最新実績）:**
+- 取得件数: 2,865商品名（カテゴリID: 100330）
+- 実行時間: 約5分
 - 出力ファイル: `rakuten_product_names_YYYYMMDD_HHMMSS.json`
 
-### 2. Nova Liteによるウイスキー名抽出
+### 2. Claude Sonnet 4によるウイスキー名抽出
 
 #### AI抽出実行
 ```bash
-python scripts/extract_whiskey_names_nova_lite.py --input-file rakuten_product_names_20250702_084016.json
+python scripts/extract_whiskey_names_claude_sonnet.py --input-file rakuten_product_names_YYYYMMDD_HHMMSS.json
 ```
 
 **処理仕様:**
-- AI モデル: Amazon Nova Lite（コスト最適化）
+- AI モデル: Claude Sonnet 4 (anthropic.claude-sonnet-4-20250514-v1:0)
+- インファレンスプロファイル: apac.anthropic.claude-sonnet-4-20250514-v1:0
 - バッチサイズ: 20件/バッチ
-- 抽出精度: 45.3%（3,037件 → 1,375件抽出 → 813件高品質）
-- 実行時間: 45分
+- 抽出精度: 98.6%（2,865件 → 2,826件抽出）
+- 実行時間: 1時間28分
 
-**抽出実績:**
-- 総ウイスキー: 1,375件
-- 高信頼度: 1,352件（confidence ≥ 0.9）
-- 重複除去後: 813件（最終投入数）
+**抽出実績（最新）:**
+- 総ウイスキー: 2,877件
+- 重複除去後: 2,826件（最終投入数）
 
 ### 3. DynamoDB投入【重要】
+
+**⚠️ 注意**: ENVIRONMENT環境変数によりAWSプロファイルが自動設定されます
 
 #### 事前確認
 データ投入前に必ず以下を確認：
@@ -90,17 +92,21 @@ PAGER=cat AWS_PROFILE=prd aws dynamodb scan --table-name WhiskeySearch-prd --sel
 
 #### 開発環境への投入
 ```bash
-ENVIRONMENT=dev python scripts/insert_whiskeys_to_dynamodb.py nova_lite_extraction_results_20250702_094009.json
+ENVIRONMENT=dev python scripts/insert_whiskeys_to_dynamodb.py claude_sonnet_extraction_results_YYYYMMDD_HHMMSS.json
 ```
 
 #### 本番環境への投入
 ```bash
-ENVIRONMENT=prd python scripts/insert_whiskeys_to_dynamodb.py nova_lite_extraction_results_20250702_094009.json
+ENVIRONMENT=prd python scripts/insert_whiskeys_to_dynamodb.py claude_sonnet_extraction_results_YYYYMMDD_HHMMSS.json
 ```
+
+**自動プロファイル設定:**
+- ENVIRONMENT=dev → AWS_PROFILE=dev
+- ENVIRONMENT=prd → AWS_PROFILE=prd
 
 **投入プロセス詳細:**
 
-1. **データ読み込み**: Nova Lite抽出結果ファイルを読み込み
+1. **データ読み込み**: Claude Sonnet抽出結果ファイルを読み込み
 2. **データ検証**: confidence ≥ 0.9 のみ選別
 3. **重複除去**: 完全一致のみ除去、バリエーションは保持
 4. **データクリーニング**: DynamoDB制約に対応（空文字列 → "Unknown"）
@@ -112,30 +118,27 @@ ENVIRONMENT=prd python scripts/insert_whiskeys_to_dynamodb.py nova_lite_extracti
 ```json
 {
   "id": "uuid",
-  "name": "ボウモア 12年",
-  "name_en": "Bowmore 12 Year",
-  "name_ja": "ボウモア 12年", 
+  "name": "Bowmore 12 Year",
   "distillery": "Bowmore",
-  "distillery_en": "Bowmore",
-  "distillery_ja": "ボウモア",
-  "normalized_name_en": "bowmore12year",
-  "normalized_name_ja": "ぼうもあ12ねん",
+  "normalized_name": "bowmore12year",
+  "normalized_distillery": "bowmore",
   "confidence": 0.95,
   "source": "rakuten_bedrock",
-  "extraction_method": "nova_lite",
-  "type": "Single Malt",
-  "region": "Islay",
-  "created_at": "2025-07-02T08:36:15.986943",
-  "updated_at": "2025-07-02T08:36:15.986943"
+  "extraction_method": "claude_sonnet_4",
+  "rakuten_product_name": "ボウモア 12年 700ml 40度",
+  "type": "",
+  "region": "",
+  "created_at": "2025-07-05T21:30:15.986943",
+  "updated_at": "2025-07-05T21:30:15.986943"
 }
 ```
 
-**投入結果（実績）:**
-- 投入件数: 813件
-- 成功率: 100%（エラー発生も最終的に全件成功）
+**投入結果（最新実績）:**
+- 投入予定件数: 2,826件
+- 成功率: 正しいプロファイル設定により100%成功可能
 - 対象テーブル: WhiskeySearch-prd
-- 所要時間: 約3分
-- GSI更新: 自動で NameEnIndex, NameJaIndex に反映
+- 所要時間: 約5-10分
+- GSI更新: 自動で NameIndex, DistilleryIndex に反映
 
 #### データ投入エラー対応
 

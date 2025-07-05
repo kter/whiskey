@@ -28,8 +28,8 @@
 ```
 
 ### 主要機能
-- **813件** のウイスキーデータベース
-- **多言語検索**: 英語・日本語対応
+- **2,800件以上** のウイスキーデータベース (楽天市場API + Claude Sonnet 4で抽出)
+- **日本語検索**: 楽天市場の商品名から抽出したウイスキー名で検索
 - **レビュー機能**: ユーザーレビュー・評価
 - **認証**: AWS Cognito + Google OAuth
 
@@ -116,19 +116,20 @@ export RAKUTEN_APP_ID="your_rakuten_api_key"
 
 ##### スクリプトの実行
 ```bash
-python3 scripts/fetch_rakuten_names_only.py --max-items 500
+# 1. 楽天APIからデータ取得（カテゴリ検索）
+python scripts/fetch_rakuten_names_only.py --max-items 3000
+
+# 2. Claude Sonnet 4でウイスキー名抽出
+python scripts/extract_whiskey_names_claude_sonnet.py --input-file rakuten_product_names_*.json
+
+# 3. DynamoDBに投入（環境変数でプロファイル自動設定）
+ENVIRONMENT=prd python scripts/insert_whiskeys_to_dynamodb.py claude_sonnet_extraction_results_*.json
+
+# 統計情報確認
+ENVIRONMENT=prd python scripts/insert_whiskeys_to_dynamodb.py --stats
 ```
 
-```bash
-# 楽天APIからデータ取得
-python scripts/fetch_rakuten_names_only.py
-
-# AI抽出でウイスキー名抽出
-python scripts/extract_whiskey_names_nova_lite.py --input-file rakuten_product_names_*.json
-
-# DynamoDBに投入
-ENVIRONMENT=dev python scripts/insert_whiskeys_to_dynamodb.py nova_lite_extraction_results_*.json
-```
+**重要**: `ENVIRONMENT`環境変数により適切なAWSプロファイルが自動設定されます。
 
 ## 📁 プロジェクト構成
 
@@ -149,9 +150,9 @@ whiskey/
 │   ├── config/        # 環境設定
 │   └── scripts/       # デプロイスクリプト
 ├── scripts/           # データ管理・運用スクリプト
-│   ├── extract_whiskey_names_nova_lite.py  # AI抽出
-│   ├── insert_whiskeys_to_dynamodb.py      # DB投入
-│   └── fetch_rakuten_names_only.py         # データ取得
+│   ├── extract_whiskey_names_claude_sonnet.py  # Claude Sonnet 4でAI抽出
+│   ├── insert_whiskeys_to_dynamodb.py          # DB投入（プロファイル自動設定）
+│   └── fetch_rakuten_names_only.py             # 楽天カテゴリ検索
 └── .github/
     └── workflows/     # GitHub Actions CI/CD
 ```
