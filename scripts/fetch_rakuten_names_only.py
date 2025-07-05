@@ -38,43 +38,8 @@ class RakutenNamesFetcher:
         
         self.base_url = "https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601"
         
-        # ウイスキー関連キーワード（楽天検索用）
-        self.whiskey_keywords = [
-            'ウイスキー',
-            'スコッチ',
-            'バーボン',
-            'アイリッシュウイスキー', 
-            'ジャパニーズウイスキー',
-            'カナディアンウイスキー',
-            'シングルモルト',
-            'ブレンデッドウイスキー',
-            'whisky',
-            'whiskey'
-        ]
-        
-        # ブランド名（より具体的な検索用）
-        self.brand_keywords = [
-            'マッカラン',
-            'グレンフィディック',
-            'グレンリベット',
-            'ボウモア',
-            'アードベッグ',
-            'ラガヴーリン',
-            'タリスカー',
-            'ジャックダニエル',
-            'ジムビーム',
-            'ニッカ',
-            '山崎',
-            '白州',
-            '響',
-            'バランタイン',
-            'シーバスリーガル',
-            'ジョニーウォーカー',
-            'サントリー',
-            'アマハガン',
-            '角瓶',
-            '知多'
-        ]
+        # カテゴリID (genreId) 設定
+        self.genre_id = '100330'  # ウイスキーカテゴリ
         
         # レート制限設定
         self.api_rate_limit = 1.0  # APIコール間隔（秒）
@@ -88,21 +53,21 @@ class RakutenNamesFetcher:
         })
         
         logger.info(f"楽天API初期化完了 - App ID: {self.rakuten_app_id[:8]}***")
-        logger.info(f"検索キーワード数: {len(self.whiskey_keywords + self.brand_keywords)}")
+        logger.info(f"カテゴリID: {self.genre_id}")
     
-    def search_product_names(self, keyword: str, page: int = 1, hits: int = 30) -> List[str]:
-        """楽天市場APIで商品名のみを検索"""
+    def search_product_names(self, page: int = 1, hits: int = 30) -> List[str]:
+        """楽天市場APIでカテゴリ内の商品名のみを検索"""
         try:
             params = {
                 'applicationId': self.rakuten_app_id,
-                'keyword': keyword,
+                'genreId': self.genre_id,
                 'page': page,
                 'hits': hits,
                 'sort': 'standard',  # 標準順
                 'format': 'json'
             }
             
-            logger.debug(f"楽天API検索: キーワード='{keyword}', ページ={page}")
+            logger.debug(f"楽天API検索: カテゴリID={self.genre_id}, ページ={page}")
             
             response = self._make_api_request(self.base_url, params)
             if not response:
@@ -115,42 +80,15 @@ class RakutenNamesFetcher:
                 item = item_data.get('Item', {})
                 item_name = item.get('itemName', '').strip()
                 
-                if item_name and self._contains_whiskey_keywords(item_name):
+                if item_name:
                     product_names.append(item_name)
             
-            logger.info(f"検索結果: {len(items)}件中 {len(product_names)}件がウイスキー関連商品名")
+            logger.info(f"検索結果: {len(items)}件中 {len(product_names)}件の商品名を取得")
             return product_names
             
         except Exception as e:
             logger.error(f"楽天API検索エラー: {e}")
             return []
-    
-    def _contains_whiskey_keywords(self, name: str) -> bool:
-        """商品名にウイスキー関連キーワードが含まれているかチェック（簡易版）"""
-        name_lower = name.lower()
-        
-        # ウイスキー関連キーワード
-        whiskey_terms = [
-            'ウイスキー', 'ウィスキー', 'whisky', 'whiskey', 'スコッチ', 'scotch',
-            'バーボン', 'bourbon', 'シングルモルト', 'single malt',
-            'ブレンデッド', 'blended', 'アイリッシュ', 'irish',
-            'ジャパニーズ', 'japanese', 'カナディアン', 'canadian',
-            '角瓶', '山崎', '白州', '響', 'マッカラン', 'グレンフィディック',
-            'アマハガン', 'ニッカ', 'サントリー', 'suntory', '知多'
-        ]
-        
-        # 明らかに除外すべきキーワード
-        exclude_terms = [
-            'グラス', 'ボトル', 'タンブラー', 'カクテル', 'デキャンタ', 
-            'ストーン', 'チョコ', '菓子', 'ケーキ', 'スイーツ',
-            '化粧箱のみ', '空箱', '空瓶', 'コースター', 'おつまみ',
-            'Tシャツ', 'シャツ', '帽子', 'キャップ', '洗剤', '靴'
-        ]
-        
-        has_whiskey_term = any(term in name or term in name_lower for term in whiskey_terms)
-        has_exclude_term = any(term in name for term in exclude_terms)
-        
-        return has_whiskey_term and not has_exclude_term
     
     def _make_api_request(self, url: str, params: Dict) -> Optional[Dict]:
         """APIリクエストを実行（リトライ機能付き）"""
@@ -198,42 +136,36 @@ class RakutenNamesFetcher:
         all_names = []
         seen_names = set()  # 重複除去用
         
-        # 各キーワードで検索
-        all_keywords = self.whiskey_keywords + self.brand_keywords
+        # カテゴリ内で検索
+        logger.info(f"カテゴリ検索: genreId={self.genre_id}")
         
-        for keyword in all_keywords:
-            if len(all_names) >= max_items:
-                break
+        # 複数ページを取得
+        page = 1
+        max_pages = 100
+        
+        while page <= max_pages and len(all_names) < max_items:
+            product_names = self.search_product_names(page=page, hits=30)
             
-            logger.info(f"キーワード検索: '{keyword}'")
+            if not product_names:
+                break  # データがない場合は終了
             
-            # 複数ページを取得
-            page = 1
-            max_pages = 5  # キーワードあたり最大5ページ
+            # 重複除去
+            new_names = 0
+            for name in product_names:
+                if name not in seen_names:
+                    seen_names.add(name)
+                    all_names.append(name)
+                    new_names += 1
             
-            while page <= max_pages and len(all_names) < max_items:
-                product_names = self.search_product_names(keyword, page=page, hits=30)
-                
-                if not product_names:
-                    break  # データがない場合は次のキーワードへ
-                
-                # 重複除去
-                new_names = 0
-                for name in product_names:
-                    if name not in seen_names:
-                        seen_names.add(name)
-                        all_names.append(name)
-                        new_names += 1
-                
-                logger.info(f"ページ{page}: {len(product_names)}件取得, {new_names}件が新規")
-                
-                if new_names == 0:
-                    break  # 新規商品がない場合は次のキーワードへ
-                
-                page += 1
-                
-                # レート制限
-                time.sleep(self.api_rate_limit)
+            logger.info(f"ページ{page}: {len(product_names)}件取得, {new_names}件が新規")
+            
+            if new_names == 0:
+                break  # 新規商品がない場合は終了
+            
+            page += 1
+            
+            # レート制限
+            time.sleep(self.api_rate_limit)
         
         logger.info(f"楽天ウイスキー商品名取得完了: {len(all_names)}件")
         return all_names[:max_items]

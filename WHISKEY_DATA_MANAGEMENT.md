@@ -26,8 +26,22 @@ RAKUTEN_API_KEY=your_rakuten_api_key_here
 ```
 
 #### 大規模データ取得実行
+
+##### 仮想環境の作成
 ```bash
-python scripts/fetch_rakuten_names_only.py
+python3 -m venv venv
+source venv/bin/activate
+pip install -r scripts/requirements.txt
+```
+
+##### 楽天APIの設定
+```bash
+export RAKUTEN_APP_ID="your_rakuten_api_key"
+```
+
+##### スクリプトの実行
+```bash
+python3 scripts/fetch_rakuten_names_only.py --max-items 500
 ```
 
 **実行結果（実績）:**

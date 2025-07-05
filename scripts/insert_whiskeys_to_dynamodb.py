@@ -14,19 +14,18 @@ from decimal import Decimal
 from typing import Dict, List, Set, Optional
 
 # プロジェクトルートをパスに追加
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'backend'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'lambda', 'whiskeys-search', 'python'))
 
-from api.whiskey_search_service import WhiskeySearchService
+from whiskey_search_service import WhiskeySearchService
 
 
 class WhiskeyDatabaseInserter:
     def __init__(self):
         self.db_service = WhiskeySearchService()
-        self.confidence_threshold = 0.9
         self.processed_count = 0
         self.inserted_count = 0
         self.duplicate_count = 0
-        self.low_confidence_count = 0
+        # self.low_confidence_count = 0  # 削除するか、invalid_count等に変更
         
     def normalize_text(self, text: str) -> str:
         """テキストを検索用に正規化（DynamoDBサービスと同一）"""
@@ -132,10 +131,6 @@ class WhiskeyDatabaseInserter:
                 print(f"空のウイスキー名をスキップ: {whiskey}")
                 continue
                 
-            # confidence閾値チェック
-            if confidence < Decimal(str(self.confidence_threshold)):
-                continue
-                
             # データクリーニング（DynamoDB GSI制約対応）
             # 空の蒸溜所名は"Unknown"に変換（GSIのキー制約により空文字列は不可）
             if not distillery:
@@ -211,7 +206,7 @@ class WhiskeyDatabaseInserter:
     def process_file(self, input_file: str) -> Dict:
         """メイン処理フロー（重複排除をDB投入前に実行）"""
         print("=== ウイスキーデータDynamoDB投入開始 ===")
-        print(f"設定: confidence ≥ {self.confidence_threshold}, 前処理重複排除")
+        print(f"設定: 前処理重複排除")  # confidence関連の記述を削除
         
         try:
             # 1. 抽出結果読み込み（すでに展開済み）
@@ -219,9 +214,10 @@ class WhiskeyDatabaseInserter:
             print(f"読み込み完了: {len(all_whiskeys)}件のウイスキー")
             self.processed_count = len(all_whiskeys)
             
-            # 3. データ検証とクリーニング（confidence フィルタ含む）
+            # 3. データ検証とクリーニング
             clean_whiskeys = self.validate_and_clean_data(all_whiskeys)
-            self.low_confidence_count = len(all_whiskeys) - len(clean_whiskeys)
+            # self.low_confidence_count の計算を削除または修正
+            # self.low_confidence_count = len(all_whiskeys) - len(clean_whiskeys)
             
             # 4. 重複除去（DB投入前）
             unique_whiskeys = self.remove_duplicates(clean_whiskeys)
@@ -233,19 +229,18 @@ class WhiskeyDatabaseInserter:
             stats = {
                 'success': success,
                 'processed_count': self.processed_count,
-                'high_confidence_count': len(clean_whiskeys),
-                'low_confidence_excluded': self.low_confidence_count,
+                'clean_count': len(clean_whiskeys),  # high_confidence_countをclean_countに変更
                 'duplicates_removed': self.duplicate_count,
                 'inserted_count': self.inserted_count,
-                'confidence_threshold': self.confidence_threshold
+                # 'confidence_threshold': self.confidence_threshold  # この行を削除
             }
             
             print("=== 処理完了 ===")
             print(f"総ウイスキー数: {stats['processed_count']}件")
-            print(f"高信頼度: {stats['high_confidence_count']}件")
+            print(f"クリーニング後: {stats['clean_count']}件")  # 表示を変更
             print(f"重複除去: {stats['duplicates_removed']}件")
             print(f"DB投入: {stats['inserted_count']}件")
-            print(f"最終成功率: {stats['inserted_count']}/{stats['high_confidence_count']}")
+            print(f"最終成功率: {stats['inserted_count']}/{stats['clean_count']}")
             
             return stats
             

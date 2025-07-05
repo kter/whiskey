@@ -91,12 +91,6 @@ GitHub Actionsで自動デプロイされます：
 - `main`ブランチ → dev環境
 - `production`ブランチ → prod環境
 
-手動デプロイ：
-```bash
-./scripts/deploy.sh dev    # 開発環境
-./scripts/deploy.sh prod   # 本番環境
-```
-
 ### 3. Lambda関数のデプロイ
 
 CDKによる自動デプロイ：
@@ -105,6 +99,25 @@ CDKによる自動デプロイ：
 - 環境変数・IAM権限も自動構成
 
 ### 4. データ管理（必要に応じて）
+
+#### Python環境のセットアップ
+
+##### 仮想環境の作成
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r scripts/requirements.txt
+```
+
+##### 楽天APIの設定
+```bash
+export RAKUTEN_APP_ID="your_rakuten_api_key"
+```
+
+##### スクリプトの実行
+```bash
+python3 scripts/fetch_rakuten_names_only.py --max-items 500
+```
 
 ```bash
 # 楽天APIからデータ取得
@@ -131,14 +144,11 @@ whiskey/
 │   ├── whiskeys-list/    # ウイスキー一覧Lambda
 │   ├── reviews/          # レビュー管理Lambda
 │   └── common/           # 共通ライブラリ
-├── backend/           # 開発・運用支援
-│   └── api/           # DynamoDBサービス（スクリプトで利用）
 ├── infra/             # AWS CDK
 │   ├── lib/           # CDKスタック定義
 │   ├── config/        # 環境設定
 │   └── scripts/       # デプロイスクリプト
 ├── scripts/           # データ管理・運用スクリプト
-│   ├── archive/       # 過去手法のアーカイブ
 │   ├── extract_whiskey_names_nova_lite.py  # AI抽出
 │   ├── insert_whiskeys_to_dynamodb.py      # DB投入
 │   └── fetch_rakuten_names_only.py         # データ取得
@@ -152,31 +162,8 @@ whiskey/
 
 - Node.js 18+
 - Python 3.11+
-- Docker & Docker Compose
 - AWS CLI v2
 - AWS CDK
-
-### ローカル開発
-
-```bash
-# リポジトリクローン
-git clone <repository-url>
-cd whiskey
-
-# 依存関係インストール
-cd frontend && npm install
-cd ../backend && pip install -r requirements.txt
-cd ../infra && npm install
-
-# ローカル環境起動
-docker-compose up -d
-
-# フロントエンド開発サーバー
-cd frontend && npm run dev
-
-# 別ターミナルでAPIサーバー
-cd backend && python manage.py runserver
-```
 
 ### 環境変数
 
@@ -188,17 +175,6 @@ NUXT_PUBLIC_USER_POOL_CLIENT_ID=xxxxxxxxxxxxxxxxxxxxxxxxxx
 NUXT_PUBLIC_REGION=ap-northeast-1
 NUXT_PUBLIC_IMAGES_BUCKET=whiskey-images-dev
 NUXT_PUBLIC_ENVIRONMENT=local
-```
-
-#### バックエンド (`backend/.env`)
-```bash
-ENVIRONMENT=local
-DJANGO_DEBUG=True
-AWS_ENDPOINT_URL=http://localhost:4566
-DYNAMODB_WHISKEYS_TABLE=Whiskeys-local
-DYNAMODB_REVIEWS_TABLE=Reviews-local
-S3_IMAGES_BUCKET=whiskey-images-local
-COGNITO_USER_POOL_ID=ap-northeast-1_xxxxxxxx
 ```
 
 ## 🔐 認証
@@ -263,11 +239,10 @@ COGNITO_USER_POOL_ID=ap-northeast-1_xxxxxxxx
 - ✅ レスポンシブデザイン
 
 ### バックエンド API
-- ✅ RESTful API (Django REST Framework)
+- ✅ RESTful API (API Gateway)
 - ✅ Cognito JWT認証
 - ✅ DynamoDB操作
 - ✅ S3画像アップロード
-- ✅ ヘルスチェックエンドポイント
 - ✅ CORS設定
 
 ### インフラ
@@ -280,15 +255,8 @@ COGNITO_USER_POOL_ID=ap-northeast-1_xxxxxxxx
 ## 📈 モニタリング・ログ
 
 ### CloudWatch
-- **ECS**: タスク・サービスメトリクス
-- **ALB**: ヘルスチェック・レスポンス時間
 - **DynamoDB**: リクエスト数・エラー率
 - **CloudFront**: キャッシュヒット率
-
-### ログ
-- **Django**: 構造化ログ (JSON)
-- **ECS**: コンテナログ
-- **ALB**: アクセスログ
 
 ## 🛡️ セキュリティ
 
@@ -324,89 +292,17 @@ COGNITO_USER_POOL_ID=ap-northeast-1_xxxxxxxx
 ```bash
 # インフラ
 cd infra && npm run deploy:dev
-
-# フロントエンド
-./scripts/deploy.sh dev
-
-# API
-./scripts/deploy-api.sh dev
 ```
 
 ## 🚨 トラブルシューティング
-
-### 緊急時の対応
-
-#### ECR認証エラー
-GitHub ActionsでECR権限エラーが発生した場合：
-```bash
-# 緊急修正スクリプトを実行
-./deploy-fix.sh
-```
-
-詳細なトラブルシューティングについては [`TROUBLESHOOTING.md`](./TROUBLESHOOTING.md) を参照してください。
-
-### 一般的な問題
-
-#### 1. ECS タスクが起動しない
-```bash
-# ログ確認
-aws logs tail /ecs/whiskey-api-dev --follow
-
-# タスク定義確認
-aws ecs describe-task-definition --task-definition whiskey-api-dev
-```
-
-#### 2. API が応答しない
-```bash
-# ヘルスチェック
-curl https://api.dev.whiskeybar.site/health/
-
-# ALB ターゲットグループ確認
-aws elbv2 describe-target-health --target-group-arn <target-group-arn>
-```
 
 #### 3. 認証エラー
 - Cognito ユーザープール設定確認
 - JWT トークン期限確認
 - CORS 設定確認
 
-### ログ確認コマンド
-```bash
-# ECS ログ
-aws logs tail /ecs/whiskey-api-dev --follow
-
 # CloudFormation イベント
 aws cloudformation describe-stack-events --stack-name WhiskeyApp-Dev
-
-# ECS サービス状態
-aws ecs describe-services --cluster whiskey-api-cluster-dev --services whiskey-api-service-dev
-```
-
-## 📋 今後の拡張予定
-
-### 短期（3ヶ月）
-- [ ] ウイスキー詳細情報の充実（年数・アルコール度数等）
-- [ ] 検索フィルター機能（地域・タイプ・価格帯）
-- [ ] お気に入り機能
-- [ ] 上級者向け検索（カスクタイプ・蒸留年等）
-
-### 中期（6ヶ月）  
-- [ ] ソーシャル機能（フォロー・いいね・コメント）
-- [ ] ウイスキー推奨エンジン（AI活用）
-- [ ] プッシュ通知（新着レビュー等）
-- [ ] 管理者機能（データ管理・ユーザー管理）
-
-### 長期（1年）
-- [ ] モバイルアプリ（PWA）
-- [ ] 分析・レポート機能（テイスティング傾向等）
-- [ ] バーベル連携（在庫情報・価格比較）
-- [ ] 多言語拡張（中国語・韓国語等）
-
-### 🆕 技術的改善
-- [ ] GraphQL API導入検討
-- [ ] Edge Computing最適化
-- [ ] AI活用テイスティングノート自動生成
-- [ ] AR/VRテイスティング体験
 
 ## 🤝 コントリビューション
 
