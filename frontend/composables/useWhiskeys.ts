@@ -176,13 +176,26 @@ export const useWhiskeys = () => {
   }
 
   // ランキングの取得（認証不要）
-  const fetchRanking = async (): Promise<RankingItem[]> => {
+  const fetchRanking = async (params?: { page?: number; limit?: number }): Promise<RankingItem[] | { rankings: RankingItem[]; pagination: any }> => {
     try {
       loading.value = true
       error.value = null
 
+      // URLパラメータの構築
+      const searchParams = new URLSearchParams()
+      if (params?.page) {
+        searchParams.append('page', params.page.toString())
+      }
+      if (params?.limit) {
+        searchParams.append('limit', params.limit.toString())
+      }
+
+      const url = params?.page || params?.limit 
+        ? `${config.public.apiBaseUrl}/api/whiskeys/ranking/?${searchParams}`
+        : `${config.public.apiBaseUrl}/api/whiskeys/ranking/`
+
       // ランキングAPIは認証不要のパブリックエンドポイント
-      const response = await fetch(`${config.public.apiBaseUrl}/api/whiskeys/ranking/`)
+      const response = await fetch(url)
 
       if (!response.ok) {
         throw new Error('ランキングの取得に失敗しました')

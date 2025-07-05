@@ -34,7 +34,7 @@ const error = ref(null)
 onMounted(async () => {
   try {
     console.log('API Base URL:', config.public.apiBase)
-    const apiUrl = `${config.public.apiBase}/api/whiskeys/ranking/`
+    const apiUrl = `${config.public.apiBase}/api/whiskeys/ranking/?limit=10`
     console.log('Fetching from:', apiUrl)
     
     const response = await fetch(apiUrl)
@@ -47,12 +47,14 @@ onMounted(async () => {
     
     const data = await response.json()
     console.log('Received data:', data)
-    whiskeys.value = data
     
-    if (data.length === 0) {
+    // ページネーション対応：新形式の場合はrankingsプロパティを使用
+    whiskeys.value = data.rankings || data
+    
+    if (whiskeys.value.length === 0) {
       console.log('No whiskeys found in the response')
     } else {
-      console.log(`Loaded ${data.length} whiskeys`)
+      console.log(`Loaded ${whiskeys.value.length} whiskeys`)
     }
   } catch (e) {
     console.error('API Error:', e)
