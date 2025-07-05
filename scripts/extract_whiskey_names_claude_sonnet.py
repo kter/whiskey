@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Nova Liteを使用したウイスキー名抽出（超コスト重視）
-- 最低コストでの大量処理
-- エラー許容度高め
-- 品質は後処理で補完
+Claude Sonnet 4を使用したウイスキー名抽出
+- 高精度な抽出処理
+- エラーハンドリング
+- 高品質な結果
 """
 
 import json
@@ -16,13 +16,13 @@ from typing import List, Dict, Optional
 import re
 import os
 
-class NovaLiteWhiskeyExtractor:
+class ClaudeSonnetWhiskeyExtractor:
     def __init__(self):
-        """Nova Lite初期化（コスト最適化）"""
+        """Claude Sonnet 4初期化"""
         self.region = 'ap-northeast-1'
-        self.model_id = "amazon.nova-lite-v1:0"
+        self.model_id = "apac.anthropic.claude-sonnet-4-20250514-v1:0"
         
-        # Nova Lite最適化設定（スピード重視）
+        # Claude Sonnet最適化設定
         self.batch_size = 20  # 大きなバッチサイズ
         self.api_rate_limit = 1.0  # 高速処理
         self.max_retries = 2  # リトライ回数削減
@@ -39,7 +39,7 @@ class NovaLiteWhiskeyExtractor:
 
     def setup_logging(self):
         """ログ設定"""
-        log_file = "nova_lite_whiskey_extract.log"
+        log_file = "claude_sonnet_whiskey_extract.log"
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(levelname)s - %(message)s',
@@ -51,10 +51,10 @@ class NovaLiteWhiskeyExtractor:
         self.logger = logging.getLogger(__name__)
 
     def create_extraction_prompt(self, product_names: List[str]) -> str:
-        """Nova Lite用シンプルプロンプト"""
+        """Claude Sonnet用プロンプト"""
         products_text = "\n".join([f"{i+1}. {name}" for i, name in enumerate(product_names)])
         
-        # Nova Lite用に非常にシンプルなプロンプト
+        # Claude Sonnet用プロンプト（より詳細な指示）
         prompt = f"""Extract whiskey information from the following Japanese product names:
 
 {products_text}
@@ -75,36 +75,36 @@ Return JSON only:
   ]
 }}
 
-Only extract actual whiskey products."""
+Only extract actual whiskey products. For each product, extract the whiskey name and distillery if available."""
 
         return prompt
 
     def call_bedrock_api(self, prompt: str) -> Optional[str]:
-        """Nova Lite API呼び出し（正しいフォーマット）"""
-        request_body = {
-            "messages": [
-                {
-                    "role": "user", 
-                    "content": [{"text": prompt}]
-                }
-            ],
-            "inferenceConfig": {
-                "max_new_tokens": 3000,
-                "temperature": 0.2
-            }
-        }
-
+        """Claude Sonnet API呼び出し（converse API使用）"""
         try:
-            response = self.bedrock.invoke_model(
+            response = self.bedrock.converse(
                 modelId=self.model_id,
-                body=json.dumps(request_body)
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "text": prompt
+                            }
+                        ]
+                    }
+                ],
+                inferenceConfig={
+                    "maxTokens": 3000,
+                    "temperature": 0.2
+                }
             )
             
-            response_body = json.loads(response['body'].read())
-            response_text = response_body['output']['message']['content'][0]['text']
+            # converse APIのレスポンス構造
+            response_text = response['output']['message']['content'][0]['text']
             
             # デバッグ用: レスポンス内容をログ出力
-            self.logger.info(f"Nova Lite レスポンス (最初の1000文字): {response_text[:1000]}")
+            self.logger.info(f"Claude Sonnet レスポンス (最初の1000文字): {response_text[:1000]}")
             
             # 完全なレスポンスをファイルに保存（デバッグ用）
             with open(f"debug_response_{datetime.now().strftime('%H%M%S')}.txt", 'w', encoding='utf-8') as f:
@@ -117,11 +117,11 @@ Only extract actual whiskey products."""
             return None
 
     def extract_json_from_response(self, response_text: str) -> Optional[Dict]:
-        """JSON抽出（Nova Lite対応・エラー許容）"""
+        """JSON抽出（Claude Sonnet対応）"""
         if not response_text:
             return None
 
-        # Nova Liteは```json```でマークダウン形式で返す
+        # Claude Sonnetは```json```でマークダウン形式で返すことが多い
         # 複数のJSON抽出パターン（順序重要：具体的なものから試す）
         json_patterns = [
             r'```json\s*\n([\s\S]*?)\n```',  # マークダウンのjsonブロック
@@ -141,7 +141,7 @@ Only extract actual whiskey products."""
                     # 前後の空白を除去
                     json_text = json_text.strip()
                     
-                    # 不完全なJSONの修復（Nova Liteはトークン制限で切れることがある）
+                    # 不完全なJSONの修復（トークン制限で切れることがある）
                     if not json_text.endswith('}'):
                         # 最後の完整な要素まで戻る
                         last_complete = json_text.rfind('}')
@@ -158,25 +158,8 @@ Only extract actual whiskey products."""
                     # JSONパース試行
                     parsed = json.loads(json_text)
                     
-                    # Unicode文字列をデコード（Nova Liteはエスケープシーケンスで返すことがある）
+                    # JSONパース成功したらそのまま返す（Claude Sonnetは正しいUTF-8で返す）
                     if isinstance(parsed, dict) and 'results' in parsed:
-                        for result in parsed['results']:
-                            if 'product_name' in result and isinstance(result['product_name'], str):
-                                try:
-                                    # Unicode エスケープシーケンスをデコード
-                                    result['product_name'] = result['product_name'].encode('utf-8').decode('unicode_escape')
-                                except:
-                                    pass  # デコードに失敗しても元の文字列を保持
-                            
-                            if 'extracted_whiskeys' in result:
-                                for whiskey in result['extracted_whiskeys']:
-                                    for key in ['name', 'distillery']:
-                                        if key in whiskey and isinstance(whiskey[key], str):
-                                            try:
-                                                whiskey[key] = whiskey[key].encode('utf-8').decode('unicode_escape')
-                                            except:
-                                                pass
-                        
                         self.logger.info(f"JSON解析成功: {len(parsed['results'])}件の結果")
                         return parsed
                     else:
@@ -192,7 +175,7 @@ Only extract actual whiskey products."""
         return {"results": []}
 
     def process_batch(self, product_names: List[str]) -> List[Dict]:
-        """バッチ処理（Nova Lite高速版）"""
+        """バッチ処理（Claude Sonnet版）"""
         prompt = self.create_extraction_prompt(product_names)
         
         for attempt in range(self.max_retries):
@@ -215,12 +198,12 @@ Only extract actual whiskey products."""
                 if attempt < self.max_retries - 1:
                     time.sleep(self.api_rate_limit)
 
-        # Nova Liteはエラーを許容し、空の結果を返す
+        # エラー時は空の結果を返す
         self.logger.warning("バッチ処理失敗 - 空結果で継続")
         return []
 
     def process_file(self, input_file: str, dry_run: bool = False) -> str:
-        """ファイル処理（Nova Lite高速版）"""
+        """ファイル処理（Claude Sonnet版）"""
         self.logger.info(f"ファイル処理開始: {input_file}")
         
         # 入力ファイル読み込み
@@ -270,7 +253,7 @@ Only extract actual whiskey products."""
                 "total_results": len(all_results),
                 "model_used": self.model_id,
                 "data_type": "whiskey_extraction_results",
-                "extraction_method": "nova_lite"
+                "extraction_method": "claude_sonnet_4"
             },
             "results": all_results
         }
@@ -283,7 +266,7 @@ Only extract actual whiskey products."""
         )
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_file = f"nova_lite_extraction_results_{timestamp}.json"
+        output_file = f"claude_sonnet_extraction_results_{timestamp}.json"
         
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(output_data, f, ensure_ascii=False, indent=2)
@@ -301,7 +284,7 @@ Only extract actual whiskey products."""
 
 def main():
     """メイン実行関数"""
-    parser = argparse.ArgumentParser(description='Nova Liteによるウイスキー名抽出（超コスト重視）')
+    parser = argparse.ArgumentParser(description='Claude Sonnet 4によるウイスキー名抽出')
     parser.add_argument('--input-file', required=True, help='楽天商品名JSONファイル')
     parser.add_argument('--dry-run', action='store_true', help='ドライラン（実際の処理なし）')
     
@@ -312,11 +295,11 @@ def main():
         return 1
     
     try:
-        extractor = NovaLiteWhiskeyExtractor()
+        extractor = ClaudeSonnetWhiskeyExtractor()
         result_file = extractor.process_file(args.input_file, args.dry_run)
         
         if result_file:
-            print(f"SUCCESS: Nova Lite抽出完了 - {result_file}")
+            print(f"SUCCESS: Claude Sonnet抽出完了 - {result_file}")
         else:
             print("INFO: Dry run completed")
         

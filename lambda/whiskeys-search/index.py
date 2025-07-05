@@ -58,8 +58,8 @@ def decimal_default(obj):
     raise TypeError
 
 
-def get_whiskey_ranking(dynamodb, whiskeys_table_name, reviews_table_name):
-    """簡単なウイスキーランキングを生成（後方互換性のため）"""
+def get_whiskey_ranking(dynamodb, whiskeys_table_name, reviews_table_name, page=1, limit=20):
+    """ページネーション対応のウイスキーランキングを生成"""
     try:
         whiskeys_table = dynamodb.Table(whiskeys_table_name)
         reviews_table = dynamodb.Table(reviews_table_name)
@@ -91,7 +91,7 @@ def get_whiskey_ranking(dynamodb, whiskeys_table_name, reviews_table_name):
                     'name': whiskey.get('name', ''),
                     'distillery': whiskey.get('distillery', ''),
                     'region': whiskey.get('region', ''),
-                    'average_rating': avg_rating,
+                    'avg_rating': avg_rating,
                     'review_count': review_count
                 })
             except Exception as e:
@@ -102,13 +102,46 @@ def get_whiskey_ranking(dynamodb, whiskeys_table_name, reviews_table_name):
                 continue
         
         # 平均評価とレビュー数でソート
-        ranking.sort(key=lambda x: (x['average_rating'], x['review_count']), reverse=True)
-        return ranking[:20]  # 上位20件
+        ranking.sort(key=lambda x: (x['avg_rating'], x['review_count']), reverse=True)
+        
+        # ページネーション計算
+        total_items = len(ranking)
+        total_pages = (total_items + limit - 1) // limit
+        start_index = (page - 1) * limit
+        end_index = start_index + limit
+        
+        # ページネーション情報
+        pagination = {
+            'page': page,
+            'limit': limit,
+            'total_items': total_items,
+            'total_pages': total_pages,
+            'has_next': page < total_pages,
+            'has_prev': page > 1
+        }
+        
+        # 指定ページのアイテムを返却
+        page_items = ranking[start_index:end_index]
+        
+        return {
+            'rankings': page_items,
+            'pagination': pagination
+        }
         
     except Exception as e:
         logger = get_logger()
         logger.error("Error generating whiskey ranking", error=str(e))
-        return []
+        return {
+            'rankings': [],
+            'pagination': {
+                'page': page,
+                'limit': limit,
+                'total_items': 0,
+                'total_pages': 0,
+                'has_next': False,
+                'has_prev': False
+            }
+        }
 
 
 def get_cors_headers(event):
@@ -198,15 +231,37 @@ def transform_whiskey_item(item, schema_type='new'):
         }
 
 
-def handle_ranking_endpoint(logger):
+def handle_ranking_endpoint(query_params, logger):
     """ランキングエンドポイントの処理"""
     try:
         dynamodb = boto3.resource('dynamodb')
         whiskeys_table_name = os.environ['WHISKEYS_TABLE']
         reviews_table_name = os.environ.get('REVIEWS_TABLE', '')
         
-        ranking = get_whiskey_ranking(dynamodb, whiskeys_table_name, reviews_table_name)
-        return ranking
+        # ページネーションパラメータの取得とバリデーション
+        try:
+            page = int(query_params.get('page', 1))
+            limit = int(query_params.get('limit', 20))
+        except ValueError:
+            page = 1
+            limit = 20
+        
+        # パラメータの範囲チェック
+        page = max(1, page)  # 最小1
+        limit = max(1, min(100, limit))  # 1-100の範囲
+        
+        logger.debug("Ranking request", page=page, limit=limit)
+        
+        ranking_data = get_whiskey_ranking(dynamodb, whiskeys_table_name, reviews_table_name, page, limit)
+        
+        # 後方互換性のため、ページネーション情報がない場合は旧形式で返却
+        if query_params.get('page') is None and query_params.get('limit') is None:
+            # 旧形式（配列のみ）で返却
+            return ranking_data['rankings']
+        else:
+            # 新形式（ページネーション情報付き）で返却
+            return ranking_data
+            
     except Exception as e:
         logger.error("Error in ranking endpoint", error=str(e))
         raise
@@ -346,7 +401,8 @@ def lambda_handler(event, context):
         
         # ランキングエンドポイント
         if '/ranking' in path:
-            ranking = handle_ranking_endpoint(logger)
+            query_params = event.get('queryStringParameters') or {}
+            ranking = handle_ranking_endpoint(query_params, logger)
             return create_response(200, ranking, headers, start_time, logger)
         
         # 検索/サジェストエンドポイント

@@ -141,6 +141,7 @@ temp/
 tmp/
 *.json
 *.zip
+debug_response*.txt
 
 # Backup files
 *.bak

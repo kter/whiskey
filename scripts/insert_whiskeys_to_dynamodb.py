@@ -14,19 +14,47 @@ from decimal import Decimal
 from typing import Dict, List, Set, Optional
 
 # プロジェクトルートをパスに追加
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'backend'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'lambda', 'whiskeys-search', 'python'))
 
-from api.whiskey_search_service import WhiskeySearchService
+from whiskey_search_service import WhiskeySearchService
 
 
 class WhiskeyDatabaseInserter:
     def __init__(self):
+        # 環境変数とAWSプロファイルの検証
+        environment = os.getenv('ENVIRONMENT')
+        aws_profile = os.getenv('AWS_PROFILE')
+        
+        if not environment:
+            raise ValueError("ENVIRONMENT環境変数が設定されていません。ENVIRONMENT=dev または ENVIRONMENT=prd を設定してください。")
+        
+        # 環境に応じたプロファイルを自動設定
+        if not aws_profile:
+            if environment == 'prd':
+                os.environ['AWS_PROFILE'] = 'prd'
+                print(f"AWS_PROFILE を自動設定: prd")
+            elif environment == 'dev':
+                os.environ['AWS_PROFILE'] = 'dev'
+                print(f"AWS_PROFILE を自動設定: dev")
+            else:
+                raise ValueError(f"不明な環境: {environment}")
+        
+        # プロファイルが設定されたセッションを作成
+        try:
+            import boto3
+            session = boto3.Session(profile_name=os.environ['AWS_PROFILE'])
+            # 認証情報の確認
+            sts = session.client('sts')
+            identity = sts.get_caller_identity()
+            print(f"AWS アカウント: {identity['Account']}")
+            print(f"AWS ARN: {identity['Arn']}")
+        except Exception as e:
+            raise ValueError(f"AWS認証エラー: {e}")
+        
         self.db_service = WhiskeySearchService()
-        self.confidence_threshold = 0.9
         self.processed_count = 0
         self.inserted_count = 0
         self.duplicate_count = 0
-        self.low_confidence_count = 0
         
     def normalize_text(self, text: str) -> str:
         """テキストを検索用に正規化（DynamoDBサービスと同一）"""
@@ -54,13 +82,21 @@ class WhiskeyDatabaseInserter:
         
         # ファイル形式を判定
         if 'results' in data:
-            # Nova Pro形式
+            # Nova Pro/Claude Sonnet形式
             results = []
             for item in data['results']:
                 extracted_whiskeys = item.get('extracted_whiskeys', [])
                 for whiskey in extracted_whiskeys:
-                    whiskey['rakuten_product_name'] = item.get('product_name', '')
-                    results.append(whiskey)
+                    # whiskeyオブジェクトのコピーを作成して、rakuten_product_nameを追加
+                    whiskey_data = {
+                        'name': whiskey.get('name', ''),
+                        'distillery': whiskey.get('distillery', ''),
+                        'confidence': whiskey.get('confidence', 0.0),
+                        'rakuten_product_name': item.get('product_name', ''),
+                        'type': whiskey.get('type', ''),
+                        'region': whiskey.get('region', '')
+                    }
+                    results.append(whiskey_data)
             return results
         elif 'extraction_results' in data:
             # 旧形式
@@ -71,7 +107,9 @@ class WhiskeyDatabaseInserter:
                         'name': item.get('whiskey_name', ''),
                         'distillery': item.get('distillery', ''),
                         'confidence': item.get('confidence', 0.0),
-                        'rakuten_product_name': item.get('original_name', '')
+                        'rakuten_product_name': item.get('original_name', ''),
+                        'type': '',
+                        'region': ''
                     }
                     results.append(result)
             return results
@@ -97,8 +135,16 @@ class WhiskeyDatabaseInserter:
         unique_whiskeys = []
         
         for whiskey in whiskey_list:
-            name = whiskey.get('name', '').strip()
-            distillery = whiskey.get('distillery', '').strip()
+            # None値のチェックを追加
+            name = whiskey.get('name', '')
+            if name is None:
+                name = ''
+            name = name.strip()
+            
+            distillery = whiskey.get('distillery', '')
+            if distillery is None:
+                distillery = ''
+            distillery = distillery.strip()
             
             if not name:
                 print(f"空のウイスキー名をスキップ: {whiskey}")
@@ -122,35 +168,46 @@ class WhiskeyDatabaseInserter:
         """データ検証と前処理クリーニング"""
         clean_whiskeys = []
         
-        for whiskey in whiskey_list:
-            name = whiskey.get('name', '').strip()
-            distillery = whiskey.get('distillery', '').strip()
-            confidence = Decimal(str(whiskey.get('confidence', 0.0)))
-            
-            # 基本バリデーション
-            if not name:
-                print(f"空のウイスキー名をスキップ: {whiskey}")
+        for i, whiskey in enumerate(whiskey_list):
+            try:
+                # None値のチェックを追加
+                name = whiskey.get('name', '')
+                if name is None:
+                    name = ''
+                name = name.strip()
+                
+                distillery = whiskey.get('distillery', '')
+                if distillery is None:
+                    distillery = ''
+                distillery = distillery.strip()
+                
+                confidence = Decimal(str(whiskey.get('confidence', 0.0)))
+                
+                # 基本バリデーション
+                if not name:
+                    print(f"空のウイスキー名をスキップ: {whiskey}")
+                    continue
+                    
+                # データクリーニング（DynamoDB GSI制約対応）
+                # 空の蒸溜所名は"Unknown"に変換（GSIのキー制約により空文字列は不可）
+                if not distillery:
+                    distillery = "Unknown"
+                    
+                cleaned_whiskey = {
+                    'name': name,
+                    'distillery': distillery,
+                    'confidence': confidence,
+                    'rakuten_product_name': whiskey.get('rakuten_product_name', ''),
+                    'type': whiskey.get('type', ''),
+                    'region': whiskey.get('region', '')
+                }
+                
+                clean_whiskeys.append(cleaned_whiskey)
+                
+            except Exception as e:
+                print(f"データクリーニングエラー (インデックス {i}): {e}")
+                print(f"問題のあるデータ: {whiskey}")
                 continue
-                
-            # confidence閾値チェック
-            if confidence < Decimal(str(self.confidence_threshold)):
-                continue
-                
-            # データクリーニング（DynamoDB GSI制約対応）
-            # 空の蒸溜所名は"Unknown"に変換（GSIのキー制約により空文字列は不可）
-            if not distillery:
-                distillery = "Unknown"
-                
-            cleaned_whiskey = {
-                'name': name,
-                'distillery': distillery,
-                'confidence': confidence,
-                'rakuten_product_name': whiskey.get('rakuten_product_name', ''),
-                'type': whiskey.get('type', ''),
-                'region': whiskey.get('region', '')
-            }
-            
-            clean_whiskeys.append(cleaned_whiskey)
         
         print(f"データクリーニング後: {len(clean_whiskeys)}件")
         return clean_whiskeys
@@ -162,8 +219,16 @@ class WhiskeyDatabaseInserter:
         entry_id = str(uuid.uuid4())
         now = datetime.now().isoformat()
         
-        name = whiskey_data.get('name', '').strip()
-        distillery = whiskey_data.get('distillery', '').strip()
+        # None値のチェックを追加
+        name = whiskey_data.get('name', '')
+        if name is None:
+            name = ''
+        name = name.strip()
+        
+        distillery = whiskey_data.get('distillery', '')
+        if distillery is None:
+            distillery = ''
+        distillery = distillery.strip()
         
         item = {
             'id': entry_id,
@@ -173,7 +238,7 @@ class WhiskeyDatabaseInserter:
             'normalized_distillery': self.normalize_text(distillery),
             'confidence': Decimal(str(whiskey_data.get('confidence', 0.0))),
             'source': 'rakuten_bedrock',
-            'extraction_method': 'nova_pro',
+            'extraction_method': 'claude_sonnet_4',
             'rakuten_product_name': whiskey_data.get('rakuten_product_name', ''),
             'type': whiskey_data.get('type', ''),
             'region': whiskey_data.get('region', ''),
@@ -211,7 +276,7 @@ class WhiskeyDatabaseInserter:
     def process_file(self, input_file: str) -> Dict:
         """メイン処理フロー（重複排除をDB投入前に実行）"""
         print("=== ウイスキーデータDynamoDB投入開始 ===")
-        print(f"設定: confidence ≥ {self.confidence_threshold}, 前処理重複排除")
+        print(f"設定: 前処理重複排除")  # confidence関連の記述を削除
         
         try:
             # 1. 抽出結果読み込み（すでに展開済み）
@@ -219,9 +284,10 @@ class WhiskeyDatabaseInserter:
             print(f"読み込み完了: {len(all_whiskeys)}件のウイスキー")
             self.processed_count = len(all_whiskeys)
             
-            # 3. データ検証とクリーニング（confidence フィルタ含む）
+            # 3. データ検証とクリーニング
             clean_whiskeys = self.validate_and_clean_data(all_whiskeys)
-            self.low_confidence_count = len(all_whiskeys) - len(clean_whiskeys)
+            # self.low_confidence_count の計算を削除または修正
+            # self.low_confidence_count = len(all_whiskeys) - len(clean_whiskeys)
             
             # 4. 重複除去（DB投入前）
             unique_whiskeys = self.remove_duplicates(clean_whiskeys)
@@ -233,19 +299,18 @@ class WhiskeyDatabaseInserter:
             stats = {
                 'success': success,
                 'processed_count': self.processed_count,
-                'high_confidence_count': len(clean_whiskeys),
-                'low_confidence_excluded': self.low_confidence_count,
+                'clean_count': len(clean_whiskeys),  # high_confidence_countをclean_countに変更
                 'duplicates_removed': self.duplicate_count,
                 'inserted_count': self.inserted_count,
-                'confidence_threshold': self.confidence_threshold
+                # 'confidence_threshold': self.confidence_threshold  # この行を削除
             }
             
             print("=== 処理完了 ===")
             print(f"総ウイスキー数: {stats['processed_count']}件")
-            print(f"高信頼度: {stats['high_confidence_count']}件")
+            print(f"クリーニング後: {stats['clean_count']}件")  # 表示を変更
             print(f"重複除去: {stats['duplicates_removed']}件")
             print(f"DB投入: {stats['inserted_count']}件")
-            print(f"最終成功率: {stats['inserted_count']}/{stats['high_confidence_count']}")
+            print(f"最終成功率: {stats['inserted_count']}/{stats['clean_count']}")
             
             return stats
             
