@@ -53,13 +53,21 @@ class WhiskeyDatabaseInserter:
         
         # ファイル形式を判定
         if 'results' in data:
-            # Nova Pro形式
+            # Nova Pro/Claude Sonnet形式
             results = []
             for item in data['results']:
                 extracted_whiskeys = item.get('extracted_whiskeys', [])
                 for whiskey in extracted_whiskeys:
-                    whiskey['rakuten_product_name'] = item.get('product_name', '')
-                    results.append(whiskey)
+                    # whiskeyオブジェクトのコピーを作成して、rakuten_product_nameを追加
+                    whiskey_data = {
+                        'name': whiskey.get('name', ''),
+                        'distillery': whiskey.get('distillery', ''),
+                        'confidence': whiskey.get('confidence', 0.0),
+                        'rakuten_product_name': item.get('product_name', ''),
+                        'type': whiskey.get('type', ''),
+                        'region': whiskey.get('region', '')
+                    }
+                    results.append(whiskey_data)
             return results
         elif 'extraction_results' in data:
             # 旧形式
@@ -70,7 +78,9 @@ class WhiskeyDatabaseInserter:
                         'name': item.get('whiskey_name', ''),
                         'distillery': item.get('distillery', ''),
                         'confidence': item.get('confidence', 0.0),
-                        'rakuten_product_name': item.get('original_name', '')
+                        'rakuten_product_name': item.get('original_name', ''),
+                        'type': '',
+                        'region': ''
                     }
                     results.append(result)
             return results
@@ -96,8 +106,16 @@ class WhiskeyDatabaseInserter:
         unique_whiskeys = []
         
         for whiskey in whiskey_list:
-            name = whiskey.get('name', '').strip()
-            distillery = whiskey.get('distillery', '').strip()
+            # None値のチェックを追加
+            name = whiskey.get('name', '')
+            if name is None:
+                name = ''
+            name = name.strip()
+            
+            distillery = whiskey.get('distillery', '')
+            if distillery is None:
+                distillery = ''
+            distillery = distillery.strip()
             
             if not name:
                 print(f"空のウイスキー名をスキップ: {whiskey}")
@@ -121,31 +139,46 @@ class WhiskeyDatabaseInserter:
         """データ検証と前処理クリーニング"""
         clean_whiskeys = []
         
-        for whiskey in whiskey_list:
-            name = whiskey.get('name', '').strip()
-            distillery = whiskey.get('distillery', '').strip()
-            confidence = Decimal(str(whiskey.get('confidence', 0.0)))
-            
-            # 基本バリデーション
-            if not name:
-                print(f"空のウイスキー名をスキップ: {whiskey}")
+        for i, whiskey in enumerate(whiskey_list):
+            try:
+                # None値のチェックを追加
+                name = whiskey.get('name', '')
+                if name is None:
+                    name = ''
+                name = name.strip()
+                
+                distillery = whiskey.get('distillery', '')
+                if distillery is None:
+                    distillery = ''
+                distillery = distillery.strip()
+                
+                confidence = Decimal(str(whiskey.get('confidence', 0.0)))
+                
+                # 基本バリデーション
+                if not name:
+                    print(f"空のウイスキー名をスキップ: {whiskey}")
+                    continue
+                    
+                # データクリーニング（DynamoDB GSI制約対応）
+                # 空の蒸溜所名は"Unknown"に変換（GSIのキー制約により空文字列は不可）
+                if not distillery:
+                    distillery = "Unknown"
+                    
+                cleaned_whiskey = {
+                    'name': name,
+                    'distillery': distillery,
+                    'confidence': confidence,
+                    'rakuten_product_name': whiskey.get('rakuten_product_name', ''),
+                    'type': whiskey.get('type', ''),
+                    'region': whiskey.get('region', '')
+                }
+                
+                clean_whiskeys.append(cleaned_whiskey)
+                
+            except Exception as e:
+                print(f"データクリーニングエラー (インデックス {i}): {e}")
+                print(f"問題のあるデータ: {whiskey}")
                 continue
-                
-            # データクリーニング（DynamoDB GSI制約対応）
-            # 空の蒸溜所名は"Unknown"に変換（GSIのキー制約により空文字列は不可）
-            if not distillery:
-                distillery = "Unknown"
-                
-            cleaned_whiskey = {
-                'name': name,
-                'distillery': distillery,
-                'confidence': confidence,
-                'rakuten_product_name': whiskey.get('rakuten_product_name', ''),
-                'type': whiskey.get('type', ''),
-                'region': whiskey.get('region', '')
-            }
-            
-            clean_whiskeys.append(cleaned_whiskey)
         
         print(f"データクリーニング後: {len(clean_whiskeys)}件")
         return clean_whiskeys
@@ -157,8 +190,16 @@ class WhiskeyDatabaseInserter:
         entry_id = str(uuid.uuid4())
         now = datetime.now().isoformat()
         
-        name = whiskey_data.get('name', '').strip()
-        distillery = whiskey_data.get('distillery', '').strip()
+        # None値のチェックを追加
+        name = whiskey_data.get('name', '')
+        if name is None:
+            name = ''
+        name = name.strip()
+        
+        distillery = whiskey_data.get('distillery', '')
+        if distillery is None:
+            distillery = ''
+        distillery = distillery.strip()
         
         item = {
             'id': entry_id,
@@ -168,7 +209,7 @@ class WhiskeyDatabaseInserter:
             'normalized_distillery': self.normalize_text(distillery),
             'confidence': Decimal(str(whiskey_data.get('confidence', 0.0))),
             'source': 'rakuten_bedrock',
-            'extraction_method': 'nova_pro',
+            'extraction_method': 'claude_sonnet_4',
             'rakuten_product_name': whiskey_data.get('rakuten_product_name', ''),
             'type': whiskey_data.get('type', ''),
             'region': whiskey_data.get('region', ''),
