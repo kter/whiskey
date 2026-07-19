@@ -289,6 +289,7 @@ describe('least-privilege Lambda roles', () => {
     const list = rolePolicy(json, 'whiskey-list-role-dev');
     const search = rolePolicy(json, 'whiskey-search-role-dev');
     const reviews = rolePolicy(json, 'reviews-role-dev');
+    const aggregator = rolePolicy(json, 'ranking-aggregator-role-dev');
 
     const listAppState = list.find((statement) => actions(statement).includes('dynamodb:UpdateItem'))!;
     const appStateTableLogicalId = resourcesOf(json, 'AWS::DynamoDB::Table')
@@ -326,6 +327,18 @@ describe('least-privilege Lambda roles', () => {
     });
     expect(JSON.stringify(resourcesOf(json, 'AWS::IAM::Policy'))).not.toContain('TransactWriteItems');
     expect(JSON.stringify([...list, ...search, ...reviews])).not.toContain('cognito-idp:Admin');
+
+    const aggregatorScan = aggregator.find((statement) => actions(statement).includes('dynamodb:Scan'))!;
+    expect(aggregatorScan.Resource).toHaveLength(2);
+    const aggregatorCache = aggregator.find((statement) =>
+      actions(statement).includes('dynamodb:PutItem'))!;
+    expect(aggregatorCache.Condition['ForAllValues:StringLike']['dynamodb:LeadingKeys'])
+      .toEqual(['ranking-cache/*']);
+    const aggregatorCounters = aggregator.find((statement) =>
+      actions(statement).includes('dynamodb:GetItem')
+      && statement.Condition?.['ForAllValues:StringLike']?.['dynamodb:LeadingKeys']
+        ?.includes('whiskey-change-counter'))!;
+    expect(actions(aggregatorCounters)).toEqual(['dynamodb:GetItem']);
   });
 });
 
@@ -342,6 +355,7 @@ describe('tables, logs, and removed infrastructure', () => {
     expect(serialized).toContain('PublicDateIndex');
     expect(serialized).toContain('UserDateIndex');
     expect(serialized).not.toContain('WhiskeyIndex');
+    expect(serialized).not.toContain('DistilleryIndex');
     expect(serialized).not.toContain('Users-');
     template.resourceCountIs('AWS::EC2::VPC', 0);
     template.resourceCountIs('AWS::Route53::HostedZone', 0);
@@ -349,7 +363,7 @@ describe('tables, logs, and removed infrastructure', () => {
 
   test('every function uses its dedicated /whiskey/{env}/ log group', () => {
     const { template } = createAppStack('dev');
-    for (const name of ['whiskeys-list', 'whiskeys-search', 'reviews']) {
+    for (const name of ['whiskeys-list', 'whiskeys-search', 'reviews', 'ranking-aggregator']) {
       template.hasResourceProperties('AWS::Logs::LogGroup', {
         LogGroupName: `/whiskey/dev/${name}`,
       });
@@ -362,15 +376,25 @@ describe('Lambda bundling and shared layer', () => {
     const { json } = createAppStack('dev');
     const applicationFunctions = resourcesOf(json, 'AWS::Lambda::Function')
       .filter(([, resource]) => typeof resource.Properties?.FunctionName === 'string'
-        && ['whiskey-list-dev', 'whiskey-search-dev', 'reviews-dev'].includes(resource.Properties.FunctionName));
-    expect(applicationFunctions).toHaveLength(3);
+        && ['whiskey-list-dev', 'whiskey-search-dev', 'reviews-dev', 'ranking-aggregator-dev']
+          .includes(resource.Properties.FunctionName));
+    expect(applicationFunctions).toHaveLength(4);
     for (const [, fn] of applicationFunctions) {
       expect(fn.Properties?.Architectures).toEqual(['x86_64']);
       expect(fn.Properties?.Layers).toHaveLength(1);
-      expect(fn.Properties?.Environment.Variables.ALLOWED_ORIGINS).toContain('https://dev.whiskeybar.site');
+      if (fn.Properties?.FunctionName !== 'ranking-aggregator-dev') {
+        expect(fn.Properties?.Environment.Variables.ALLOWED_ORIGINS).toContain('https://dev.whiskeybar.site');
+      }
     }
     const reviews = applicationFunctions.find(([, fn]) => fn.Properties?.FunctionName === 'reviews-dev')![1];
     expect(reviews.Properties?.Environment.Variables.COGNITO_CLIENT_ID).toEqual(expect.objectContaining({ Ref: expect.any(String) }));
+    const aggregator = applicationFunctions
+      .find(([, fn]) => fn.Properties?.FunctionName === 'ranking-aggregator-dev')![1];
+    expect(aggregator.Properties).toEqual(expect.objectContaining({
+      MemorySize: 512,
+      ReservedConcurrentExecutions: 1,
+      Timeout: 120,
+    }));
     expect(resourcesOf(json, 'AWS::Lambda::LayerVersion')).toHaveLength(1);
   });
 
@@ -384,12 +408,54 @@ describe('Lambda bundling and shared layer', () => {
     const { json, outdir } = createAppStack('dev');
     const applicationFunctions = resourcesOf(json, 'AWS::Lambda::Function')
       .filter(([, resource]) => typeof resource.Properties?.FunctionName === 'string'
-        && ['whiskey-list-dev', 'whiskey-search-dev', 'reviews-dev'].includes(resource.Properties.FunctionName));
+        && ['whiskey-list-dev', 'whiskey-search-dev', 'reviews-dev', 'ranking-aggregator-dev']
+          .includes(resource.Properties.FunctionName));
     for (const [, fn] of applicationFunctions) {
       const assetHash = JSON.stringify(fn.Properties?.Code).match(/[a-f0-9]{64}/)?.[0];
       expect(assetHash).toBeDefined();
       expect(fs.existsSync(path.join(outdir, `asset.${assetHash}`, 'index.py'))).toBe(true);
     }
+  });
+});
+
+describe('scheduled ranking aggregation', () => {
+  test('uses an explicit group, dedicated confused-deputy-safe role, retry, and DLQ', () => {
+    const { json, template } = createAppStack('dev');
+    template.hasResourceProperties('AWS::Scheduler::ScheduleGroup', {
+      Name: 'ranking-aggregator-dev',
+    });
+    template.hasResourceProperties('AWS::Scheduler::Schedule', {
+      GroupName: 'ranking-aggregator-dev',
+      ScheduleExpression: 'rate(15 minutes)',
+      FlexibleTimeWindow: { Mode: 'OFF' },
+      Target: Match.objectLike({
+        Input: '{}',
+        DeadLetterConfig: { Arn: Match.anyValue() },
+        RetryPolicy: {
+          MaximumEventAgeInSeconds: 3600,
+          MaximumRetryAttempts: 3,
+        },
+      }),
+    });
+    template.hasResourceProperties('AWS::SQS::Queue', {
+      QueueName: 'ranking-aggregator-dlq-dev',
+      MessageRetentionPeriod: 1209600,
+      SqsManagedSseEnabled: true,
+    });
+
+    const groupLogicalId = resourcesOf(json, 'AWS::Scheduler::ScheduleGroup')[0][0];
+    const targetRole = resourcesOf(json, 'AWS::IAM::Role')
+      .find(([, role]) => role.Properties?.RoleName === 'ranking-scheduler-target-role-dev')![1];
+    const trust = targetRole.Properties?.AssumeRolePolicyDocument.Statement[0];
+    expect(trust.Principal).toEqual({ Service: 'scheduler.amazonaws.com' });
+    expect(trust.Condition).toEqual({
+      ArnEquals: { 'aws:SourceArn': { 'Fn::GetAtt': [groupLogicalId, 'Arn'] } },
+      StringEquals: { 'aws:SourceAccount': DEV_ACCOUNT },
+    });
+    const targetPolicy = rolePolicy(json, 'ranking-scheduler-target-role-dev');
+    expect(targetPolicy.map((statement) => actions(statement))).toEqual(
+      expect.arrayContaining([['lambda:InvokeFunction'], ['sqs:SendMessage']]),
+    );
   });
 });
 

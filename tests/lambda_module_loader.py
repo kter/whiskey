@@ -12,7 +12,10 @@ COMMON_PYTHON = ROOT / "lambda" / "common" / "python"
 
 def load_lambda_module(unique_name: str, relative_path: str) -> ModuleType:
     source_path = ROOT / relative_path
-    for import_path in (COMMON_PYTHON, source_path.parent, source_path.parent / "python"):
+    import_paths = [COMMON_PYTHON]
+    if COMMON_PYTHON not in source_path.parents:
+        import_paths.extend((source_path.parent, source_path.parent / "python"))
+    for import_path in import_paths:
         path_text = str(import_path)
         if import_path.exists() and path_text not in sys.path:
             sys.path.insert(0, path_text)

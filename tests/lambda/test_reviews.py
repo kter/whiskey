@@ -156,12 +156,15 @@ def test_create_transaction_contains_rate_limits_review_and_dirty_counter():
         reviews.validate_review_input(valid_create(is_public=True), creating=True),
     )
     transaction = dynamodb.client.transactions[0]
-    assert len(transaction) == 4
+    assert len(transaction) == 5
     assert transaction[0]["Update"]["Key"]["pk"].startswith("review-rate#user#user-1#")
     assert transaction[1]["Update"]["Key"]["pk"].startswith("review-rate#global#")
     assert transaction[0]["Update"]["ExpressionAttributeValues"][":ttl"] > 0
     assert transaction[2]["Put"]["Item"]["public_pk"] == "PUBLIC"
     assert transaction[3]["Update"]["Key"] == {"pk": reviews.DIRTY_COUNTER_KEY}
+    assert transaction[4]["Update"]["Key"] == {"pk": reviews.RANKING_META_KEY}
+    assert "dirty_since = if_not_exists" in transaction[4]["Update"]["UpdateExpression"]
+    assert "invalidated_at" not in transaction[4]["Update"]["UpdateExpression"]
     assert created["is_public"] is True
 
 
@@ -213,6 +216,9 @@ def test_update_uses_atomic_owner_condition_and_sparse_index_remove():
     assert update["ConditionExpression"] == "#owner = :caller"
     assert "REMOVE #public_pk" in update["UpdateExpression"]
     assert dynamodb.client.transactions[0][1]["Update"]["Key"]["pk"] == reviews.DIRTY_COUNTER_KEY
+    assert dynamodb.client.transactions[0][2]["Update"]["Key"]["pk"] == reviews.RANKING_META_KEY
+    assert "dirty_since = if_not_exists" in dynamodb.client.transactions[0][2]["Update"]["UpdateExpression"]
+    assert "invalidated_at" in dynamodb.client.transactions[0][2]["Update"]["UpdateExpression"]
     assert review_table.get_calls[0]["ConsistentRead"] is True
     assert result["id"] == "review-1"
 
@@ -234,6 +240,41 @@ def test_delete_owner_check_and_dirty_increment_are_one_transaction():
     transaction = dynamodb.client.transactions[0]
     assert transaction[0]["Delete"]["ConditionExpression"] == "#owner = :caller"
     assert transaction[1]["Update"]["Key"] == {"pk": reviews.DIRTY_COUNTER_KEY}
+    assert transaction[2]["Update"]["Key"] == {"pk": reviews.RANKING_META_KEY}
+    assert "dirty_since = if_not_exists" in transaction[2]["Update"]["UpdateExpression"]
+
+
+def test_batch_get_chunks_at_100_and_retries_unprocessed_keys_finitely():
+    calls = []
+
+    class BatchDynamo:
+        def batch_get_item(self, **kwargs):
+            request = kwargs["RequestItems"]["WhiskeySearch-test"]
+            calls.append(request)
+            keys = request["Keys"]
+            if len(calls) == 1:
+                return {
+                    "Responses": {"WhiskeySearch-test": [{"id": key["id"]} for key in keys[:-1]]},
+                    "UnprocessedKeys": {
+                        "WhiskeySearch-test": {
+                            "Keys": keys[-1:],
+                            "ConsistentRead": False,
+                        }
+                    },
+                }
+            return {
+                "Responses": {"WhiskeySearch-test": [{"id": key["id"]} for key in keys]},
+                "UnprocessedKeys": {},
+            }
+
+    result = reviews._batch_get(
+        BatchDynamo(),
+        "WhiskeySearch-test",
+        [{"id": f"w{index}"} for index in range(101)],
+        consistent=False,
+    )
+    assert len(result) == 101
+    assert [len(call["Keys"]) for call in calls] == [100, 1, 1]
 
 
 def test_public_listing_queries_sparse_gsi_and_rechecks_base_table_consistently():

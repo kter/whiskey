@@ -3,6 +3,7 @@
 import base64
 import binascii
 import json
+from collections.abc import Callable
 from typing import Any, Mapping
 
 from .decimal_utils import decimal_default
@@ -28,13 +29,21 @@ def decode_next_token(next_token: str | None) -> dict[str, Any] | None:
     return value
 
 
-def scan_all_pages(table: Any, *, max_pages: int = 100, **scan_kwargs: Any) -> tuple[list[dict], str | None]:
+def scan_all_pages(
+    table: Any,
+    *,
+    max_pages: int = 100,
+    before_page: Callable[[], None] | None = None,
+    **scan_kwargs: Any,
+) -> tuple[list[dict], str | None]:
     """Scan up to max_pages, returning all items and a continuation token."""
     if max_pages < 1:
         raise ValueError("max_pages must be at least 1")
     items: list[dict] = []
     last_evaluated_key = scan_kwargs.pop("ExclusiveStartKey", None)
     for _ in range(max_pages):
+        if before_page:
+            before_page()
         if last_evaluated_key:
             scan_kwargs["ExclusiveStartKey"] = last_evaluated_key
         response = table.scan(**scan_kwargs)

@@ -1,14 +1,15 @@
-"""
-Whiskeys Search Lambda Function
-ウイスキー検索API (新スキーマ対応)
-"""
+"""Whiskey name search and precomputed ranking API."""
+
 import os
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 try:
     from whiskey_common.clients import get_dynamodb_resource
+    from whiskey_common.cost_guard import ScanBudgetExceeded, consume_scan_budget
     from whiskey_common.logger import extract_correlation_id, get_logger
     from whiskey_common.responses import create_response, get_cors_headers
 except ModuleNotFoundError as exc:
@@ -16,387 +17,208 @@ except ModuleNotFoundError as exc:
         raise
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "common" / "python"))
     from whiskey_common.clients import get_dynamodb_resource
+    from whiskey_common.cost_guard import ScanBudgetExceeded, consume_scan_budget
     from whiskey_common.logger import extract_correlation_id, get_logger
     from whiskey_common.responses import create_response, get_cors_headers
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "python"))
 from whiskey_search_service import WhiskeySearchService
 
-USE_NEW_SERVICE = True
+
+RANKING_META_KEY = "ranking-cache/meta"
+RANKING_PAGE_PREFIX = "ranking-cache/generation"
+MAX_RANKING_STALE_SECONDS = 45 * 60
 
 
-def get_whiskey_ranking(dynamodb, whiskeys_table_name, reviews_table_name, page=1, limit=20):
-    """シンプルで高効率なウイスキーランキング生成（GSI使用）"""
-    try:
-        from boto3.dynamodb.conditions import Key
-        
-        whiskeys_table = dynamodb.Table(whiskeys_table_name)
-        reviews_table = dynamodb.Table(reviews_table_name)
-        logger = get_logger()
-        
-        # Step 1: レビューデータをGSIで効率的に取得・集計
-        logger.debug("Aggregating review statistics using GSI")
-        
-        review_stats = {}
-        
-        # 全レビューを一度だけ取得
-        all_reviews_response = reviews_table.scan()
-        all_reviews = all_reviews_response['Items']
-        
-        # whiskey_id別に集計
-        for review in all_reviews:
-            whiskey_id = review.get('whiskey_id')
-            if whiskey_id:
-                if whiskey_id not in review_stats:
-                    review_stats[whiskey_id] = []
-                review_stats[whiskey_id].append(float(review.get('rating', 0)))
-        
-        # 統計計算
-        for whiskey_id in review_stats:
-            ratings = review_stats[whiskey_id]
-            review_stats[whiskey_id] = {
-                'avg_rating': sum(ratings) / len(ratings),
-                'review_count': len(ratings)
-            }
-        
-        logger.debug(f"Aggregated reviews for {len(review_stats)} whiskeys")
-        
-        # Step 2: ウイスキー基本情報取得（ページネーション用に必要分のみ）
-        if page == 1:
-            # 最初のページ：候補を多めに取得
-            whiskeys_response = whiskeys_table.scan(Limit=min(500, limit * 10))
-        else:
-            # 全件必要（ソート順序保証のため）
-            whiskeys_response = whiskeys_table.scan()
-        
-        whiskeys = whiskeys_response['Items']
-        logger.debug(f"Retrieved {len(whiskeys)} whiskeys")
-        
-        # Step 3: ランキング作成
-        ranking = []
-        for whiskey in whiskeys:
-            whiskey_id = whiskey.get('id')
-            stats = review_stats.get(whiskey_id, {'avg_rating': 0, 'review_count': 0})
-            
-            ranking.append({
-                'id': whiskey_id,
-                'name': whiskey.get('name', whiskey.get('name_en', whiskey.get('name_ja', ''))),
-                'distillery': whiskey.get('distillery', whiskey.get('distillery_en', whiskey.get('distillery_ja', ''))),
-                'region': whiskey.get('region', ''),
-                'avg_rating': stats['avg_rating'],
-                'review_count': stats['review_count']
-            })
-        
-        # Step 4: ソート（レビューありを優先）
-        ranking.sort(key=lambda x: (
-            x['review_count'] > 0,  # レビューありを優先
-            x['avg_rating'],        # 平均評価
-            x['review_count']       # レビュー数
-        ), reverse=True)
-        
-        # Step 5: ページネーション
-        total_items = len(ranking)
-        total_pages = (total_items + limit - 1) // limit if total_items > 0 else 1
-        start_index = (page - 1) * limit
-        end_index = start_index + limit
-        
-        pagination = {
-            'page': page,
-            'limit': limit,
-            'total_items': total_items,
-            'total_pages': total_pages,
-            'has_next': page < total_pages,
-            'has_prev': page > 1
-        }
-        
-        page_items = ranking[start_index:end_index]
-        
-        logger.debug(f"Returning page {page} with {len(page_items)} items")
-        
-        return {
-            'rankings': page_items,
-            'pagination': pagination
-        }
-        
-    except Exception as e:
-        logger = get_logger()
-        logger.error("Error generating whiskey ranking", error=str(e))
-        return {
-            'rankings': [],
-            'pagination': {
-                'page': page,
-                'limit': limit,
-                'total_items': 0,
-                'total_pages': 0,
-                'has_next': False,
-                'has_prev': False
-            }
-        }
+def transform_whiskey_item(item: dict[str, Any]) -> dict[str, Any]:
+    """Transform supported source schemas into the public search shape."""
+    name = item.get("name") or item.get("name_ja") or item.get("name_en", "")
+    return {
+        "id": item.get("id"),
+        "name": name,
+        "name_en": item.get("name_en", item.get("name", "")),
+        "name_ja": item.get("name_ja", ""),
+        "distillery": item.get("distillery") or item.get("distillery_ja") or item.get("distillery_en", ""),
+        "region": item.get("region", ""),
+        "type": item.get("type", ""),
+        "confidence": float(item.get("confidence", 0)),
+        "source": item.get("source", ""),
+        "created_at": item.get("created_at"),
+        "updated_at": item.get("updated_at"),
+    }
 
 
-def transform_whiskey_item(item, schema_type='new'):
-    """DynamoDBアイテムを統一フォーマットに変換"""
-    if schema_type == 'new' and 'name' in item:
-        # 旧スキーマ（単一言語）
-        return {
-            'id': item.get('id'),
-            'name': item.get('name', ''),
-            'name_en': item.get('name', ''),
-            'name_ja': '',
-            'distillery': item.get('distillery', ''),
-            'region': item.get('region', ''),
-            'type': item.get('type', ''),
-            'confidence': float(item.get('confidence', 0)),
-            'source': item.get('source', ''),
-            'created_at': item.get('created_at'),
-            'updated_at': item.get('updated_at')
-        }
-    elif 'name_ja' in item or 'name_en' in item:
-        # 新しいバイリンガルスキーマ
-        return {
-            'id': item.get('id'),
-            'name': item.get('name_ja') or item.get('name_en', ''),
-            'name_en': item.get('name_en', ''),
-            'name_ja': item.get('name_ja', ''),
-            'distillery': item.get('distillery_ja') or item.get('distillery_en', ''),
-            'region': item.get('region', ''),
-            'type': item.get('type', ''),
-            'confidence': float(item.get('confidence', 0)),
-            'source': item.get('source', ''),
-            'created_at': item.get('created_at'),
-            'updated_at': item.get('updated_at')
-        }
-    else:
-        # フォールバック
-        return {
-            'id': item.get('id'),
-            'name': '',
-            'name_en': '',
-            'name_ja': '',
-            'distillery': '',
-            'region': item.get('region', ''),
-            'type': item.get('type', ''),
-            'confidence': float(item.get('confidence', 0)),
-            'source': item.get('source', ''),
-            'created_at': item.get('created_at'),
-            'updated_at': item.get('updated_at')
-        }
+def _aggregating_response() -> dict[str, str]:
+    return {"status": "aggregating"}
 
 
-def handle_ranking_endpoint(query_params, logger):
-    """ランキングエンドポイントの処理"""
-    try:
-        dynamodb = get_dynamodb_resource()
-        whiskeys_table_name = os.environ['WHISKEYS_TABLE']
-        reviews_table_name = os.environ.get('REVIEWS_TABLE', '')
-        
-        # ページネーションパラメータの取得とバリデーション
-        try:
-            page = int(query_params.get('page', 1))
-            limit = int(query_params.get('limit', 20))
-        except ValueError:
-            page = 1
-            limit = 20
-        
-        # パラメータの範囲チェック
-        page = max(1, page)  # 最小1
-        limit = max(1, min(100, limit))  # 1-100の範囲
-        
-        logger.debug("Ranking request", page=page, limit=limit)
-        
-        ranking_data = get_whiskey_ranking(dynamodb, whiskeys_table_name, reviews_table_name, page, limit)
-        
-        # 後方互換性のため、ページネーション情報がない場合は旧形式で返却
-        if query_params.get('page') is None and query_params.get('limit') is None:
-            # 旧形式（配列のみ）で返却
-            return ranking_data['rankings']
-        else:
-            # 新形式（ページネーション情報付き）で返却
-            return ranking_data
-            
-    except Exception as e:
-        logger.error("Error in ranking endpoint", error=str(e))
-        raise
+def _parse_iso8601(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
-def search_with_new_service(search_query, logger):
-    """新しいWhiskeySearchServiceを使用した検索"""
-    logger.debug("Using WhiskeySearchService")
-    service = WhiskeySearchService()
-    raw_results = service.search_whiskeys(search_query, limit=50)
-    logger.debug("Search completed via new service", result_count=len(raw_results))
-    
-    whiskeys = []
-    for item in raw_results:
-        whiskey = transform_whiskey_item(item, 'new')
-        whiskeys.append(whiskey)
-    
-    return whiskeys
+def _ranking_available(meta: dict[str, Any], now: datetime) -> bool:
+    if not meta.get("generation_id") or meta.get("invalidated_at"):
+        return False
+    dirty_since = meta.get("dirty_since")
+    if dirty_since and (now - _parse_iso8601(dirty_since)).total_seconds() > MAX_RANKING_STALE_SECONDS:
+        return False
+    return True
 
 
-def search_with_legacy_service(search_query, logger):
-    """レガシーDynamoDB検索の実装"""
-    logger.debug("Using legacy search implementation")
-    
-    dynamodb = get_dynamodb_resource()
-    whiskey_search_table_name = os.environ.get('WHISKEY_SEARCH_TABLE', f'WhiskeySearch-{os.environ.get("ENVIRONMENT", "dev")}')
-    search_table = dynamodb.Table(whiskey_search_table_name)
-    
-    if search_query:
-        return _search_with_query(search_table, search_query, logger)
-    else:
-        return _search_empty_query(search_table, logger)
+def _ranking_page_key(generation_id: str, page_number: int) -> str:
+    return f"{RANKING_PAGE_PREFIX}/{generation_id}/page/{page_number}"
 
 
-def _search_with_query(search_table, search_query, logger):
-    """クエリありの検索処理"""
-    from boto3.dynamodb.conditions import Attr
-    
-    # テーブルスキーマを確認
-    table_scan = search_table.scan(Limit=1)
-    if not table_scan.get('Items'):
-        logger.info("No items found in search table")
+def _read_ranking_slice(
+    table: Any,
+    meta: dict[str, Any],
+    page: int,
+    limit: int,
+) -> list[dict] | None:
+    total_items = int(meta.get("total_items", 0))
+    start = (page - 1) * limit
+    if start >= total_items:
         return []
-    
-    sample_item = table_scan['Items'][0]
-    logger.debug("Table schema detected", keys=list(sample_item.keys()))
-    
-    # 新スキーマ（name, distillery）か旧スキーマ（name_en, name_ja）かを判定
-    if 'name' in sample_item:
-        logger.debug("Using new schema (name, distillery)")
-        response = search_table.scan(
-            FilterExpression=Attr('name').contains(search_query) | Attr('distillery').contains(search_query)
+    end = min(start + limit, total_items)
+    page_sizes = [int(size) for size in meta.get("page_sizes", [])]
+    if not page_sizes:
+        cache_page_size = int(meta["cache_page_size"])
+        page_sizes = [
+            min(cache_page_size, max(0, total_items - page * cache_page_size))
+            for page in range(int(meta.get("page_count", (total_items + cache_page_size - 1) // cache_page_size)))
+        ]
+    first_cache_page = 0
+    first_page_start = 0
+    while first_cache_page < len(page_sizes) and first_page_start + page_sizes[first_cache_page] <= start:
+        first_page_start += page_sizes[first_cache_page]
+        first_cache_page += 1
+    if first_cache_page >= len(page_sizes):
+        return None
+    last_cache_page = first_cache_page
+    covered_until = first_page_start + page_sizes[first_cache_page]
+    while covered_until < end and last_cache_page + 1 < len(page_sizes):
+        last_cache_page += 1
+        covered_until += page_sizes[last_cache_page]
+    if covered_until < end:
+        return None
+    combined: list[dict] = []
+    for cache_page in range(first_cache_page, last_cache_page + 1):
+        response = table.get_item(
+            Key={"pk": _ranking_page_key(meta["generation_id"], cache_page)},
+            ConsistentRead=True,
         )
-        schema_type = 'new'
-    else:
-        logger.debug("Using legacy schema (name_en, name_ja)")
-        response = search_table.scan(
-            FilterExpression=Attr('name_en').contains(search_query) | Attr('name_ja').contains(search_query)
-        )
-        schema_type = 'legacy'
-    
-    raw_items = response.get('Items', [])
-    logger.debug("Search completed via legacy implementation", result_count=len(raw_items))
-    
-    whiskeys = []
-    for item in raw_items:
-        whiskey = transform_whiskey_item(item, schema_type)
-        whiskeys.append(whiskey)
-    
-    return whiskeys
+        item = response.get("Item")
+        if not item:
+            return None
+        combined.extend(item.get("rankings", []))
+    offset = start - first_page_start
+    return combined[offset : offset + (end - start)]
 
 
-def _search_empty_query(search_table, logger):
-    """空クエリの場合の検索処理"""
-    response = search_table.scan(Limit=10)
-    raw_items = response.get('Items', [])
-    
-    whiskeys = []
-    for item in raw_items:
-        # スキーマタイプを動的に判定
-        schema_type = 'new' if 'name' in item else 'legacy'
-        whiskey = transform_whiskey_item(item, schema_type)
-        whiskeys.append(whiskey)
-    
-    return whiskeys
+def handle_ranking_endpoint(query_params: dict[str, Any], logger: Any) -> Any:
+    try:
+        page = int(query_params.get("page", 1))
+        limit = int(query_params.get("limit", 20))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("page and limit must be integers") from exc
+    if page < 1 or not 1 <= limit <= 100:
+        raise ValueError("page must be positive and limit must be from 1 to 100")
+
+    table = get_dynamodb_resource().Table(os.environ["APP_STATE_TABLE"])
+    meta = table.get_item(Key={"pk": RANKING_META_KEY}, ConsistentRead=True).get("Item")
+    if not meta or not _ranking_available(meta, datetime.now(timezone.utc)):
+        return _aggregating_response()
+    rankings = _read_ranking_slice(table, meta, page, limit)
+    if rankings is None:
+        logger.warning("Ranking generation page is missing", generation_id=meta.get("generation_id"))
+        return _aggregating_response()
+    if "page" not in query_params and "limit" not in query_params:
+        return rankings
+    total_items = int(meta.get("total_items", 0))
+    total_pages = max(1, (total_items + limit - 1) // limit)
+    return {
+        "rankings": rankings,
+        "pagination": {
+            "page": page,
+            "limit": limit,
+            "total_items": total_items,
+            "total_pages": total_pages,
+            "has_next": page < total_pages,
+            "has_prev": page > 1,
+        },
+    }
 
 
-def handle_search_endpoint(search_query, logger):
-    """検索エンドポイントの処理"""
-    logger.debug("Search query received", query=search_query)
-    
-    # 新しいサービスまたはレガシーサービスを使用
-    if USE_NEW_SERVICE:
-        whiskeys = search_with_new_service(search_query, logger)
-    else:
-        whiskeys = search_with_legacy_service(search_query, logger)
-    
-    # アルファベット順にソート
-    if whiskeys:
-        whiskeys.sort(key=lambda x: x.get('name', ''))
-    
-    return whiskeys
+def handle_search_endpoint(query_params: dict[str, Any], logger: Any) -> dict[str, Any]:
+    query = query_params.get("q", "").strip()
+    try:
+        limit = int(query_params.get("limit", 50))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("limit must be an integer") from exc
+    if not 1 <= limit <= 100:
+        raise ValueError("limit must be from 1 to 100")
+
+    dynamodb = get_dynamodb_resource()
+    consume_scan_budget(
+        dynamodb,
+        os.environ["APP_STATE_TABLE"],
+        "search",
+        int(os.environ.get("PUBLIC_SCAN_DAILY_LIMIT", "10000")),
+    )
+    raw_results, next_token = WhiskeySearchService(dynamodb).search_whiskeys(
+        query,
+        limit=limit,
+        next_token=query_params.get("next_token"),
+    )
+    whiskeys = [transform_whiskey_item(item) for item in raw_results]
+    whiskeys.sort(key=lambda item: item.get("name", ""))
+    logger.debug("Search completed", result_count=len(whiskeys))
+    return {
+        "whiskeys": whiskeys,
+        "count": len(whiskeys),
+        "query": query,
+        "distillery": "",
+        "next_token": next_token,
+    }
 
 
-def lambda_handler(event, context):
-    """
-    GET /api/whiskeys/search?q=検索語 - ウイスキー検索
-    GET /api/whiskeys/suggest?q=検索語 - ウイスキーサジェスト
-    GET /api/whiskeys/ranking/ - ウイスキーランキング
-    """
+def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     start_time = time.monotonic()
     request_id = (
-        getattr(context, 'aws_request_id', None)
-        or (event.get('requestContext') or {}).get('requestId')
-        or 'unknown'
+        getattr(context, "aws_request_id", None)
+        or (event.get("requestContext") or {}).get("requestId")
+        or "unknown"
     )
-    
-    # ロガー初期化
-    correlation_id = extract_correlation_id(event)
-    logger = get_logger(
-        function_name='whiskeys-search',
-        correlation_id=correlation_id
-    )
-    
-    # APIリクエストログ
-    method = event.get('httpMethod', 'UNKNOWN')
-    path = event.get('path', 'UNKNOWN')
-    query_params = event.get('queryStringParameters')
-    
+    logger = get_logger("whiskeys-search", correlation_id=extract_correlation_id(event))
     logger.log_api_request(
-        method=method,
-        path=path,
-        query_params=query_params
+        method=event.get("httpMethod", "UNKNOWN"),
+        path=event.get("path", "UNKNOWN"),
+        query_params=event.get("queryStringParameters"),
     )
-    
-    # CORS対応ヘッダー取得
     headers = get_cors_headers(event)
-    
     try:
-        # パス判定でエンドポイントを分岐
-        path = event.get('path', '')
-        
-        # ランキングエンドポイント
-        if '/ranking' in path:
-            query_params = event.get('queryStringParameters') or {}
-            ranking = handle_ranking_endpoint(query_params, logger)
-            return create_response(200, ranking, headers, start_time=start_time, logger=logger)
-        
-        # 検索/サジェストエンドポイント
-        query_params = event.get('queryStringParameters') or {}
-        search_query = query_params.get('q', '').strip()
-        
-        # 検索実行
-        whiskeys = handle_search_endpoint(search_query, logger)
-        
-        # 検索ログ
-        duration_ms = (time.monotonic() - start_time) * 1000
-        logger.log_search_operation(
-            query=search_query,
-            result_count=len(whiskeys),
-            duration_ms=duration_ms,
-            search_type="whiskey_search"
+        query_params = event.get("queryStringParameters") or {}
+        if "/ranking" in event.get("path", ""):
+            body = handle_ranking_endpoint(query_params, logger)
+        else:
+            body = handle_search_endpoint(query_params, logger)
+        return create_response(200, body, headers, start_time=start_time, logger=logger)
+    except ValueError as exc:
+        return create_response(400, {"error": str(exc)}, headers, start_time=start_time, logger=logger)
+    except ScanBudgetExceeded:
+        return create_response(
+            429,
+            {"error": "Daily scan budget exceeded"},
+            headers,
+            start_time=start_time,
+            logger=logger,
         )
-        
-        # レスポンスボディ
-        response_body = {
-            'whiskeys': whiskeys,
-            'count': len(whiskeys),
-            'query': search_query,
-            'distillery': ""  # 蒸留所フィルターは削除済み
-        }
-        
-        return create_response(200, response_body, headers, start_time=start_time, logger=logger)
-        
-    except Exception as e:
-        duration_ms = (time.monotonic() - start_time) * 1000
-        logger.error("Unhandled error in lambda_handler", 
-                    error=str(e), 
-                    duration_ms=duration_ms)
-        
-        error_body = {
-            'error': 'Internal server error',
-            'request_id': request_id,
-        }
-        
-        return create_response(500, error_body, headers, start_time=start_time, logger=logger)
+    except Exception as exc:
+        logger.error("Unhandled error in lambda_handler", error=str(exc), request_id=request_id)
+        return create_response(
+            500,
+            {"error": "Internal server error", "request_id": request_id},
+            headers,
+            start_time=start_time,
+            logger=logger,
+        )

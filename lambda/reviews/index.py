@@ -39,6 +39,7 @@ DEFAULT_PAGE_LIMIT = 20
 MAX_PAGE_LIMIT = 100
 MAX_PUBLIC_PAGE_QUERIES = 10
 DIRTY_COUNTER_KEY = "review-change-counter"
+RANKING_META_KEY = "ranking-cache/meta"
 
 
 class ValidationError(ValueError):
@@ -186,6 +187,25 @@ def _dirty_counter_update(app_state_table_name: str, now: str) -> dict[str, Any]
     }
 
 
+def _ranking_dirty_update(
+    app_state_table_name: str,
+    now: str,
+    *,
+    invalidate: bool = False,
+) -> dict[str, Any]:
+    update_expression = "SET dirty_since = if_not_exists(dirty_since, :updated_at)"
+    if invalidate:
+        update_expression += ", invalidated_at = :updated_at"
+    return {
+        "Update": {
+            "TableName": app_state_table_name,
+            "Key": {"pk": RANKING_META_KEY},
+            "UpdateExpression": update_expression,
+            "ExpressionAttributeValues": {":updated_at": now},
+        }
+    }
+
+
 def _rate_counter_update(
     table_name: str,
     key: str,
@@ -262,6 +282,7 @@ def create_review(
             }
         },
         _dirty_counter_update(app_state_table_name, now),
+        _ranking_dirty_update(app_state_table_name, now),
     ]
     try:
         client.transact_write_items(TransactItems=transaction)
@@ -308,21 +329,27 @@ def update_review(
     if remove_parts:
         update_expression += f" REMOVE {', '.join(remove_parts)}"
     client = dynamodb.meta.client
+    transaction = [
+        {
+            "Update": {
+                "TableName": reviews_table_name,
+                "Key": {"id": review_id},
+                "UpdateExpression": update_expression,
+                "ConditionExpression": "#owner = :caller",
+                "ExpressionAttributeNames": names,
+                "ExpressionAttributeValues": values,
+            }
+        },
+        _dirty_counter_update(app_state_table_name, now),
+        _ranking_dirty_update(
+            app_state_table_name,
+            now,
+            invalidate=data.get("is_public") is False,
+        ),
+    ]
     try:
         client.transact_write_items(
-            TransactItems=[
-                {
-                    "Update": {
-                        "TableName": reviews_table_name,
-                        "Key": {"id": review_id},
-                        "UpdateExpression": update_expression,
-                        "ConditionExpression": "#owner = :caller",
-                        "ExpressionAttributeNames": names,
-                        "ExpressionAttributeValues": values,
-                    }
-                },
-                _dirty_counter_update(app_state_table_name, now),
-            ]
+            TransactItems=transaction
         )
     except client.exceptions.TransactionCanceledException as exc:
         reasons = exc.response.get("CancellationReasons", [])
@@ -358,6 +385,7 @@ def delete_review(
                     }
                 },
                 _dirty_counter_update(app_state_table_name, now),
+                _ranking_dirty_update(app_state_table_name, now),
             ]
         )
     except client.exceptions.TransactionCanceledException as exc:
@@ -371,15 +399,21 @@ def delete_review(
 def _batch_get(dynamodb: Any, table_name: str, keys: list[dict[str, Any]], *, consistent: bool) -> list[dict]:
     if not keys:
         return []
-    request_items = {table_name: {"Keys": keys, "ConsistentRead": consistent}}
     items: list[dict] = []
-    for _ in range(3):
-        response = dynamodb.batch_get_item(RequestItems=request_items)
-        items.extend(response.get("Responses", {}).get(table_name, []))
-        unprocessed = response.get("UnprocessedKeys", {})
-        if not unprocessed:
-            break
-        request_items = unprocessed
+    for offset in range(0, len(keys), 100):
+        request_items = {
+            table_name: {
+                "Keys": keys[offset : offset + 100],
+                "ConsistentRead": consistent,
+            }
+        }
+        for _ in range(3):
+            response = dynamodb.batch_get_item(RequestItems=request_items)
+            items.extend(response.get("Responses", {}).get(table_name, []))
+            unprocessed = response.get("UnprocessedKeys", {})
+            if not unprocessed:
+                break
+            request_items = unprocessed
     return items
 
 

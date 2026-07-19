@@ -11,7 +11,9 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as targets from 'aws-cdk-lib/aws-route53-targets';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as scheduler from 'aws-cdk-lib/aws-scheduler';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as sqs from 'aws-cdk-lib/aws-sqs';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import * as fs from 'fs';
@@ -31,6 +33,7 @@ const SCAN_COUNTER_PREFIX = 'scan-counter/*';
 const RANKING_CACHE_PREFIX = 'ranking-cache/*';
 const REVIEW_RATE_PREFIX = 'review-rate#*';
 const REVIEW_CHANGE_COUNTER = 'review-change-counter';
+const WHISKEY_CHANGE_COUNTER = 'whiskey-change-counter';
 const BUNDLING_COMMAND = "if [ -f requirements.txt ]; then pip install -r requirements.txt -t /asset-output; fi && cp -au . /asset-output && find /asset-output -name __pycache__ -type d -exec rm -rf {} +";
 
 function parseExtraOrigins(value: unknown): string[] {
@@ -162,11 +165,6 @@ export class WhiskeyInfraStack extends cdk.Stack {
       indexName: 'NameIndex',
       partitionKey: { name: 'normalized_name', type: dynamodb.AttributeType.STRING },
     });
-    whiskeySearchTable.addGlobalSecondaryIndex({
-      indexName: 'DistilleryIndex',
-      partitionKey: { name: 'normalized_distillery', type: dynamodb.AttributeType.STRING },
-    });
-
     const appStateTable = new dynamodb.Table(this, 'AppStateTable', {
       tableName: `AppState-${environment}`,
       partitionKey: { name: 'pk', type: dynamodb.AttributeType.STRING },
@@ -268,6 +266,11 @@ export class WhiskeyInfraStack extends cdk.Stack {
       retention: logRetention,
       removalPolicy: logRemovalPolicy,
     });
+    const rankingAggregatorLogGroup = new logs.LogGroup(this, 'RankingAggregatorLogGroup', {
+      logGroupName: `/whiskey/${environment}/ranking-aggregator`,
+      retention: logRetention,
+      removalPolicy: logRemovalPolicy,
+    });
 
     const createLambdaRole = (id: string, roleName: string, logGroup: logs.ILogGroup): iam.Role => {
       const role = new iam.Role(this, id, {
@@ -281,10 +284,14 @@ export class WhiskeyInfraStack extends cdk.Stack {
     const listRole = createLambdaRole('WhiskeyListRole', `whiskey-list-role-${environment}`, listLogGroup);
     const searchRole = createLambdaRole('WhiskeySearchRole', `whiskey-search-role-${environment}`, searchLogGroup);
     const reviewsRole = createLambdaRole('ReviewsRole', `reviews-role-${environment}`, reviewsLogGroup);
+    const rankingAggregatorRole = createLambdaRole(
+      'RankingAggregatorRole',
+      `ranking-aggregator-role-${environment}`,
+      rankingAggregatorLogGroup,
+    );
 
     whiskeySearchTable.grantReadData(listRole);
     whiskeySearchTable.grantReadData(searchRole);
-    reviewsTable.grantReadData(searchRole);
     reviewsTable.grantReadWriteData(reviewsRole);
     whiskeySearchTable.grantReadData(reviewsRole);
 
@@ -309,6 +316,19 @@ export class WhiskeyInfraStack extends cdk.Stack {
     reviewsRole.addToPolicy(appStatePrefixStatement(
       ['dynamodb:UpdateItem'],
       [REVIEW_RATE_PREFIX, REVIEW_CHANGE_COUNTER],
+    ));
+    reviewsRole.addToPolicy(appStatePrefixStatement(['dynamodb:UpdateItem'], 'ranking-cache/meta'));
+    rankingAggregatorRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['dynamodb:Scan'],
+      resources: [reviewsTable.tableArn, whiskeySearchTable.tableArn],
+    }));
+    rankingAggregatorRole.addToPolicy(appStatePrefixStatement(
+      ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:DeleteItem'],
+      RANKING_CACHE_PREFIX,
+    ));
+    rankingAggregatorRole.addToPolicy(appStatePrefixStatement(
+      ['dynamodb:GetItem'],
+      [REVIEW_CHANGE_COUNTER, WHISKEY_CHANGE_COUNTER],
     ));
 
     const bundledPythonCode = (directory: string): lambda.AssetCode => {
@@ -358,6 +378,8 @@ export class WhiskeyInfraStack extends cdk.Stack {
       environment: {
         WHISKEYS_TABLE: whiskeySearchTable.tableName,
         APP_STATE_TABLE: appStateTable.tableName,
+        PUBLIC_SCAN_MAX_PAGES: '1',
+        PUBLIC_SCAN_DAILY_LIMIT: '10000',
         ALLOWED_ORIGINS: allowedOrigins.join(','),
         ENVIRONMENT: environment,
       },
@@ -379,6 +401,8 @@ export class WhiskeyInfraStack extends cdk.Stack {
         REVIEWS_TABLE: reviewsTable.tableName,
         WHISKEY_SEARCH_TABLE: whiskeySearchTable.tableName,
         APP_STATE_TABLE: appStateTable.tableName,
+        PUBLIC_SCAN_MAX_PAGES: '1',
+        PUBLIC_SCAN_DAILY_LIMIT: '10000',
         ALLOWED_ORIGINS: allowedOrigins.join(','),
         ENVIRONMENT: environment,
       },
@@ -407,6 +431,70 @@ export class WhiskeyInfraStack extends cdk.Stack {
         ENVIRONMENT: environment,
       },
     });
+
+    const rankingAggregatorLambda = new lambda.Function(this, 'RankingAggregatorFunction', {
+      functionName: `ranking-aggregator-${environment}`,
+      runtime: lambda.Runtime.PYTHON_3_11,
+      architecture: lambda.Architecture.X86_64,
+      handler: 'index.lambda_handler',
+      code: bundledPythonCode('ranking-aggregator'),
+      layers: [commonLayer],
+      timeout: cdk.Duration.seconds(120),
+      memorySize: 512,
+      reservedConcurrentExecutions: 1,
+      role: rankingAggregatorRole,
+      logGroup: rankingAggregatorLogGroup,
+      environment: {
+        REVIEWS_TABLE: reviewsTable.tableName,
+        WHISKEY_SEARCH_TABLE: whiskeySearchTable.tableName,
+        APP_STATE_TABLE: appStateTable.tableName,
+        ENVIRONMENT: environment,
+      },
+    });
+
+    const rankingScheduleDlq = new sqs.Queue(this, 'RankingScheduleDlq', {
+      queueName: `ranking-aggregator-dlq-${environment}`,
+      encryption: sqs.QueueEncryption.SQS_MANAGED,
+      retentionPeriod: cdk.Duration.days(14),
+      removalPolicy,
+    });
+    const rankingScheduleGroup = new scheduler.CfnScheduleGroup(this, 'RankingScheduleGroup', {
+      name: `ranking-aggregator-${environment}`,
+    });
+    const rankingScheduleRole = new iam.Role(this, 'RankingScheduleTargetRole', {
+      roleName: `ranking-scheduler-target-role-${environment}`,
+      assumedBy: new iam.ServicePrincipal('scheduler.amazonaws.com', {
+        conditions: {
+          ArnEquals: { 'aws:SourceArn': rankingScheduleGroup.attrArn },
+          StringEquals: { 'aws:SourceAccount': this.account },
+        },
+      }),
+    });
+    rankingScheduleRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['lambda:InvokeFunction'],
+      resources: [rankingAggregatorLambda.functionArn],
+    }));
+    rankingScheduleRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['sqs:SendMessage'],
+      resources: [rankingScheduleDlq.queueArn],
+    }));
+    const rankingSchedule = new scheduler.CfnSchedule(this, 'RankingSchedule', {
+      name: `ranking-aggregator-15min-${environment}`,
+      groupName: rankingScheduleGroup.name,
+      scheduleExpression: 'rate(15 minutes)',
+      flexibleTimeWindow: { mode: 'OFF' },
+      target: {
+        arn: rankingAggregatorLambda.functionArn,
+        roleArn: rankingScheduleRole.roleArn,
+        input: '{}',
+        deadLetterConfig: { arn: rankingScheduleDlq.queueArn },
+        retryPolicy: {
+          maximumEventAgeInSeconds: 3600,
+          maximumRetryAttempts: 3,
+        },
+      },
+    });
+    rankingSchedule.addDependency(rankingScheduleGroup);
 
     let apiCertificate: acm.Certificate | undefined;
     if (enableCustomDomain) {
@@ -544,10 +632,12 @@ export class WhiskeyInfraStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'WhiskeyListRoleArn', { value: listRole.roleArn });
     new cdk.CfnOutput(this, 'WhiskeySearchRoleArn', { value: searchRole.roleArn });
     new cdk.CfnOutput(this, 'ReviewsRoleArn', { value: reviewsRole.roleArn });
+    new cdk.CfnOutput(this, 'RankingAggregatorRoleArn', { value: rankingAggregatorRole.roleArn });
     new cdk.CfnOutput(this, 'PlacesSecretArn', { value: placesSecret.secretArn });
     new cdk.CfnOutput(this, 'WhiskeyListLambdaArn', { value: whiskeyListLambda.functionArn });
     new cdk.CfnOutput(this, 'WhiskeySearchLambdaArn', { value: whiskeySearchLambda.functionArn });
     new cdk.CfnOutput(this, 'ReviewsLambdaArn', { value: reviewsLambda.functionArn });
+    new cdk.CfnOutput(this, 'RankingAggregatorLambdaArn', { value: rankingAggregatorLambda.functionArn });
     new cdk.CfnOutput(this, 'ApiGatewayRestApiId', { value: api.restApiId });
     new cdk.CfnOutput(this, 'ApiGatewayUrl', { value: api.url });
 
