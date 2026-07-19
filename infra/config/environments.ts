@@ -1,30 +1,44 @@
 export interface EnvironmentConfig {
   region: string;
-  account?: string;
+  account: string;
   domain?: string;
   apiDomain?: string;
   certificateArn?: string;
-  allowedOrigins: string[];
-  natGateways: number;
+  enableCustomDomain: boolean;
+  enableGoogleAuth: boolean;
+  createOidcProvider: boolean;
+  cognitoDomainPrefix: string;
+  gatewayErrorOrigin: string;
   retainResources: boolean;
+  allowedOrigins: string[];
 }
 
 export const environments: Record<string, EnvironmentConfig> = {
   dev: {
     region: 'ap-northeast-1',
+    account: '031921999648',
     domain: 'dev.whiskeybar.site',
     apiDomain: 'api.dev.whiskeybar.site',
-    allowedOrigins: ['https://dev.whiskeybar.site', 'https://www.dev.whiskeybar.site', 'http://localhost:3000'], // 開発環境では本番ドメインとローカル
-    natGateways: 0, // Lambda使用のためNATゲートウェイ不要
+    enableCustomDomain: false,
+    enableGoogleAuth: false,
+    createOidcProvider: true,
+    cognitoDomainPrefix: 'whiskey-users-dev',
+    gatewayErrorOrigin: 'http://localhost:3000',
     retainResources: false,
+    allowedOrigins: ['https://dev.whiskeybar.site', 'http://localhost:3000'],
   },
   prd: {
     region: 'ap-northeast-1',
+    // The production account is intentionally unset until it is finalized.
+    account: '',
     domain: 'whiskeybar.site',
     apiDomain: 'api.whiskeybar.site',
-    allowedOrigins: ['https://whiskeybar.site', 'https://www.whiskeybar.site'], // 本番ドメインのみ許可
-    natGateways: 0, // Lambda使用のためNATゲートウェイ不要
+    enableCustomDomain: false,
+    enableGoogleAuth: false,
+    createOidcProvider: false,
+    cognitoDomainPrefix: 'whiskey-users-prd',
+    gatewayErrorOrigin: 'https://whiskeybar.site',
     retainResources: true,
-    // certificateArn: 'arn:aws:acm:ap-northeast-1:123456789012:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+    allowedOrigins: ['https://whiskeybar.site'],
   },
-}; 
+};

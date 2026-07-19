@@ -1,55 +1,102 @@
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib';
-import { WhiskeyInfraStack } from '../lib/whiskey-infra-stack';
-import { CertificateStack } from '../lib/certificate-stack';
 import { environments } from '../config/environments';
+import { CertificateStack } from '../lib/certificate-stack';
+import { DNS_ACCOUNT, DnsStack } from '../lib/dns-stack';
+import { GithubOidcStack } from '../lib/github-oidc-stack';
+import { NotificationsStack } from '../lib/notifications-stack';
+import { WhiskeyInfraStack } from '../lib/whiskey-infra-stack';
+
+function contextBoolean(app: cdk.App, key: string, fallback: boolean): boolean {
+  const value = app.node.tryGetContext(key);
+  if (value === undefined) {
+    return fallback;
+  }
+  if (value === true || value === 'true') {
+    return true;
+  }
+  if (value === false || value === 'false') {
+    return false;
+  }
+  throw new Error(`Context ${key} must be true or false.`);
+}
 
 const app = new cdk.App();
-
-// 環境変数から環境を取得（デフォルトはdev）
-const env = app.node.tryGetContext('env') || process.env.ENV || 'dev';
-
-// 環境設定を取得
-const envConfig = environments[env];
+const environment = app.node.tryGetContext('env') || process.env.ENV || 'dev';
+const envConfig = environments[environment];
 if (!envConfig) {
-  throw new Error(`Invalid environment: ${env}. Must be 'dev' or 'prd'.`);
+  throw new Error(`Invalid environment: ${environment}. Must be 'dev' or 'prd'.`);
 }
 
-// 共通の環境設定
-const account = process.env.CDK_DEFAULT_ACCOUNT;
-const region = envConfig.region;
-const envCapitalized = env.charAt(0).toUpperCase() + env.slice(1);
+const account = envConfig.account || undefined;
+const environmentName = environment.charAt(0).toUpperCase() + environment.slice(1);
+const enableCustomDomain = Boolean(account)
+  && contextBoolean(app, 'enableCustomDomain', envConfig.enableCustomDomain);
+const enableGoogleAuth = contextBoolean(app, 'enableGoogleAuth', envConfig.enableGoogleAuth);
+const createOidcProvider = contextBoolean(app, 'createOidcProvider', envConfig.createOidcProvider);
+const tags = { Project: 'WhiskeyApp', Environment: environment };
 
-// 1. CloudFront用証明書スタック（us-east-1）を先に作成
-let certificateStack: CertificateStack | undefined;
-if (envConfig.domain) {
-  certificateStack = new CertificateStack(app, `WhiskeyCertificate-${envCapitalized}`, {
-    env: { account, region: 'us-east-1' },
-    environment: env,
-    domain: envConfig.domain,
-    // Hosted Zone IDは後でlookupできるので、一旦ドメイン名のみで作成
-    hostedZoneId: '', // 空文字の場合はlookupを使用
-    hostedZoneName: envConfig.domain,
-    tags: {
-      Project: 'WhiskeyApp',
-      Environment: env
-    }
+let dnsStack: DnsStack | undefined;
+let oidcStack: GithubOidcStack | undefined;
+if (environment === 'dev') {
+  dnsStack = new DnsStack(app, 'WhiskeyDns', {
+    env: { account: DNS_ACCOUNT, region: 'ap-northeast-1' },
+    crossRegionReferences: true,
+    terminationProtection: true,
+    tags: { Project: 'WhiskeyApp', Environment: 'shared' },
   });
+
+  oidcStack = new GithubOidcStack(app, 'WhiskeyGithubOidc', {
+    env: { account: DNS_ACCOUNT, region: 'ap-northeast-1' },
+    crossRegionReferences: true,
+    terminationProtection: true,
+    createOidcProvider,
+    deploymentBucketName: `whiskey-webapp-dev-${DNS_ACCOUNT}`,
+    tags: { Project: 'WhiskeyApp', Environment: 'shared' },
+  });
+  oidcStack.addDependency(dnsStack);
 }
 
-// 2. メインスタック（証明書スタックの出力を参照）
-const mainStack = new WhiskeyInfraStack(app, `WhiskeyApp-${envCapitalized}`, {
-  env: { account, region },
-  environment: env,
+let certificateStack: CertificateStack | undefined;
+if (enableCustomDomain && dnsStack && envConfig.domain) {
+  certificateStack = new CertificateStack(app, `WhiskeyCertificate-${environmentName}`, {
+    env: { account, region: 'us-east-1' },
+    crossRegionReferences: true,
+    domain: envConfig.domain,
+    hostedZone: dnsStack.hostedZone,
+    tags,
+  });
+  certificateStack.addDependency(oidcStack ?? dnsStack);
+}
+
+const appStack = new WhiskeyInfraStack(app, `WhiskeyApp-${environmentName}`, {
+  env: { account, region: envConfig.region },
+  crossRegionReferences: true,
+  environment,
+  enableCustomDomain,
+  enableGoogleAuth,
+  hostedZone: enableCustomDomain ? dnsStack?.hostedZone : undefined,
   cloudFrontCertificateArn: certificateStack?.certificate.certificateArn,
-  crossRegionReferences: true, // クロスリージョン参照を有効化
-  tags: {
-    Project: 'WhiskeyApp',
-    Environment: env
-  }
+  tags,
 });
-
-// 依存関係を設定（証明書スタックが先に作成される）
 if (certificateStack) {
-  mainStack.addDependency(certificateStack);
+  appStack.addDependency(certificateStack);
+} else if (oidcStack) {
+  appStack.addDependency(oidcStack);
 }
+
+const budgetNotifications = new NotificationsStack(app, 'WhiskeyNotifications', {
+  env: { account, region: 'us-east-1' },
+  crossRegionReferences: true,
+  kind: 'budget',
+  tags,
+});
+budgetNotifications.addDependency(appStack);
+
+const tokyoNotifications = new NotificationsStack(app, 'WhiskeyNotifications-Tokyo', {
+  env: { account, region: 'ap-northeast-1' },
+  crossRegionReferences: true,
+  kind: 'alarms',
+  tags,
+});
+tokyoNotifications.addDependency(budgetNotifications);

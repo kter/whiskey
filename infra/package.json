@@ -9,14 +9,14 @@
     "watch": "tsc -w",
     "test": "jest",
     "cdk": "cdk",
-    "deploy:dev": "./scripts/deploy.sh dev",
-    "deploy:prd": "./scripts/deploy.sh prd",
-    "diff:dev": "cdk diff -c env=dev",
-    "diff:prd": "cdk diff -c env=prd",
+    "deploy:dev": "./scripts/deploy.sh dev --base",
+    "deploy:prd": "./scripts/deploy.sh prd --base",
+    "diff:dev": "./scripts/deploy.sh dev --base --diff-only",
+    "diff:prd": "./scripts/deploy.sh prd --base --diff-only",
     "synth:dev": "cdk synth -c env=dev",
     "synth:prd": "cdk synth -c env=prd",
-    "destroy:dev": "./scripts/deploy.sh dev --destroy",
-    "destroy:prd": "./scripts/deploy.sh prd --destroy"
+    "destroy:dev": "./scripts/deploy.sh dev --base --destroy",
+    "destroy:prd": "./scripts/deploy.sh prd --base --destroy"
   },
   "devDependencies": {
     "@types/jest": "^29.5.14",
