@@ -48,12 +48,15 @@ global.console = {
 }
 
 // Mock Nuxt composables globally
-global.useRuntimeConfig = vi.fn(() => ({
+vi.stubGlobal('useRuntimeConfig', vi.fn(() => ({
   public: {
     apiBaseUrl: 'https://api.test.whiskeybar.site',
     userPoolId: 'ap-northeast-1_test',
     userPoolClientId: 'test-client-id',
     region: 'ap-northeast-1',
-    environment: 'test'
+    environment: 'test',
+    mockAuth: '0',
+    googleAuthEnabled: '0',
+    cognitoDomain: ''
   }
-}))
+})))

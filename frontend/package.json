@@ -10,6 +10,7 @@
     "postinstall": "nuxt prepare",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
+    "typecheck": "nuxi typecheck",
     "test": "vitest",
     "test:watch": "vitest --watch",
     "test:coverage": "vitest --coverage",
@@ -20,6 +21,7 @@
     "@nuxtjs/eslint-config-typescript": "^12.1.0",
     "@nuxtjs/tailwindcss": "^6.11.4",
     "@types/node": "^20.10.4",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.13.2",
     "@vitest/ui": "^1.2.0",
     "@vue/test-utils": "^2.4.0",
@@ -28,7 +30,8 @@
     "happy-dom": "^13.3.0",
     "nuxt": "^3.10.3",
     "typescript": "^5.3.3",
-    "vitest": "^1.2.0"
+    "vitest": "^1.2.0",
+    "vue-tsc": "3.3.4"
   },
   "dependencies": {
     "@aws-amplify/auth": "^6.0.17",
@@ -37,5 +40,8 @@
     "axios": "^1.6.7",
     "chart.js": "^4.4.1",
     "vue-chartjs": "^5.3.0"
+  },
+  "overrides": {
+    "vite-plugin-checker": "0.10.3"
   }
-} 
+}

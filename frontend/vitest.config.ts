@@ -2,6 +2,10 @@ import { defineConfig } from 'vitest/config'
 import { fileURLToPath } from 'node:url'
 
 export default defineConfig({
+  define: {
+    'import.meta.dev': 'true',
+    'import.meta.client': 'true'
+  },
   test: {
     environment: 'happy-dom',
     globals: true,

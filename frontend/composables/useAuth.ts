@@ -1,394 +1,349 @@
-import { ref, readonly, nextTick, type Ref } from 'vue'
-import { signIn, signOut, signUp, confirmSignUp, getCurrentUser, fetchUserAttributes, resetPassword, confirmResetPassword, signInWithRedirect, type AuthUser, fetchAuthSession } from '@aws-amplify/auth'
+import { computed, readonly, ref, type Ref } from 'vue'
+import {
+  confirmResetPassword,
+  confirmSignUp,
+  fetchAuthSession,
+  fetchUserAttributes,
+  getCurrentUser,
+  resendSignUpCode,
+  resetPassword,
+  signIn,
+  signInWithRedirect,
+  signOut,
+  signUp,
+  type AuthUser,
+} from '@aws-amplify/auth'
 
-// ユーザープロフィール型定義
+const USERNAME_SALT = 'whiskey-log-signup-username-v1'
+const PENDING_SIGNUP_KEY = 'whiskey.pending-signup-username'
+const GENERIC_AUTH_ERROR = '認証情報を確認できませんでした。入力内容を確認して、もう一度お試しください。'
+
 export interface UserProfile {
   user_id: string
   nickname: string
   display_name?: string
-  created_at: string
-  updated_at: string
+  email?: string
+  created_at?: string
+  updated_at?: string
 }
 
-// グローバルな認証状態
-let globalAuthState: {
+interface AuthState {
   isAuthenticated: Ref<boolean>
   user: Ref<AuthUser | null>
   profile: Ref<UserProfile | null>
   loading: Ref<boolean>
   profileLoading: Ref<boolean>
-} | null = null
+  authReady: Ref<boolean>
+}
 
-// シングルトンパターンでグローバル状態を管理
-const getGlobalAuthState = () => {
-  if (!globalAuthState) {
-    globalAuthState = {
+let state: AuthState | null = null
+let initializationPromise: Promise<void> | null = null
+
+const getState = (): AuthState => {
+  if (!state) {
+    state = {
       isAuthenticated: ref(false),
       user: ref<AuthUser | null>(null),
       profile: ref<UserProfile | null>(null),
       loading: ref(false),
-      profileLoading: ref(false)
+      profileLoading: ref(false),
+      authReady: ref(false),
     }
   }
-  return globalAuthState
+  return state
 }
 
-export const useAuth = () => {
-  const config = useRuntimeConfig()
-  const { isAuthenticated, user, profile, loading, profileLoading } = getGlobalAuthState()
+export const normalizeEmail = (email: string) => email.trim().toLowerCase()
 
-  // 認証状態の初期化（より安全なアプローチ）
-  const initialize = async () => {
-    try {
-      loading.value = true
-      console.log('Initializing auth state...')
-      
-      // まずセッション状態を確認
-      const session = await fetchAuthSession()
-      console.log('Auth session:', { 
-        tokens: !!session.tokens, 
-        credentials: !!session.credentials 
-      })
-      
-      if (session.tokens) {
-        try {
-          // セッションが有効な場合のみgetCurrentUserを呼び出し
-          const currentUser = await getCurrentUser()
-          console.log('Current user:', currentUser)
-          
-          user.value = currentUser
-          isAuthenticated.value = true
-          console.log('User authenticated successfully')
-          
-          // ユーザープロフィールも取得
-          await fetchUserProfile()
-        } catch (userError) {
-          console.log('Error getting user info:', userError)
-          // セッションはあるがユーザー情報が取得できない場合
-          isAuthenticated.value = false
-          user.value = null
+export const deriveUsername = async (email: string): Promise<string> => {
+  const bytes = new TextEncoder().encode(`${USERNAME_SALT}:${normalizeEmail(email)}`)
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes)
+  const hex = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+  return `w${hex}`
+}
+
+const rememberPendingUsername = (email: string, username: string) => {
+  if (typeof sessionStorage !== 'undefined') {
+    sessionStorage.setItem(PENDING_SIGNUP_KEY, JSON.stringify({ email: normalizeEmail(email), username }))
+  }
+}
+
+const pendingUsernameFor = async (email: string) => {
+  const normalizedEmail = normalizeEmail(email)
+  if (typeof sessionStorage !== 'undefined') {
+    const stored = sessionStorage.getItem(PENDING_SIGNUP_KEY)
+    if (stored) {
+      try {
+        const pending: unknown = JSON.parse(stored)
+        if (
+          typeof pending === 'object'
+          && pending !== null
+          && 'email' in pending
+          && pending.email === normalizedEmail
+          && 'username' in pending
+          && typeof pending.username === 'string'
+        ) {
+          return pending.username
         }
-      } else {
-        console.log('No valid session found')
-        isAuthenticated.value = false
-        user.value = null
+      } catch {
+        // Legacy plain-string and malformed values are ignored.
       }
-    } catch (error) {
-      console.log('No authenticated session:', error)
-      isAuthenticated.value = false
-      user.value = null
+    }
+  }
+  return deriveUsername(normalizedEmail)
+}
+
+const forgetPendingUsername = () => {
+  if (typeof sessionStorage !== 'undefined') {
+    sessionStorage.removeItem(PENDING_SIGNUP_KEY)
+  }
+}
+
+const isCognitoStorageKey = (key: string) => {
+  const normalized = key.toLowerCase()
+  return normalized.startsWith('cognitoidentity')
+    || normalized.startsWith('aws.cognito')
+    || normalized.startsWith('amplify-')
+    || normalized.includes('cognitoidentityserviceprovider')
+}
+
+const clearCognitoStorage = () => {
+  if (typeof window === 'undefined') return
+  for (const storage of [window.localStorage, window.sessionStorage]) {
+    Object.keys(storage).filter(isCognitoStorageKey).forEach(key => storage.removeItem(key))
+  }
+}
+
+const createAuth = (isDevelopment: boolean) => {
+  const config = useRuntimeConfig()
+  const authState = getState()
+  const { isAuthenticated, user, profile, loading, profileLoading, authReady } = authState
+  const mockAuth = isDevelopment && config.public.mockAuth === '1'
+
+  const currentUserId = computed(() => user.value?.userId || profile.value?.user_id || null)
+
+  const fetchUserProfile = async () => {
+    if (!user.value) {
+      profile.value = null
+      return
+    }
+    profileLoading.value = true
+    try {
+      let attributes: Awaited<ReturnType<typeof fetchUserAttributes>> = {}
+      try {
+        attributes = mockAuth ? { email: 'local@example.com', sub: 'local-user' } : await fetchUserAttributes()
+      } catch {
+        // Authentication remains valid when optional profile attributes cannot be loaded.
+      }
+      profile.value = {
+        user_id: user.value.userId || attributes.sub || '',
+        email: attributes.email,
+        nickname: attributes.nickname || attributes.given_name || 'ウイスキー愛好家',
+        display_name: attributes.name || attributes.given_name,
+      }
     } finally {
-      loading.value = false
+      profileLoading.value = false
     }
   }
 
-  // 強制的に認証状態を更新
+  const initialize = async (): Promise<void> => {
+    if (authReady.value) return
+    if (initializationPromise) return initializationPromise
+
+    initializationPromise = (async () => {
+      loading.value = true
+      try {
+        if (mockAuth) {
+          user.value = { userId: 'local-user', username: 'local-user' }
+          isAuthenticated.value = true
+          await fetchUserProfile()
+          return
+        }
+
+        const session = await fetchAuthSession()
+        if (!session.tokens?.idToken) throw new Error('No authenticated session')
+        user.value = await getCurrentUser()
+        isAuthenticated.value = true
+        await fetchUserProfile()
+      } catch {
+        isAuthenticated.value = false
+        user.value = null
+        profile.value = null
+      } finally {
+        loading.value = false
+        authReady.value = true
+      }
+    })()
+
+    try {
+      await initializationPromise
+    } finally {
+      initializationPromise = null
+    }
+  }
+
   const refreshAuthState = async () => {
-    console.log('Refreshing auth state...')
+    authReady.value = false
     await initialize()
   }
 
-  // アクセストークン取得（エラーハンドリング改善）
-  const getToken = async (): Promise<string> => {
-    try {
-      const session = await fetchAuthSession()
-      if (session.tokens?.accessToken) {
-        return session.tokens.accessToken.toString()
-      }
-      throw new Error('No access token available')
-    } catch (error) {
-      console.error('Error getting token:', error)
-      throw error
-    }
+  const waitForAuthReady = async () => {
+    await initialize()
   }
 
-  // 認証状態に関係なくトークンを取得（optional）
+  const getToken = async (): Promise<string> => {
+    if (mockAuth) return 'mock-id-token'
+    const session = await fetchAuthSession()
+    const token = session.tokens?.idToken
+    if (!token) throw new Error('ID token is not available')
+    return token.toString()
+  }
+
   const getTokenSafely = async (): Promise<string | null> => {
     try {
       return await getToken()
-    } catch (error: any) {
-      console.log('Token not available:', error.message)
+    } catch {
       return null
     }
   }
 
-  // サインイン
-  const handleSignIn = async (username: string, password: string) => {
+  const handleSignIn = async (email: string, password: string) => {
+    loading.value = true
     try {
-      loading.value = true
-      const { isSignedIn, nextStep } = await signIn({ username, password })
-      
-      if (isSignedIn) {
-        // サインイン成功後、少し待ってから状態を更新
-        await new Promise(resolve => setTimeout(resolve, 500))
-        await initialize() // initializeを使用して安全にチェック
-        console.log('Sign in successful, auth state updated')
-      }
-      
-      return { isSignedIn, nextStep }
-    } catch (error) {
-      console.error('Sign in error:', error)
-      throw error
+      const result = await signIn({ username: normalizeEmail(email), password })
+      if (result.isSignedIn) await refreshAuthState()
+      return result
+    } catch {
+      throw new Error(GENERIC_AUTH_ERROR)
     } finally {
       loading.value = false
     }
   }
 
-  // サインアウト
   const handleSignOut = async () => {
+    loading.value = true
     try {
-      loading.value = true
-      console.log('Starting local sign out process...')
-      
-      // ローカルのみでサインアウト（Cognitoのホストされたログアウトを回避）
-      try {
-        // まずローカルセッションをクリア
-        if (process.client) {
-          console.log('Clearing local storage...')
-          // Amplifyのトークンストレージをクリア
-          localStorage.removeItem('aws-amplify-user')
-          localStorage.removeItem('aws-amplify-federatedInfo')
-          Object.keys(localStorage).forEach(key => {
-            if (key.startsWith('CognitoIdentity') || 
-                key.startsWith('aws.cognito') || 
-                key.startsWith('amplify-') ||
-                key.includes('cognito')) {
-              console.log('Removing localStorage key:', key)
-              localStorage.removeItem(key)
-            }
-          })
-          
-          // SessionStorageもクリア
-          Object.keys(sessionStorage).forEach(key => {
-            if (key.startsWith('CognitoIdentity') || 
-                key.startsWith('aws.cognito') || 
-                key.startsWith('amplify-') ||
-                key.includes('cognito')) {
-              console.log('Removing sessionStorage key:', key)
-              sessionStorage.removeItem(key)
-            }
-          })
-        }
-        
-        // Amplifyのサインアウト（ローカルのみ）
-        await signOut({ global: false }) // グローバルサインアウトを無効化
-        
-      } catch (signOutError) {
-        console.log('Amplify signOut error (expected for OAuth):', signOutError)
-        // OAuth認証の場合、signOut()でエラーが発生することがあるが、
-        // ローカルストレージのクリアで実質的にログアウトは完了
-      }
-      
-      // 状態をクリア
-      isAuthenticated.value = false
-      user.value = null
-      profile.value = null
-      console.log('Local sign out completed successfully')
-      
-      // 少し待ってから状態を確実にクリア
-      await nextTick()
-      
+      if (!mockAuth) await signOut()
     } catch (error) {
-      console.error('Sign out error:', error)
-      
-      // エラーが発生してもローカル状態はクリアする
+      clearCognitoStorage()
+      throw error
+    } finally {
       isAuthenticated.value = false
       user.value = null
       profile.value = null
-      
-      // ローカルストレージも強制的にクリア
-      if (process.client) {
-        try {
-          localStorage.clear()
-          sessionStorage.clear()
-          console.log('Force cleared all storage due to error')
-        } catch (e) {
-          console.log('Error force clearing storage:', e)
-        }
-      }
-      
-      // エラーをログに残すが、ユーザーには成功として扱う
-      console.log('Treated sign out as successful despite errors')
-      
-    } finally {
+      authReady.value = true
       loading.value = false
     }
   }
 
-  // サインアップ
   const handleSignUp = async (email: string, password: string) => {
+    loading.value = true
     try {
-      loading.value = true
-      const { isSignUpComplete, userId, nextStep } = await signUp({
-        username: email,
+      const normalizedEmail = normalizeEmail(email)
+      const username = await deriveUsername(normalizedEmail)
+      const result = await signUp({
+        username,
         password,
-        options: {
-          userAttributes: {
-            email,
-          },
-        },
+        options: { userAttributes: { email: normalizedEmail } },
       })
-      
-      return { isSignUpComplete, userId, nextStep }
-    } catch (error) {
-      console.error('Sign up error:', error)
-      throw error
+      if (!result.isSignUpComplete) rememberPendingUsername(normalizedEmail, username)
+      return result
+    } catch {
+      throw new Error(GENERIC_AUTH_ERROR)
     } finally {
       loading.value = false
     }
   }
 
-  // メール確認コードの検証
   const handleConfirmSignUp = async (email: string, confirmationCode: string) => {
+    loading.value = true
     try {
-      loading.value = true
-      const { isSignUpComplete, nextStep } = await confirmSignUp({
-        username: email,
-        confirmationCode,
-      })
-
-      return { isSignUpComplete, nextStep }
-    } catch (error) {
-      console.error('Confirm sign up error:', error)
-      throw error
+      const username = await pendingUsernameFor(email)
+      const result = await confirmSignUp({ username, confirmationCode: confirmationCode.trim() })
+      if (result.isSignUpComplete) forgetPendingUsername()
+      return result
+    } catch {
+      throw new Error(GENERIC_AUTH_ERROR)
     } finally {
       loading.value = false
     }
   }
 
-  // パスワードリセット
-  const handleResetPassword = async (username: string) => {
+  const handleResendSignUpCode = async (email: string) => {
     try {
-      const output = await resetPassword({ username })
-      return output
-    } catch (error) {
-      console.error('Reset password error:', error)
-      throw error
+      const username = await pendingUsernameFor(email)
+      await resendSignUpCode({ username })
+    } catch {
+      throw new Error(GENERIC_AUTH_ERROR)
     }
   }
 
-  // パスワードリセットの確認
-  const handleConfirmResetPassword = async (
-    username: string,
-    confirmationCode: string,
-    newPassword: string
-  ) => {
+  const handleResetPassword = async (email: string) => {
+    try {
+      return await resetPassword({ username: normalizeEmail(email) })
+    } catch {
+      throw new Error(GENERIC_AUTH_ERROR)
+    }
+  }
+
+  const handleConfirmResetPassword = async (email: string, confirmationCode: string, newPassword: string) => {
     try {
       await confirmResetPassword({
-        username,
-        confirmationCode,
-        newPassword
+        username: normalizeEmail(email),
+        confirmationCode: confirmationCode.trim(),
+        newPassword,
       })
-    } catch (error) {
-      console.error('Confirm reset password error:', error)
-      throw error
+    } catch {
+      throw new Error(GENERIC_AUTH_ERROR)
     }
   }
 
-  // Google認証
   const handleGoogleSignIn = async () => {
-    try {
-      loading.value = true
-      console.log('Starting Google sign in...')
-      await signInWithRedirect({ provider: { custom: 'Google' } })
-    } catch (error: any) {
-      console.error('Google sign in error:', error)
-      
-      // エラーの詳細情報をログに出力
-      if (error.message) {
-        console.error('Error message:', error.message)
-      }
-      if (error.code) {
-        console.error('Error code:', error.code)
-      }
-      
-      // ユーザーフレンドリーなエラーメッセージを作成
-      let userMessage = 'Google認証に失敗しました。'
-      if (error.message && error.message.includes('redirect')) {
-        userMessage = 'リダイレクトの設定に問題があります。管理者にお問い合わせください。'
-      }
-      
-      throw new Error(userMessage)
-    } finally {
-      loading.value = false
-    }
-  }
-
-  // ユーザープロフィール管理機能（一時的に無効化 - マイクロサービスアーキテクチャでは未実装）
-  const fetchUserProfile = async () => {
-    try {
-      profileLoading.value = true
-      // TODO: ユーザープロフィール機能が必要な場合は別途実装
-      console.log('User profile functionality temporarily disabled')
-      
-      // 基本的なプロフィール情報をユーザー情報から設定
-      if (user.value) {
-        profile.value = {
-          id: user.value.sub,
-          email: user.value.email,
-          nickname: user.value.nickname || user.value.given_name || 'ウイスキー愛好家',
-          display_name: user.value.name || user.value.given_name
-        }
-      }
-    } catch (error) {
-      console.error('Error in fetchUserProfile:', error)
-    } finally {
-      profileLoading.value = false
-    }
+    if (config.public.googleAuthEnabled !== '1') throw new Error('Google認証は利用できません。')
+    await signInWithRedirect({ provider: 'Google' })
   }
 
   const updateUserProfile = async (nickname: string, displayName?: string) => {
-    try {
-      profileLoading.value = true
-      // TODO: ユーザープロフィール更新機能が必要な場合は別途実装
-      console.log('User profile update functionality temporarily disabled')
-      
-      // ローカルで更新（実際のAPIは未実装）
-      if (profile.value) {
-        profile.value.nickname = nickname
-        if (displayName !== undefined) {
-          profile.value.display_name = displayName
-        }
-      }
-      
-      return profile.value
-    } catch (error) {
-      console.error('Error updating user profile:', error)
-      throw error
-    } finally {
-      profileLoading.value = false
-    }
+    if (!profile.value) return null
+    profile.value.nickname = nickname
+    profile.value.display_name = displayName
+    return profile.value
   }
 
-  const getDisplayName = () => {
-    if (profile.value?.nickname) {
-      return profile.value.nickname
-    }
-    // プロフィールが読み込まれていない場合のフォールバック
-    return '神秘的なウイスキー愛好家'
-  }
+  const getDisplayName = () => profile.value?.nickname || 'ウイスキー愛好家'
 
   return {
-    // リアクティブな状態を返す
-    isAuthenticated,
-    user,
+    isAuthenticated: readonly(isAuthenticated),
+    user: readonly(user),
     profile,
-    loading,
-    profileLoading,
+    loading: readonly(loading),
+    profileLoading: readonly(profileLoading),
+    authReady: readonly(authReady),
+    currentUserId,
     initialize,
     refreshAuthState,
+    waitForAuthReady,
     getToken,
     getTokenSafely,
     signIn: handleSignIn,
     signOut: handleSignOut,
     signUp: handleSignUp,
     confirmSignUp: handleConfirmSignUp,
+    resendSignUpCode: handleResendSignUpCode,
     resetPassword: handleResetPassword,
     confirmResetPassword: handleConfirmResetPassword,
     googleSignIn: handleGoogleSignIn,
-    // プロフィール管理
     fetchUserProfile,
     updateUserProfile,
-    getDisplayName
+    getDisplayName,
   }
-} 
+}
+
+export const useAuth = () => createAuth(import.meta.dev)
+
+export const __useAuthForTests = (isDevelopment: boolean) => createAuth(isDevelopment)
+
+export const __resetAuthStateForTests = () => {
+  state = null
+  initializationPromise = null
+}
