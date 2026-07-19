@@ -217,9 +217,9 @@ NUXT_PUBLIC_ENVIRONMENT=local
   "user_id": "user-uuid",
   "rating": 4.5,
   "notes": "テイスティングノート",
-  "serving_style": "neat",
+  "serving_style": "NEAT",
   "date": "2024-01-01",
-  "image_url": "https://...",
+  "is_public": false,
   "created_at": "2024-01-01T00:00:00Z"
 }
 ```
@@ -227,7 +227,7 @@ NUXT_PUBLIC_ENVIRONMENT=local
 ### GSI (Global Secondary Index)
 
 - **WhiskeysTable**: `NameIndex` (name)
-- **ReviewsTable**: `UserDateIndex` (user_id, date)
+- **ReviewsTable**: `UserDateIndex` (user_id, date), `PublicDateIndex` (public_pk, date)
 
 ## 🎯 主な機能
 

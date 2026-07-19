@@ -14,6 +14,8 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
+import * as fs from 'fs';
+import * as path from 'path';
 import { environments } from '../config/environments';
 
 export interface WhiskeyInfraStackProps extends cdk.StackProps {
@@ -27,6 +29,9 @@ export interface WhiskeyInfraStackProps extends cdk.StackProps {
 const API_TIMEOUT = cdk.Duration.seconds(29);
 const SCAN_COUNTER_PREFIX = 'scan-counter/*';
 const RANKING_CACHE_PREFIX = 'ranking-cache/*';
+const REVIEW_RATE_PREFIX = 'review-rate#*';
+const REVIEW_CHANGE_COUNTER = 'review-change-counter';
+const BUNDLING_COMMAND = "if [ -f requirements.txt ]; then pip install -r requirements.txt -t /asset-output; fi && cp -au . /asset-output && find /asset-output -name __pycache__ -type d -exec rm -rf {} +";
 
 function parseExtraOrigins(value: unknown): string[] {
   if (Array.isArray(value)) {
@@ -285,12 +290,14 @@ export class WhiskeyInfraStack extends cdk.Stack {
 
     const appStatePrefixStatement = (
       actions: string[],
-      prefix: string,
+      prefixes: string | string[],
     ): iam.PolicyStatement => new iam.PolicyStatement({
       actions,
       resources: [appStateTable.tableArn],
       conditions: {
-        'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': [prefix] },
+        'ForAllValues:StringLike': {
+          'dynamodb:LeadingKeys': Array.isArray(prefixes) ? prefixes : [prefixes],
+        },
         Null: { 'dynamodb:LeadingKeys': 'false' },
       },
     });
@@ -299,12 +306,51 @@ export class WhiskeyInfraStack extends cdk.Stack {
     searchRole.addToPolicy(appStatePrefixStatement(['dynamodb:GetItem'], RANKING_CACHE_PREFIX));
     searchRole.addToPolicy(appStatePrefixStatement(['dynamodb:UpdateItem'], SCAN_COUNTER_PREFIX));
     reviewsRole.addToPolicy(appStatePrefixStatement(['dynamodb:UpdateItem'], SCAN_COUNTER_PREFIX));
+    reviewsRole.addToPolicy(appStatePrefixStatement(
+      ['dynamodb:UpdateItem'],
+      [REVIEW_RATE_PREFIX, REVIEW_CHANGE_COUNTER],
+    ));
+
+    const bundledPythonCode = (directory: string): lambda.AssetCode => {
+      const sourceDirectory = path.join(__dirname, '..', '..', 'lambda', directory);
+      return lambda.Code.fromAsset(sourceDirectory, {
+        bundling: {
+          image: lambda.Runtime.PYTHON_3_11.bundlingImage,
+          platform: 'linux/amd64',
+          command: ['bash', '-c', BUNDLING_COMMAND],
+          ...(process.env.NODE_ENV === 'test' ? {
+            local: {
+              tryBundle(outputDirectory: string): boolean {
+                for (const entry of fs.readdirSync(sourceDirectory)) {
+                  fs.cpSync(
+                    path.join(sourceDirectory, entry),
+                    path.join(outputDirectory, entry),
+                    { recursive: true },
+                  );
+                }
+                return true;
+              },
+            },
+          } : {}),
+        },
+      });
+    };
+
+    const commonLayer = new lambda.LayerVersion(this, 'WhiskeyCommonLayer', {
+      layerVersionName: `whiskey-common-${environment}`,
+      description: 'Shared logging, responses, JWT, normalization, and AWS clients',
+      compatibleArchitectures: [lambda.Architecture.X86_64],
+      compatibleRuntimes: [lambda.Runtime.PYTHON_3_11],
+      code: bundledPythonCode('common'),
+    });
 
     const whiskeyListLambda = new lambda.Function(this, 'WhiskeyListFunction', {
       functionName: `whiskey-list-${environment}`,
       runtime: lambda.Runtime.PYTHON_3_11,
+      architecture: lambda.Architecture.X86_64,
       handler: 'index.lambda_handler',
-      code: lambda.Code.fromAsset('../lambda/whiskeys-list'),
+      code: bundledPythonCode('whiskeys-list'),
+      layers: [commonLayer],
       timeout: cdk.Duration.seconds(15),
       memorySize: 256,
       role: listRole,
@@ -312,14 +358,18 @@ export class WhiskeyInfraStack extends cdk.Stack {
       environment: {
         WHISKEYS_TABLE: whiskeySearchTable.tableName,
         APP_STATE_TABLE: appStateTable.tableName,
+        ALLOWED_ORIGINS: allowedOrigins.join(','),
+        ENVIRONMENT: environment,
       },
     });
 
     const whiskeySearchLambda = new lambda.Function(this, 'WhiskeySearchFunction', {
       functionName: `whiskey-search-${environment}`,
       runtime: lambda.Runtime.PYTHON_3_11,
+      architecture: lambda.Architecture.X86_64,
       handler: 'index.lambda_handler',
-      code: lambda.Code.fromAsset('../lambda/whiskeys-search'),
+      code: bundledPythonCode('whiskeys-search'),
+      layers: [commonLayer],
       timeout: cdk.Duration.seconds(15),
       memorySize: 256,
       role: searchRole,
@@ -329,6 +379,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
         REVIEWS_TABLE: reviewsTable.tableName,
         WHISKEY_SEARCH_TABLE: whiskeySearchTable.tableName,
         APP_STATE_TABLE: appStateTable.tableName,
+        ALLOWED_ORIGINS: allowedOrigins.join(','),
         ENVIRONMENT: environment,
       },
     });
@@ -336,8 +387,10 @@ export class WhiskeyInfraStack extends cdk.Stack {
     const reviewsLambda = new lambda.Function(this, 'ReviewsFunction', {
       functionName: `reviews-${environment}`,
       runtime: lambda.Runtime.PYTHON_3_11,
+      architecture: lambda.Architecture.X86_64,
       handler: 'index.lambda_handler',
-      code: lambda.Code.fromAsset('../lambda/reviews'),
+      code: bundledPythonCode('reviews'),
+      layers: [commonLayer],
       timeout: cdk.Duration.seconds(30),
       memorySize: 512,
       role: reviewsRole,
@@ -347,6 +400,10 @@ export class WhiskeyInfraStack extends cdk.Stack {
         WHISKEYS_TABLE: whiskeySearchTable.tableName,
         APP_STATE_TABLE: appStateTable.tableName,
         COGNITO_USER_POOL_ID: userPool.userPoolId,
+        COGNITO_CLIENT_ID: userPoolClient.userPoolClientId,
+        ALLOWED_ORIGINS: allowedOrigins.join(','),
+        REVIEW_DAILY_USER_LIMIT: '100',
+        REVIEW_DAILY_GLOBAL_LIMIT: '10000',
         ENVIRONMENT: environment,
       },
     });

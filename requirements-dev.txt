@@ -1,0 +1,6 @@
+boto3==1.43.4
+moto[dynamodb]==5.1.22
+PyJWT[crypto]==2.10.1
+pytest==9.0.3
+PyYAML==6.0.3
+requests==2.32.5

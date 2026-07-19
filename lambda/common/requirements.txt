@@ -1,0 +1,2 @@
+# Runtime dependencies are bundled with the reviews function because only that
+# function imports whiskey_common.jwt_utils.

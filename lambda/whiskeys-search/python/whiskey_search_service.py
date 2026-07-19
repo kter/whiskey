@@ -3,60 +3,43 @@
 バイリンガル対応を削除し、日本語のみに最適化
 """
 
-import boto3
 import os
 import uuid
 import sys
 from datetime import datetime
 from decimal import Decimal
+from pathlib import Path
 from typing import Dict, List, Optional, Any
 from boto3.dynamodb.conditions import Key, Attr
 
-# パス追加
-sys.path.append('../common')
-
 try:
-    from logger import get_logger
-except ImportError:
-    # フォールバック用の簡易ロガー
-    class SimpleLogger:
-        def info(self, msg, **kwargs): print(f"INFO: {msg}")
-        def warning(self, msg, **kwargs): print(f"WARNING: {msg}")
-        def error(self, msg, **kwargs): print(f"ERROR: {msg}")
-        def debug(self, msg, **kwargs): print(f"DEBUG: {msg}")
-        def log_database_operation(self, **kwargs): print(f"DB Operation: {kwargs}")
-    
-    def get_logger(**kwargs):
-        return SimpleLogger()
+    from whiskey_common.clients import get_dynamodb_resource
+    from whiskey_common.logger import get_logger
+    from whiskey_common.normalize import normalize_text
+except ModuleNotFoundError as exc:
+    if exc.name != "whiskey_common":
+        raise
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "common" / "python"))
+    from whiskey_common.clients import get_dynamodb_resource
+    from whiskey_common.logger import get_logger
+    from whiskey_common.normalize import normalize_text
 
 
 class WhiskeySearchService:
     def __init__(self):
         self.region = os.getenv('AWS_REGION', 'ap-northeast-1')
-        endpoint_url = os.getenv('AWS_ENDPOINT_URL')
         self.logger = get_logger(function_name='whiskey-search-service')
         
         # 環境に応じたテーブル名を設定
         environment = os.getenv('ENVIRONMENT', 'dev')
-        self.whiskey_table_name = f'WhiskeySearch-{environment}'
+        self.whiskey_table_name = os.getenv('WHISKEY_SEARCH_TABLE', f'WhiskeySearch-{environment}')
         
         # AWSプロファイルの設定を確認
         aws_profile = os.getenv('AWS_PROFILE')
         if aws_profile:
             self.logger.info(f"Using AWS profile: {aws_profile}")
         
-        if endpoint_url:
-            # LocalStack環境
-            self.dynamodb = boto3.resource(
-                'dynamodb',
-                region_name=self.region,
-                endpoint_url=endpoint_url,
-                aws_access_key_id='dummy',
-                aws_secret_access_key='dummy'
-            )
-        else:
-            # 本番環境 - AWS_PROFILEが設定されている場合は自動的に使用される
-            self.dynamodb = boto3.resource('dynamodb', region_name=self.region)
+        self.dynamodb = get_dynamodb_resource()
         
         # テーブル参照の初期化（遅延読み込み）
         self._whiskey_table = None
@@ -274,17 +257,4 @@ class WhiskeySearchService:
 
     def _normalize_text(self, text: str) -> str:
         """テキストを検索用に正規化（日本語専用）"""
-        if not text:
-            return ''
-        
-        # 小文字に変換、スペースを除去
-        normalized = text.lower().replace(' ', '').replace('　', '')
-        
-        # 完全なカタカナをひらがなに変換（濁音・半濁音・拗音含む）
-        katakana_to_hiragana = str.maketrans(
-            'アイウエオカキクケコガギグゲゴサシスセソザジズゼゾタチツテトダヂヅデドナニヌネノハヒフヘホバビブベボパピプペポマミムメモヤユヨラリルレロワヲンァィゥェォッャュョ',
-            'あいうえおかきくけこがぎぐげごさしすせそざじずぜぞたちつてとだぢづでどなにぬねのはひふへほばびぶべぼぱぴぷぺぽまみむめもやゆよらりるれろわをんぁぃぅぇぉっゃゅょ'
-        )
-        normalized = normalized.translate(katakana_to_hiragana)
-        
-        return normalized
+        return normalize_text(text)

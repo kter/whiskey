@@ -1,356 +1,118 @@
-# API Reference - Whiskey Search API
+# Whiskey Log API Reference
 
-## 🔗 Base URLs
+Base URLs:
 
-| Environment | URL |
-|-------------|-----|
-| **Production** | `https://api.whiskeybar.site` |
-| **Development** | `https://api.dev.whiskeybar.site` |
+- Development: `https://api.dev.whiskeybar.site`
+- Production: `https://api.whiskeybar.site`
 
-## 🔍 Search API
+## Authentication
 
-### Whiskey Search
+Private review routes require a Cognito **ID token**.
 
-**エンドポイント**: `GET /api/whiskeys/search/`
-
-多言語対応のウイスキー検索API。英語・日本語での高精度検索が可能。
-
-#### Parameters
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `q` | string | Yes | 検索クエリ（英語・日本語対応） |
-| `limit` | integer | No | 結果数制限（デフォルト: 50） |
-
-#### Request Examples
-
-```bash
-# 英語検索
-curl "https://api.whiskeybar.site/api/whiskeys/search/?q=bowmore"
-
-# 日本語検索（URLエンコード必須）
-curl "https://api.whiskeybar.site/api/whiskeys/search/?q=%E3%83%9C%E3%82%A6%E3%83%A2%E3%82%A2"
-
-# 制限付き検索
-curl "https://api.whiskeybar.site/api/whiskeys/search/?q=macallan&limit=10"
+```http
+Authorization: Bearer <id_token>
 ```
 
-#### Response
+Access tokens are not accepted by the reviews Lambda. API Gateway validates the token first, and the Lambda rechecks `aud` and `token_use=id`. Local invocations without API Gateway perform complete RS256, expiry, issuer, audience, and token-use validation.
+
+## Pagination
+
+Review collection routes accept:
+
+- `limit`: 1–100, default 20
+- `next_token`: opaque continuation token returned by the previous response
+
+Collection responses use this shape:
 
 ```json
 {
-  "whiskeys": [
-    {
-      "id": "425757e4-5d6f-4d09-89bc-1f2eb00510e9",
-      "name": "ボウモア 12年",
-      "name_en": "Bowmore 12 Year",
-      "name_ja": "ボウモア 12年",
-      "distillery": "Bowmore",
-      "region": "Islay",
-      "type": "Single Malt",
-      "confidence": 0.9,
-      "source": "rakuten_bedrock",
-      "created_at": "2025-07-02T08:36:15.986943",
-      "updated_at": "2025-07-02T08:36:15.986943"
-    }
-  ],
-  "count": 4,
-  "query": "bowmore",
-  "distillery": ""
+  "results": [],
+  "reviews": [],
+  "count": 0,
+  "next_token": null
 }
 ```
 
-### Search Suggestions
+## Whiskeys
 
-**エンドポイント**: `GET /api/whiskeys/search/suggest/`
+### `GET /api/whiskeys`
 
-検索候補を高速で返すAPI。
+Returns the whiskey list. Authentication is not required.
 
-#### Parameters
+### `GET /api/whiskeys/search?q={query}`
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `q` | string | Yes | 検索クエリ |
-| `limit` | integer | No | 候補数制限（デフォルト: 5） |
+Searches whiskey names in English or Japanese. Authentication is not required. Japanese query values must be URL encoded.
 
-#### Example
+### `GET /api/whiskeys/suggest?q={query}`
 
-```bash
-curl "https://api.whiskeybar.site/api/whiskeys/search/suggest/?q=mac&limit=5"
-```
+Returns whiskey-name suggestions. Authentication is not required.
 
-## 📋 Whiskey List API
+### `GET /api/whiskeys/search/suggest?q={query}`
 
-### List Whiskeys
+Compatibility alias for suggestions. Authentication is not required.
 
-**エンドポイント**: `GET /api/whiskeys/`
+### `GET /api/whiskeys/ranking`
 
-ウイスキー一覧を取得。
+Returns the existing whiskey ranking result. Authentication is not required.
 
-#### Parameters
+## Reviews
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `limit` | integer | No | 結果数制限（デフォルト: 50） |
-| `offset` | integer | No | オフセット（デフォルト: 0） |
+`serving_style` uses one of `NEAT`, `ROCKS`, `WATER`, `SODA`, or `COCKTAIL`. Ratings are numeric values from 1 through 5. Dates use the full-date form `YYYY-MM-DD`.
 
-#### Example
+### `POST /api/reviews`
 
-```bash
-curl "https://api.whiskeybar.site/api/whiskeys/?limit=20&offset=0"
-```
-
-### Whiskey Ranking
-
-**エンドポイント**: `GET /api/whiskeys/ranking/`
-
-人気ウイスキーランキングを取得。
-
-#### Example
-
-```bash
-curl "https://api.whiskeybar.site/api/whiskeys/ranking/"
-```
-
-## 📝 Reviews API
-
-### Create Review
-
-**エンドポイント**: `POST /api/reviews/`
-
-レビューを作成。認証が必要。
-
-#### Request Headers
-
-```
-Authorization: Bearer <access_token>
-Content-Type: application/json
-```
-
-#### Request Body
+Creates a private review unless `is_public` is explicitly true. The referenced whiskey must already exist.
 
 ```json
 {
-  "whiskey_id": "uuid",
+  "whiskey_id": "425757e4-5d6f-4d09-89bc-1f2eb00510e9",
   "rating": 4.5,
-  "notes": "テイスティングノート",
-  "serving_style": "neat",
-  "date": "2025-07-02",
-  "image_url": "https://example.com/image.jpg"
+  "notes": "Smoky and complex",
+  "serving_style": "NEAT",
+  "date": "2026-07-19",
+  "is_public": false
 }
 ```
 
-#### Example
+Required fields are `whiskey_id`, `rating`, and `date`. `notes` is limited to 2,000 characters. Daily user and global creation limits can produce `429 Too Many Requests`.
 
-```bash
-curl -X POST "https://api.whiskeybar.site/api/reviews/" \
-  -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "whiskey_id": "425757e4-5d6f-4d09-89bc-1f2eb00510e9",
-    "rating": 4.5,
-    "notes": "スモーキーで複雑な味わい",
-    "serving_style": "neat",
-    "date": "2025-07-02"
-  }'
-```
+### `GET /api/reviews?limit=20&next_token=...`
 
-### List Reviews
+Returns the authenticated user's reviews. Responses include `Cache-Control: private, no-store`.
 
-**エンドポイント**: `GET /api/reviews/`
+### `GET /api/reviews/{id}`
 
-ユーザーのレビュー一覧を取得。認証が必要。
+Returns one review only when it belongs to the authenticated user. Missing and foreign reviews both return 404.
 
-#### Request Headers
+### `PUT /api/reviews/{id}`
 
-```
-Authorization: Bearer <access_token>
-```
+Updates an owned review. Mutable fields are `rating`, `notes`, `serving_style`, `date`, and `is_public`. `whiskey_id` cannot be changed.
 
-#### Example
+### `DELETE /api/reviews/{id}`
 
-```bash
-curl "https://api.whiskeybar.site/api/reviews/" \
-  -H "Authorization: Bearer ${ACCESS_TOKEN}"
-```
+Deletes an owned review. Missing and foreign reviews both return 404.
 
-## 🔧 Health Check
+### `GET /api/reviews/public?limit=20&next_token=...`
 
-### Health Status
+Returns public reviews without authentication. Public listing is available only on this dedicated path; `?public=true` on `/api/reviews` is not supported. User identifiers are omitted.
 
-**エンドポイント**: `GET /health/`
+## Errors
 
-APIの稼働状況を確認。
-
-#### Example
-
-```bash
-curl "https://api.whiskeybar.site/health/"
-```
-
-#### Response
+Validation failures return field-specific errors:
 
 ```json
 {
-  "status": "healthy",
-  "timestamp": "2025-07-02T10:08:00Z",
-  "version": "1.0.0"
+  "error": "Validation failed",
+  "fields": {
+    "rating": "Must be a number from 1 to 5"
+  }
 }
 ```
 
-## 🚨 Error Responses
-
-### Error Format
+Unexpected failures return a generic message and a request ID. Internal exception details are logged but never included in the response.
 
 ```json
 {
-  "error": "error_code",
-  "message": "Human readable error message",
-  "details": {
-    "field": "Additional error details"
-  },
-  "timestamp": "2025-07-02T10:08:00Z"
+  "error": "Internal server error",
+  "request_id": "request-id"
 }
-```
-
-### Common Status Codes
-
-| Status Code | Description |
-|-------------|-------------|
-| `200` | Success |
-| `400` | Bad Request - Invalid parameters |
-| `401` | Unauthorized - Invalid or missing token |
-| `403` | Forbidden - Insufficient permissions |
-| `404` | Not Found - Resource not found |
-| `429` | Too Many Requests - Rate limit exceeded |
-| `500` | Internal Server Error |
-
-## 🔐 Authentication
-
-### JWT Token
-
-API認証にはJWTトークンを使用します。
-
-#### Token取得
-
-Cognitoを通じてトークンを取得：
-
-```javascript
-// Frontend (Nuxt.js)
-const { tokens } = await $auth.signIn(username, password)
-const accessToken = tokens.AccessToken
-```
-
-#### Token使用
-
-```bash
-curl "https://api.whiskeybar.site/api/reviews/" \
-  -H "Authorization: Bearer ${ACCESS_TOKEN}"
-```
-
-#### Token Refresh
-
-```javascript
-// Automatic refresh handled by Amplify
-await $auth.currentSession()
-```
-
-## 📊 Data Models
-
-### Whiskey Object
-
-```typescript
-interface Whiskey {
-  id: string;
-  name: string;
-  name_en?: string;
-  name_ja?: string;
-  distillery: string;
-  region?: string;
-  type?: string;
-  confidence?: number;
-  source?: string;
-  created_at: string;
-  updated_at: string;
-}
-```
-
-### Review Object
-
-```typescript
-interface Review {
-  id: string;
-  whiskey_id: string;
-  user_id: string;
-  rating: number;
-  notes?: string;
-  serving_style?: string;
-  date: string;
-  image_url?: string;
-  created_at: string;
-  updated_at: string;
-}
-```
-
-## 🌍 Multi-language Support
-
-### Search Language Detection
-
-APIは自動的に検索言語を判定：
-
-- **英語**: ラテン文字で検索
-- **日本語**: ひらがな・カタカナ・漢字で検索
-
-### URL Encoding
-
-日本語検索時はURLエンコードが必要：
-
-```bash
-# ✅ 正しい
-curl "https://api.whiskeybar.site/api/whiskeys/search/?q=%E3%83%9C%E3%82%A6%E3%83%A2%E3%82%A2"
-
-# ❌ 文字化け
-curl "https://api.whiskeybar.site/api/whiskeys/search/?q=ボウモア"
-```
-
-## 📈 Rate Limiting
-
-### Current Limits
-
-- **Search API**: 100 requests/minute
-- **Reviews API**: 50 requests/minute
-- **Auth Required**: 1000 requests/hour per user
-
-### Headers
-
-Response headers include rate limit info:
-
-```
-X-RateLimit-Limit: 100
-X-RateLimit-Remaining: 95
-X-RateLimit-Reset: 1641024000
-```
-
-## 🔍 Search Examples
-
-### Popular Searches
-
-```bash
-# スコッチウイスキー
-curl "https://api.whiskeybar.site/api/whiskeys/search/?q=macallan"
-curl "https://api.whiskeybar.site/api/whiskeys/search/?q=glenfiddich"
-
-# ジャパニーズウイスキー
-curl "https://api.whiskeybar.site/api/whiskeys/search/?q=%E5%B1%B1%E5%B4%8E"
-curl "https://api.whiskeybar.site/api/whiskeys/search/?q=%E7%99%BD%E5%B7%9E"
-
-# アメリカンウイスキー
-curl "https://api.whiskeybar.site/api/whiskeys/search/?q=bourbon"
-curl "https://api.whiskeybar.site/api/whiskeys/search/?q=jack"
-```
-
----
-
-**Database**: 813件の高品質ウイスキーデータ  
-**Last Updated**: 2025-07-02  
-**API Version**: 1.0.0

@@ -28,7 +28,7 @@ const TEST_PRD_ACCOUNT = '111111111111';
 function createAppStack(
   environment: 'dev' | 'prd',
   options: { customDomain?: boolean; googleAuth?: boolean; extraOrigins?: string } = {},
-): { stack: WhiskeyInfraStack; template: Template; json: Synthesized } {
+): { stack: WhiskeyInfraStack; template: Template; json: Synthesized; outdir: string } {
   const app = new cdk.App({
     context: options.extraOrigins ? { extraAllowedOrigins: options.extraOrigins } : undefined,
   });
@@ -54,7 +54,7 @@ function createAppStack(
       : undefined,
   });
   const template = Template.fromStack(stack);
-  return { stack, template, json: template.toJSON() as Synthesized };
+  return { stack, template, json: template.toJSON() as Synthesized, outdir: app.outdir };
 }
 
 function resourcesOf(json: Synthesized, type: string): Array<[string, Resource]> {
@@ -313,6 +313,18 @@ describe('least-privilege Lambda roles', () => {
       .toBe(false);
 
     expect(reviews.some((statement) => actions(statement).includes('dynamodb:PutItem'))).toBe(true);
+    const reviewsAppStateUpdate = reviews.find((statement) =>
+      actions(statement).includes('dynamodb:UpdateItem')
+      && statement.Condition?.['ForAllValues:StringLike']?.['dynamodb:LeadingKeys']
+        ?.includes('review-rate#*'));
+    expect(reviewsAppStateUpdate?.Resource).toEqual({ 'Fn::GetAtt': [appStateTableLogicalId, 'Arn'] });
+    expect(reviewsAppStateUpdate?.Condition).toEqual({
+      'ForAllValues:StringLike': {
+        'dynamodb:LeadingKeys': ['review-rate#*', 'review-change-counter'],
+      },
+      Null: { 'dynamodb:LeadingKeys': 'false' },
+    });
+    expect(JSON.stringify(resourcesOf(json, 'AWS::IAM::Policy'))).not.toContain('TransactWriteItems');
     expect(JSON.stringify([...list, ...search, ...reviews])).not.toContain('cognito-idp:Admin');
   });
 });
@@ -341,6 +353,42 @@ describe('tables, logs, and removed infrastructure', () => {
       template.hasResourceProperties('AWS::Logs::LogGroup', {
         LogGroupName: `/whiskey/dev/${name}`,
       });
+    }
+  });
+});
+
+describe('Lambda bundling and shared layer', () => {
+  test('all application functions are x86_64, use the shared layer, and receive shared settings', () => {
+    const { json } = createAppStack('dev');
+    const applicationFunctions = resourcesOf(json, 'AWS::Lambda::Function')
+      .filter(([, resource]) => typeof resource.Properties?.FunctionName === 'string'
+        && ['whiskey-list-dev', 'whiskey-search-dev', 'reviews-dev'].includes(resource.Properties.FunctionName));
+    expect(applicationFunctions).toHaveLength(3);
+    for (const [, fn] of applicationFunctions) {
+      expect(fn.Properties?.Architectures).toEqual(['x86_64']);
+      expect(fn.Properties?.Layers).toHaveLength(1);
+      expect(fn.Properties?.Environment.Variables.ALLOWED_ORIGINS).toContain('https://dev.whiskeybar.site');
+    }
+    const reviews = applicationFunctions.find(([, fn]) => fn.Properties?.FunctionName === 'reviews-dev')![1];
+    expect(reviews.Properties?.Environment.Variables.COGNITO_CLIENT_ID).toEqual(expect.objectContaining({ Ref: expect.any(String) }));
+    expect(resourcesOf(json, 'AWS::Lambda::LayerVersion')).toHaveLength(1);
+  });
+
+  test('Docker bundling is pinned to amd64 and each bundled function asset contains index.py', () => {
+    const source = fs.readFileSync(path.join(__dirname, '..', 'lib', 'whiskey-infra-stack.ts'), 'utf8');
+    expect(source).toContain("platform: 'linux/amd64'");
+    expect(source).toContain('pip install -r requirements.txt -t /asset-output');
+    expect(source).toContain('cp -au . /asset-output');
+    expect(source).toContain('find /asset-output -name __pycache__ -type d -exec rm -rf {} +');
+
+    const { json, outdir } = createAppStack('dev');
+    const applicationFunctions = resourcesOf(json, 'AWS::Lambda::Function')
+      .filter(([, resource]) => typeof resource.Properties?.FunctionName === 'string'
+        && ['whiskey-list-dev', 'whiskey-search-dev', 'reviews-dev'].includes(resource.Properties.FunctionName));
+    for (const [, fn] of applicationFunctions) {
+      const assetHash = JSON.stringify(fn.Properties?.Code).match(/[a-f0-9]{64}/)?.[0];
+      expect(assetHash).toBeDefined();
+      expect(fs.existsSync(path.join(outdir, `asset.${assetHash}`, 'index.py'))).toBe(true);
     }
   });
 });

@@ -50,24 +50,27 @@ AWS CognitoとGoogle OAuth2.0を連携して、メールアドレス入力なし
 - **クライアント ID**: `xxxxxxxxx.apps.googleusercontent.com`
 - **クライアント シークレット**: `GOCSPX-xxxxxxxxx`
 
-## 🔑 AWS Secrets Managerへの保存
+## 🔑 AWSへの保存
+
+クライアントIDは SSM Parameter Store、クライアントシークレットだけを Secrets Manager に保存します。環境ごとの契約は次のとおりです。
+
+- SSM: `/whiskey/{env}/google-client-id`
+- Secrets Manager: `whiskey-app-secrets-{env}` の `GOOGLE_CLIENT_SECRET`
 
 ```bash
-# 開発環境
+# 開発環境のクライアントID
+aws ssm put-parameter \
+  --name /whiskey/dev/google-client-id \
+  --type String \
+  --value "your-google-client-id" \
+  --overwrite
+
+# 開発環境のクライアントシークレット
 aws secretsmanager put-secret-value \
   --secret-id whiskey-app-secrets-dev \
-  --secret-string '{
-    "GOOGLE_CLIENT_ID": "your-google-client-id",
-    "GOOGLE_CLIENT_SECRET": "your-google-client-secret"
-  }'
+  --secret-string '{"GOOGLE_CLIENT_SECRET":"your-google-client-secret"}'
 
-# 本番環境  
-aws secretsmanager put-secret-value \
-  --secret-id whiskey-app-secrets-prod \
-  --secret-string '{
-    "GOOGLE_CLIENT_ID": "your-google-client-id", 
-    "GOOGLE_CLIENT_SECRET": "your-google-client-secret"
-  }'
+# 本番環境は /whiskey/prd/google-client-id と whiskey-app-secrets-prd を使用
 ```
 
 ## 📝 注意事項
@@ -82,4 +85,4 @@ aws secretsmanager put-secret-value \
 1. Google認証情報を取得
 2. AWS Secrets Managerに保存
 3. CDK設定を更新してCognitoにGoogle Identity Providerを追加
-4. フロントエンドにGoogle認証ボタンを実装 
+4. フロントエンドにGoogle認証ボタンを実装
