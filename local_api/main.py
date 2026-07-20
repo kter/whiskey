@@ -36,6 +36,8 @@ def configure_local_environment() -> None:
         "DRINK_LOGS_TABLE": "DrinkLogs-local",
         "APP_STATE_TABLE": "AppState-local",
         "IMAGES_BUCKET": "whiskey-images-local",
+        "PUBLIC_SCAN_MAX_PAGES": "5",
+        "PUBLIC_SCAN_PAGE_SIZE": "250",
         "ALLOWED_ORIGINS": "http://localhost:3000",
         "AWS_ACCESS_KEY_ID": "minioadmin",
         "AWS_SECRET_ACCESS_KEY": "minioadmin",

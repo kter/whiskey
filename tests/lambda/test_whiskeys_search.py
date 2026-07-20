@@ -24,6 +24,7 @@ def environment(monkeypatch):
     monkeypatch.setenv("APP_STATE_TABLE", "AppState-test")
     monkeypatch.setenv("ENVIRONMENT", "test")
     monkeypatch.setenv("PUBLIC_SCAN_MAX_PAGES", "1")
+    monkeypatch.setenv("PUBLIC_SCAN_PAGE_SIZE", "250")
 
 
 def event(path="/api/whiskeys/search", query=None):
@@ -73,12 +74,118 @@ def test_search_uses_bounded_scan_and_returns_next_token(monkeypatch):
     assert response["statusCode"] == 200
     assert body["whiskeys"][0]["name"] == "Hibiki"
     assert scan_utils.decode_next_token(body["next_token"]) == {"id": "w1"}
-    assert table.scan.call_args.kwargs["Limit"] == 25
+    assert table.scan.call_args.kwargs["Limit"] == 250
     built = ConditionExpressionBuilder().build_expression(
         table.scan.call_args.kwargs["FilterExpression"]
     )
     attribute_names = set(built.attribute_name_placeholders.values())
     assert attribute_names == {"name", "normalized_name"}
+
+
+def search_service(table):
+    dynamodb = Mock()
+    dynamodb.Table.return_value = table
+    return service_module.WhiskeySearchService(dynamodb)
+
+
+def test_search_fills_result_from_a_later_scan_page():
+    table = Mock()
+    table.scan.side_effect = [
+        {"Items": [], "LastEvaluatedKey": {"id": "before-match"}},
+        {"Items": [{"id": "w1", "name": "Hibiki"}]},
+    ]
+
+    items, token = search_service(table).search_whiskeys("Hibiki", limit=20, max_pages=2)
+
+    assert items == [{"id": "w1", "name": "Hibiki"}]
+    assert token is None
+    assert table.scan.call_args_list[1].kwargs["ExclusiveStartKey"] == {"id": "before-match"}
+
+
+def test_search_truncation_token_resumes_without_duplicates_or_gaps():
+    table = Mock()
+    table.scan.side_effect = [
+        {
+            "Items": [
+                {"id": "w1", "name": "Malt 1"},
+                {"id": "w2", "name": "Malt 2"},
+                {"id": "w3", "name": "Malt 3"},
+            ],
+            "LastEvaluatedKey": {"id": "scanned-past-w3"},
+        },
+        {
+            "Items": [
+                {"id": "w3", "name": "Malt 3"},
+                {"id": "w4", "name": "Malt 4"},
+            ],
+        },
+    ]
+    service = search_service(table)
+
+    first, token = service.search_whiskeys("Malt", limit=2, max_pages=1)
+    second, final_token = service.search_whiskeys(
+        "Malt",
+        limit=2,
+        next_token=token,
+        max_pages=1,
+    )
+
+    assert [item["id"] for item in first + second] == ["w1", "w2", "w3", "w4"]
+    assert scan_utils.decode_next_token(token) == {"id": "w2"}
+    assert final_token is None
+    assert table.scan.call_args_list[1].kwargs["ExclusiveStartKey"] == {"id": "w2"}
+
+
+def test_search_returns_token_when_max_pages_reached_with_no_matches():
+    table = Mock()
+    table.scan.side_effect = [
+        {"Items": [], "LastEvaluatedKey": {"id": "scanned-1"}},
+        {"Items": [], "LastEvaluatedKey": {"id": "scanned-2"}},
+    ]
+    before_page = Mock()
+
+    items, token = search_service(table).search_whiskeys(
+        "missing",
+        limit=20,
+        max_pages=2,
+        before_page=before_page,
+    )
+
+    assert items == []
+    assert scan_utils.decode_next_token(token) == {"id": "scanned-2"}
+    assert before_page.call_count == 2
+
+
+def test_search_returns_no_token_at_end_of_scan():
+    table = Mock()
+    table.scan.return_value = {"Items": [{"id": "w1", "name": "Hibiki"}]}
+
+    items, token = search_service(table).search_whiskeys("Hibiki", limit=20, max_pages=5)
+
+    assert items == [{"id": "w1", "name": "Hibiki"}]
+    assert token is None
+
+
+def test_search_consumes_scan_budget_for_each_internal_page(monkeypatch):
+    table = Mock()
+    table.scan.side_effect = [
+        {"Items": [], "LastEvaluatedKey": {"id": "scanned-1"}},
+        {"Items": []},
+    ]
+    dynamodb = Mock()
+    dynamodb.Table.return_value = table
+    consume_scan_budget = Mock()
+    monkeypatch.setenv("PUBLIC_SCAN_MAX_PAGES", "2")
+    monkeypatch.setattr(search, "get_dynamodb_resource", lambda: dynamodb)
+    monkeypatch.setattr(search, "consume_scan_budget", consume_scan_budget)
+
+    response = search.lambda_handler(
+        event(query={"q": "missing", "limit": "20"}),
+        SimpleNamespace(aws_request_id="aws-budget"),
+    )
+
+    assert response["statusCode"] == 200
+    assert consume_scan_budget.call_count == 2
 
 
 def test_list_uses_bounded_scan_and_returns_next_token(monkeypatch):

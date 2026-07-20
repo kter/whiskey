@@ -159,16 +159,16 @@ def handle_search_endpoint(query_params: dict[str, Any], logger: Any) -> dict[st
         raise ValueError("limit must be from 1 to 100")
 
     dynamodb = get_dynamodb_resource()
-    consume_scan_budget(
-        dynamodb,
-        os.environ["APP_STATE_TABLE"],
-        "search",
-        int(os.environ.get("PUBLIC_SCAN_DAILY_LIMIT", "10000")),
-    )
     raw_results, next_token = WhiskeySearchService(dynamodb).search_whiskeys(
         query,
         limit=limit,
         next_token=query_params.get("next_token"),
+        before_page=lambda: consume_scan_budget(
+            dynamodb,
+            os.environ["APP_STATE_TABLE"],
+            "search",
+            int(os.environ.get("PUBLIC_SCAN_DAILY_LIMIT", "10000")),
+        ),
     )
     whiskeys = [transform_whiskey_item(item) for item in raw_results]
     whiskeys.sort(key=lambda item: item.get("name", ""))

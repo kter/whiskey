@@ -389,6 +389,16 @@ describe('Lambda bundling and shared layer', () => {
     }
     const reviews = applicationFunctions.find(([, fn]) => fn.Properties?.FunctionName === 'reviews-dev')![1];
     expect(reviews.Properties?.Environment.Variables.COGNITO_CLIENT_ID).toEqual(expect.objectContaining({ Ref: expect.any(String) }));
+    const list = applicationFunctions
+      .find(([, fn]) => fn.Properties?.FunctionName === 'whiskey-list-dev')![1];
+    expect(list.Properties?.Environment.Variables.PUBLIC_SCAN_MAX_PAGES).toBe('1');
+    expect(list.Properties?.Environment.Variables.PUBLIC_SCAN_PAGE_SIZE).toBeUndefined();
+    const search = applicationFunctions
+      .find(([, fn]) => fn.Properties?.FunctionName === 'whiskey-search-dev')![1];
+    expect(search.Properties?.Environment.Variables).toEqual(expect.objectContaining({
+      PUBLIC_SCAN_MAX_PAGES: '5',
+      PUBLIC_SCAN_PAGE_SIZE: '250',
+    }));
     const aggregator = applicationFunctions
       .find(([, fn]) => fn.Properties?.FunctionName === 'ranking-aggregator-dev')![1];
     expect(aggregator.Properties).toEqual(expect.objectContaining({
