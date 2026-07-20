@@ -26,7 +26,8 @@ export const environments: Record<string, EnvironmentConfig> = {
     apiDomain: 'api.dev.whiskeybar.site',
     enableCustomDomain: true,
     enableGoogleAuth: false,
-    createOidcProvider: true,
+    // 2026-07-20 実確認: token.actions.githubusercontent.com プロバイダはアカウントに残存 → import 分岐
+    createOidcProvider: false,
     cognitoDomainPrefix: 'whiskey-users-dev',
     gatewayErrorOrigin: 'https://dev.whiskeybar.site',
     retainResources: false,
