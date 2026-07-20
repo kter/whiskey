@@ -14,7 +14,7 @@ show_usage() {
   echo "Targets (at least one is required):"
   echo "  --dns --oidc --cert --base --notifications"
   echo "  --observability   Reserved for a later task"
-  echo "  --frontend        Reserved for a later task"
+  echo "  --frontend        Generate and deploy the frontend"
   echo
   echo "Options:"
   echo "  --diff --diff-only --no-confirm --destroy"
@@ -68,10 +68,6 @@ if [[ $TARGET_COUNT -eq 0 ]]; then
   echo -e "${RED}Error: select at least one deployment target.${NC}"
   show_usage
 fi
-if [[ "$SELECT_FRONTEND" == true ]]; then
-  echo -e "${RED}Error: --frontend is not implemented until Task 04.${NC}"
-  exit 2
-fi
 if [[ "$SELECT_OBSERVABILITY" == true ]]; then
   echo -e "${YELLOW}Warning: --observability is planned for a later task; there is currently nothing to deploy.${NC}"
   if [[ $TARGET_COUNT -eq 1 ]]; then
@@ -80,6 +76,10 @@ if [[ "$SELECT_OBSERVABILITY" == true ]]; then
 fi
 if [[ "$DESTROY" == true && ("$SELECT_DNS" == true || "$SELECT_OIDC" == true) ]]; then
   echo -e "${RED}Error: WhiskeyDns and WhiskeyGithubOidc cannot be destroyed by this script.${NC}"
+  exit 2
+fi
+if [[ "$DESTROY" == true && "$SELECT_FRONTEND" == true ]]; then
+  echo -e "${RED}Error: --frontend cannot be combined with --destroy.${NC}"
   exit 2
 fi
 if [[ "$ENVIRONMENT" == "prd" && ("$SELECT_DNS" == true || "$SELECT_OIDC" == true) ]]; then
@@ -131,8 +131,11 @@ bootstrap_region() {
   fi
 }
 
-bootstrap_region ap-northeast-1
-bootstrap_region us-east-1
+if [[ "$SELECT_DNS" == true || "$SELECT_OIDC" == true || "$SELECT_CERT" == true \
+  || "$SELECT_BASE" == true || "$SELECT_NOTIFICATIONS" == true ]]; then
+  bootstrap_region ap-northeast-1
+  bootstrap_region us-east-1
+fi
 
 if [[ "$SELECT_NOTIFICATIONS" == true ]]; then
   for region in ap-northeast-1 us-east-1; do
@@ -159,7 +162,11 @@ fi
 CDK_CONTEXT=(-c "env=$ENVIRONMENT" --profile "$PROFILE")
 
 if [[ "$SHOW_DIFF" == true ]]; then
-  npx cdk diff "${STACKS[@]}" --exclusively "${CDK_CONTEXT[@]}"
+  if [[ ${#STACKS[@]} -gt 0 ]]; then
+    npx cdk diff "${STACKS[@]}" --exclusively "${CDK_CONTEXT[@]}"
+  else
+    echo -e "${YELLOW}No CDK stacks selected; there is no infrastructure diff for --frontend.${NC}"
+  fi
   if [[ "$DIFF_ONLY" == true ]]; then
     exit 0
   fi
@@ -174,10 +181,125 @@ if [[ "$ENVIRONMENT" == "prd" && "$NO_CONFIRM" != true && "$DESTROY" != true ]];
   [[ "$REPLY" =~ ^[Yy][Ee][Ss]$ ]] || exit 0
 fi
 
-if [[ "$DESTROY" == true ]]; then
-  npx cdk destroy "${STACKS[@]}" --exclusively --force "${CDK_CONTEXT[@]}"
-else
-  npx cdk deploy "${STACKS[@]}" --exclusively --require-approval never "${CDK_CONTEXT[@]}"
+if [[ ${#STACKS[@]} -gt 0 ]]; then
+  if [[ "$DESTROY" == true ]]; then
+    npx cdk destroy "${STACKS[@]}" --exclusively --force "${CDK_CONTEXT[@]}"
+  else
+    npx cdk deploy "${STACKS[@]}" --exclusively --require-approval never "${CDK_CONTEXT[@]}"
+  fi
+fi
+
+if [[ "$SELECT_FRONTEND" == true ]]; then
+  APP_STACK="WhiskeyApp-$ENV_NAME"
+  FRONTEND_DIR="$(pwd)/../frontend"
+
+  echo -e "${YELLOW}Reading frontend configuration from $APP_STACK...${NC}"
+  STACK_OUTPUTS=$(aws cloudformation describe-stacks \
+    --stack-name "$APP_STACK" \
+    --region ap-northeast-1 \
+    --profile "$PROFILE" \
+    --query 'Stacks[0].Outputs' \
+    --output json)
+
+  get_stack_output() {
+    local output_key=$1
+    local output_value
+    if ! output_value=$(node -e '
+      const fs = require("fs");
+      const outputs = JSON.parse(fs.readFileSync(0, "utf8"));
+      const key = process.argv[1];
+      const match = outputs.find((output) => output.OutputKey === key);
+      if (!match || !match.OutputValue) process.exit(1);
+      process.stdout.write(match.OutputValue);
+    ' "$output_key" <<< "$STACK_OUTPUTS"); then
+      echo -e "${RED}Error: stack output $output_key is missing from $APP_STACK.${NC}" >&2
+      return 1
+    fi
+    printf '%s' "$output_value"
+  }
+
+  API_GATEWAY_URL=$(get_stack_output ApiGatewayUrl)
+  CLOUDFRONT_DOMAIN=$(get_stack_output CloudFrontDomainName)
+  DISTRIBUTION_ID=$(get_stack_output CloudFrontDistributionId)
+  USER_POOL_ID=$(get_stack_output UserPoolId)
+  USER_POOL_CLIENT_ID=$(get_stack_output UserPoolClientId)
+  COGNITO_DOMAIN=$(get_stack_output CognitoHostedUiHostname)
+  WEB_APP_BUCKET=$(get_stack_output WebAppBucketName)
+
+  ENABLE_CUSTOM_DOMAIN=$(node -r ts-node/register -e \
+    "const { environments } = require('./config/environments'); process.stdout.write(environments[process.argv[1]]?.enableCustomDomain === true ? 'true' : 'false');" \
+    "$ENVIRONMENT")
+  GOOGLE_AUTH_ENABLED=$(node -r ts-node/register -e \
+    "const { environments } = require('./config/environments'); process.stdout.write(environments[process.argv[1]]?.enableGoogleAuth === true ? '1' : '0');" \
+    "$ENVIRONMENT")
+
+  if [[ "$ENABLE_CUSTOM_DOMAIN" == true ]]; then
+    DOMAIN=$(node -r ts-node/register -e \
+      "const { environments } = require('./config/environments'); process.stdout.write(environments[process.argv[1]]?.domain || '');" \
+      "$ENVIRONMENT")
+    if [[ -z "$DOMAIN" ]]; then
+      echo -e "${RED}Error: enableCustomDomain is true but domain is not configured for $ENVIRONMENT.${NC}"
+      exit 1
+    fi
+    API_BASE_URL="https://api.$DOMAIN"
+  else
+    API_BASE_URL=$API_GATEWAY_URL
+  fi
+
+  COGNITO_DOMAIN=${COGNITO_DOMAIN#https://}
+  COGNITO_DOMAIN=${COGNITO_DOMAIN#http://}
+  COGNITO_DOMAIN=${COGNITO_DOMAIN%%/*}
+  if [[ -z "$COGNITO_DOMAIN" ]]; then
+    echo -e "${RED}Error: CognitoHostedUiHostname did not contain a hostname.${NC}"
+    exit 1
+  fi
+
+  echo "Frontend deployment configuration:"
+  echo "  Stack: $APP_STACK"
+  echo "  API base URL: $API_BASE_URL"
+  echo "  CloudFront URL: https://$CLOUDFRONT_DOMAIN"
+  echo "  CloudFront distribution: $DISTRIBUTION_ID"
+  echo "  Web app bucket: $WEB_APP_BUCKET"
+  echo "  User pool: $USER_POOL_ID"
+  echo "  User pool client: $USER_POOL_CLIENT_ID"
+  echo "  Cognito domain: $COGNITO_DOMAIN"
+  echo "  Google auth enabled: $GOOGLE_AUTH_ENABLED"
+  echo "  Environment: $ENVIRONMENT"
+
+  if [[ -f "$FRONTEND_DIR/.env" ]]; then
+    cp "$FRONTEND_DIR/.env" "$FRONTEND_DIR/.env.backup"
+    echo "Backed up frontend/.env to frontend/.env.backup."
+  fi
+
+  {
+    printf 'NUXT_PUBLIC_API_BASE_URL=%s\n' "$API_BASE_URL"
+    printf 'NUXT_PUBLIC_USER_POOL_ID=%s\n' "$USER_POOL_ID"
+    printf 'NUXT_PUBLIC_USER_POOL_CLIENT_ID=%s\n' "$USER_POOL_CLIENT_ID"
+    printf 'NUXT_PUBLIC_REGION=ap-northeast-1\n'
+    printf 'NUXT_PUBLIC_COGNITO_DOMAIN=%s\n' "$COGNITO_DOMAIN"
+    printf 'NUXT_PUBLIC_GOOGLE_AUTH_ENABLED=%s\n' "$GOOGLE_AUTH_ENABLED"
+    printf 'NUXT_PUBLIC_ENVIRONMENT=%s\n' "$ENVIRONMENT"
+  } > "$FRONTEND_DIR/.env"
+
+  echo -e "${YELLOW}Installing frontend dependencies and generating production assets...${NC}"
+  (
+    cd "$FRONTEND_DIR"
+    npm ci
+    env -u NUXT_PUBLIC_MOCK_AUTH NODE_ENV=production npm run generate
+
+    echo -e "${YELLOW}Syncing generated assets to s3://$WEB_APP_BUCKET...${NC}"
+    aws s3 sync .output/public "s3://$WEB_APP_BUCKET" --delete \
+      --region ap-northeast-1 \
+      --profile "$PROFILE"
+  )
+
+  echo -e "${YELLOW}Invalidating CloudFront distribution $DISTRIBUTION_ID...${NC}"
+  aws cloudfront create-invalidation \
+    --distribution-id "$DISTRIBUTION_ID" \
+    --paths '/*' \
+    --profile "$PROFILE"
+
+  STACKS+=(frontend)
 fi
 
 echo -e "${GREEN}Operation completed for $ENVIRONMENT: ${STACKS[*]}${NC}"
