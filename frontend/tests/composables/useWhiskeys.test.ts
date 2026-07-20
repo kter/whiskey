@@ -34,3 +34,49 @@ describe('useWhiskeys pagination', () => {
     })
   })
 })
+
+describe('useWhiskeys ranking responses', () => {
+  beforeEach(() => request.mockReset())
+
+  const ranking = {
+    id: 'w1',
+    name: 'Whiskey One',
+    distillery: 'Distillery One',
+    avg_rating: 4.5,
+    review_count: 12,
+  }
+
+  it('returns the aggregating state without setting an error', async () => {
+    request.mockResolvedValue({ status: 'aggregating' })
+    const whiskey = useWhiskeys()
+
+    await expect(whiskey.fetchRanking()).resolves.toEqual({ status: 'aggregating' })
+    expect(whiskey.error.value).toBeNull()
+  })
+
+  it('normalizes the legacy array response', async () => {
+    request.mockResolvedValue([ranking])
+
+    await expect(useWhiskeys().fetchRanking()).resolves.toEqual({
+      rankings: [ranking],
+      pagination: null,
+    })
+  })
+
+  it('accepts the paginated response', async () => {
+    const response = {
+      rankings: [ranking],
+      pagination: {
+        page: 1,
+        limit: 20,
+        total_items: 1,
+        total_pages: 1,
+        has_next: false,
+        has_prev: false,
+      },
+    }
+    request.mockResolvedValue(response)
+
+    await expect(useWhiskeys().fetchRanking()).resolves.toEqual(response)
+  })
+})

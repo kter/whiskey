@@ -92,6 +92,6 @@ dev テーブルへのシードは事故防止のため `--target dev --profile 
 - 起動待ちが失敗する: `docker compose ps` と `docker compose logs dynamodb-local minio minio-init` を確認してください。8001、9000、9001 が別プロセスで使用中でないことも確認します。
 - API が DynamoDB 接続エラーになる: `make local-up` の後に `make local-init` を再実行してください。DynamoDB Local は in-memory のため、コンテナを作り直すと再初期化が必要です。
 - 検索結果が空になる: URL エンコードを避けるため、上記のように `curl --get --data-urlencode 'q=山崎'` を使ってください。
-- ランキングが `{"status":"aggregating"}` になる: `make local-aggregate` を実行してください。
+- ランキングが「集計中」のままになる: ローカルには15分スケジューラがないため、`make local-aggregate` を実行してください。
 - POST が `401` になる: モックなら API を `MOCK_AUTH=1 make api` で再起動します。実 Cognito なら ID token と2つの Cognito 環境変数を確認します。
 - 末尾スラッシュで `404` になる: 仕様どおりです。`/api/whiskeys/search` のように末尾スラッシュなしで呼び出してください。

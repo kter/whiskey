@@ -7,21 +7,23 @@ const { fetchRanking } = useWhiskeys()
 const rankings = ref<RankingItem[]>([])
 const loading = ref(false)
 const error = ref('')
+const aggregating = ref(false)
 const nextPage = ref<number | null>(1)
 
 const loadMore = async () => {
   if (!nextPage.value) return
   loading.value = true
   error.value = ''
+  aggregating.value = false
   try {
     const data = await fetchRanking({ page: nextPage.value, limit: 20 })
-    if (Array.isArray(data)) {
-      rankings.value = [...rankings.value, ...data]
+    if ('status' in data) {
+      aggregating.value = true
       nextPage.value = null
-    } else {
-      rankings.value = [...rankings.value, ...data.rankings]
-      nextPage.value = data.pagination.has_next ? data.pagination.page + 1 : null
+      return
     }
+    rankings.value = [...rankings.value, ...data.rankings]
+    nextPage.value = data.pagination?.has_next ? data.pagination.page + 1 : null
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : 'ランキングの取得に失敗しました。'
   } finally {
@@ -35,7 +37,7 @@ onMounted(() => void loadMore())
 <template>
   <div>
     <h1 class="text-3xl font-semibold text-amber-200 mb-6">人気ウイスキーランキング</h1>
-    <p v-if="error" role="alert" class="mb-4 text-red-300 bg-red-900/50 p-4 rounded-md border border-red-800">{{ error }}</p>
+    <p v-if="error && !aggregating" role="alert" class="mb-4 text-red-300 bg-red-900/50 p-4 rounded-md border border-red-800">{{ error }}</p>
     <div class="bg-stone-800 shadow-lg overflow-hidden sm:rounded-lg border border-amber-700">
       <ul class="divide-y divide-amber-700">
         <li v-for="(item, index) in rankings" :key="item.id" class="p-5 flex items-center gap-4">

@@ -11,6 +11,11 @@ import type {
 } from '~/types/whiskey'
 import { useApi } from '~/composables/useApi'
 
+type RankingApiResponse = RankingItem[] | RankingResponse | { status: 'aggregating' }
+type RankingResult =
+  | { status: 'aggregating' }
+  | { rankings: RankingItem[]; pagination: RankingResponse['pagination'] | null }
+
 export const useWhiskeys = () => {
   const api = useApi()
   const reviews = ref<Review[]>([])
@@ -95,10 +100,14 @@ export const useWhiskeys = () => {
 
   const fetchRanking = (params: { page?: number; limit?: number } = {}) => run(
     'ランキングの取得に失敗しました',
-    () => api.request<RankingItem[] | RankingResponse>('/api/whiskeys/ranking', {
-      auth: 'none',
-      query: { page: params.page, limit: params.limit },
-    }),
+    async (): Promise<RankingResult> => {
+      const data = await api.request<RankingApiResponse>('/api/whiskeys/ranking', {
+        auth: 'none',
+        query: { page: params.page, limit: params.limit },
+      })
+      if (Array.isArray(data)) return { rankings: data, pagination: null }
+      return data
+    },
   )
 
   return {
