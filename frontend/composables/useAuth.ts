@@ -13,6 +13,7 @@ import {
   signUp,
   type AuthUser,
 } from '@aws-amplify/auth'
+import { isGoogleAuthEnabled } from '~/utils/googleAuth'
 
 const USERNAME_SALT = 'whiskey-log-signup-username-v1'
 const PENDING_SIGNUP_KEY = 'whiskey.pending-signup-username'
@@ -299,7 +300,7 @@ const createAuth = (isDevelopment: boolean) => {
   }
 
   const handleGoogleSignIn = async () => {
-    if (config.public.googleAuthEnabled !== '1') throw new Error('Google認証は利用できません。')
+    if (!isGoogleAuthEnabled(config.public.googleAuthEnabled)) throw new Error('Google認証は利用できません。')
     await signInWithRedirect({ provider: 'Google' })
   }
 

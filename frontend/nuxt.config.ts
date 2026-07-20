@@ -30,6 +30,7 @@ export default defineNuxtConfig({
       imagesBucket: process.env.NUXT_PUBLIC_IMAGES_BUCKET || 'whiskey-images-dev',
       environment: process.env.NUXT_PUBLIC_ENVIRONMENT || 'local',
       cognitoDomain: process.env.NUXT_PUBLIC_COGNITO_DOMAIN || '',
+      // Nuxt may coerce environment overrides to numbers or booleans at runtime.
       googleAuthEnabled: process.env.NUXT_PUBLIC_GOOGLE_AUTH_ENABLED || '0',
       mockAuth: process.env.NUXT_PUBLIC_MOCK_AUTH || '0',
 

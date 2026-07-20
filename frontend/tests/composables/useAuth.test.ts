@@ -103,4 +103,20 @@ describe('useAuth', () => {
     const secondUsername = await deriveUsername('second@example.com')
     expect(amplify.confirmSignUp).toHaveBeenCalledWith({ username: secondUsername, confirmationCode: '123456' })
   })
+
+  it('rejects Google sign-in when Google authentication is disabled', async () => {
+    const auth = useAuth()
+
+    await expect(auth.googleSignIn()).rejects.toThrow('Google認証は利用できません。')
+    expect(amplify.signInWithRedirect).not.toHaveBeenCalled()
+  })
+
+  it('redirects to Google sign-in when the flag is the number 1', async () => {
+    vi.stubGlobal('useRuntimeConfig', () => ({ public: { mockAuth: '0', googleAuthEnabled: 1 } }))
+    const auth = useAuth()
+
+    await auth.googleSignIn()
+
+    expect(amplify.signInWithRedirect).toHaveBeenCalledWith({ provider: 'Google' })
+  })
 })

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useAuth } from '~/composables/useAuth'
+import { isGoogleAuthEnabled } from '~/utils/googleAuth'
 
 const config = useRuntimeConfig()
 const { signUp, confirmSignUp, resendSignUpCode, googleSignIn, loading } = useAuth()
@@ -10,7 +11,7 @@ const password = ref('')
 const confirmationCode = ref('')
 const error = ref('')
 const message = ref('')
-const googleEnabled = computed(() => config.public.googleAuthEnabled === '1')
+const googleEnabled = computed(() => isGoogleAuthEnabled(config.public.googleAuthEnabled))
 
 const handleSignUp = async () => {
   error.value = ''
