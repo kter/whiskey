@@ -141,6 +141,7 @@ data/
 temp/
 tmp/
 *.json
+!scripts/local/seed_data/*.json
 *.zip
 debug_response*.txt
 

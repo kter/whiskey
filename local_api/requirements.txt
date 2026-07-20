@@ -1,0 +1,6 @@
+fastapi==0.115.12
+uvicorn==0.34.2
+boto3==1.43.4
+botocore==1.43.4
+PyJWT[crypto]==2.10.1
+requests==2.32.5
