@@ -211,7 +211,7 @@ describe('API Gateway authentication, CORS, and defenses', () => {
     expect(responses).toHaveLength(4);
     for (const [, response] of responses) {
       expect(response.Properties?.ResponseParameters['gatewayresponse.header.Access-Control-Allow-Origin'])
-        .toBe("'http://localhost:3000'");
+        .toBe(`'${environments.dev.gatewayErrorOrigin}'`);
     }
     const serialized = JSON.stringify(json);
     expect(serialized).toContain('https://preview.example.com');
