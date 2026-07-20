@@ -441,7 +441,8 @@ export class WhiskeyInfraStack extends cdk.Stack {
       layers: [commonLayer],
       timeout: cdk.Duration.seconds(120),
       memorySize: 512,
-      reservedConcurrentExecutions: 1,
+      // AppState counters and API method throttling are the baseline abuse defenses; reserved concurrency is extra protection after a quota increase.
+      reservedConcurrentExecutions: envConfig.lambdaReservedConcurrency?.aggregator,
       role: rankingAggregatorRole,
       logGroup: rankingAggregatorLogGroup,
       environment: {

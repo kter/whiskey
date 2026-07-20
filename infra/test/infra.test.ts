@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as cdk from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import * as route53 from 'aws-cdk-lib/aws-route53';
+import { environments } from '../config/environments';
 import { CertificateStack } from '../lib/certificate-stack';
 import { DNS_ACCOUNT, DnsStack } from '../lib/dns-stack';
 import { GithubOidcStack } from '../lib/github-oidc-stack';
@@ -392,10 +393,22 @@ describe('Lambda bundling and shared layer', () => {
       .find(([, fn]) => fn.Properties?.FunctionName === 'ranking-aggregator-dev')![1];
     expect(aggregator.Properties).toEqual(expect.objectContaining({
       MemorySize: 512,
-      ReservedConcurrentExecutions: 1,
       Timeout: 120,
     }));
+    expect(aggregator.Properties?.ReservedConcurrentExecutions).toBeUndefined();
     expect(resourcesOf(json, 'AWS::Lambda::LayerVersion')).toHaveLength(1);
+  });
+
+  test('aggregator reserved concurrency is added only when configured', () => {
+    const previous = environments.dev.lambdaReservedConcurrency;
+    environments.dev.lambdaReservedConcurrency = { aggregator: 2 };
+    try {
+      const aggregator = resourcesOf(createAppStack('dev').json, 'AWS::Lambda::Function')
+        .find(([, fn]) => fn.Properties?.FunctionName === 'ranking-aggregator-dev')![1];
+      expect(aggregator.Properties?.ReservedConcurrentExecutions).toBe(2);
+    } finally {
+      environments.dev.lambdaReservedConcurrency = previous;
+    }
   });
 
   test('Docker bundling is pinned to amd64 and each bundled function asset contains index.py', () => {

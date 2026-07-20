@@ -11,6 +11,11 @@ export interface EnvironmentConfig {
   gatewayErrorOrigin: string;
   retainResources: boolean;
   allowedOrigins: string[];
+  lambdaReservedConcurrency?: {
+    aggregator?: number;
+    analyze?: number;
+    places?: number;
+  };
 }
 
 export const environments: Record<string, EnvironmentConfig> = {
@@ -40,5 +45,7 @@ export const environments: Record<string, EnvironmentConfig> = {
     gatewayErrorOrigin: 'https://whiskeybar.site',
     retainResources: true,
     allowedOrigins: ['https://whiskeybar.site'],
+    // Recommended after the production account's Lambda concurrency quota is raised:
+    // lambdaReservedConcurrency: { aggregator: 1, analyze: 2, places: 3 },
   },
 };
