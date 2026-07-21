@@ -9,8 +9,10 @@ from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 
+import boto3
 import pytest
 from botocore.exceptions import ClientError
+from moto import mock_aws
 from PIL import Image
 
 from tests.lambda_module_loader import load_lambda_module
@@ -328,6 +330,332 @@ def _analysis_item(user_id, upload_uuid, body, content_type):
         "expires_at": int(datetime.now(timezone.utc).timestamp()) + 600,
         "body": body,
     }
+
+
+def _moto_create_dependencies(*, candidates=None):
+    dynamodb = boto3.resource("dynamodb", region_name="ap-northeast-1")
+    drinklogs = dynamodb.create_table(
+        TableName="DrinkLogs-test",
+        KeySchema=[{"AttributeName": "id", "KeyType": "HASH"}],
+        AttributeDefinitions=[{"AttributeName": "id", "AttributeType": "S"}],
+        BillingMode="PAY_PER_REQUEST",
+    )
+    app_state = dynamodb.create_table(
+        TableName="AppState-test",
+        KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+        AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
+        BillingMode="PAY_PER_REQUEST",
+    )
+    s3 = boto3.client("s3", region_name="ap-northeast-1")
+    s3.create_bucket(
+        Bucket="images-test",
+        CreateBucketConfiguration={"LocationConstraint": "ap-northeast-1"},
+    )
+    upload_uuid = "12345678-1234-4234-8234-123456789abc"
+    body = _image_bytes("PNG")
+    analysis = _analysis_item("user-1", upload_uuid, body, "image/png")
+    analysis.pop("body")
+    if candidates is not None:
+        analysis["candidates"] = candidates
+        if not candidates:
+            analysis.pop("confidence", None)
+            analysis.pop("whiskey_id", None)
+    response = s3.put_object(
+        Bucket="images-test",
+        Key=analysis["s3_key"],
+        Body=body,
+        ContentType="image/png",
+    )
+    analysis["ETag"] = response["ETag"]
+    app_state.put_item(Item=analysis)
+    return dynamodb, s3, drinklogs, app_state, analysis, upload_uuid
+
+
+def test_create_validation_accepts_optional_candidate_and_reuses_update_rules():
+    upload_uuid = "12345678-1234-4234-8234-123456789abc"
+    validated = drink_logs.validate_create_input(
+        {
+            "analysis_id": upload_uuid,
+            "brand_text": "自家製ハイボール",
+            "store": {"name": "Bar 621", "place_id": "place-1"},
+            "notes": "smoky",
+            "rating": 4.5,
+            "serving_style": "SODA",
+        }
+    )
+    assert "candidate_index" not in validated
+    assert validated["rating"] == Decimal("4.5")
+
+    with pytest.raises(drink_logs.ValidationError) as exc:
+        drink_logs.validate_create_input(
+            {
+                "analysis_id": upload_uuid,
+                "candidate_index": True,
+                "brand_text": "x" * 201,
+                "store": {"name": "x" * 201},
+                "notes": "x" * 2001,
+                "rating": 0,
+                "serving_style": "INVALID",
+                "datetime": "2020-01-01T00:00:00Z",
+            }
+        )
+    assert set(exc.value.fields) == {
+        "brand_text",
+        "candidate_index",
+        "datetime",
+        "notes",
+        "rating",
+        "serving_style",
+        "store.name",
+    }
+
+
+def test_empty_candidates_can_create_complete_manual_brand():
+    with mock_aws():
+        dynamodb, s3, drinklogs, app_state, analysis, upload_uuid = (
+            _moto_create_dependencies(candidates=[])
+        )
+        data = drink_logs.validate_create_input(
+            {"analysis_id": analysis["pk"], "brand_text": "自家製ハイボール"}
+        )
+        record, created = drink_logs.create_drink_log(
+            dynamodb,
+            s3,
+            "DrinkLogs-test",
+            "AppState-test",
+            "images-test",
+            "user-1",
+            data,
+        )
+
+        assert created is True
+        assert record["status"] == "complete"
+        assert record["brand_text"] == "自家製ハイボール"
+        assert record["brand_source"] == "manual"
+        assert "whiskey_id" not in record
+        assert "datetime" in record
+        assert app_state.get_item(Key={"pk": analysis["pk"]}).get("Item") is None
+        assert drinklogs.get_item(Key={"id": record["id"]})["Item"]["status"] == "complete"
+
+
+def test_candidate_brand_override_is_manual_and_analysis_is_consumed_once():
+    with mock_aws():
+        dynamodb, s3, _drinklogs, app_state, analysis, _upload_uuid = (
+            _moto_create_dependencies()
+        )
+        data = drink_logs.validate_create_input(
+            {
+                "analysis_id": analysis["pk"],
+                "candidate_index": 0,
+                "brand_text": "Edited Bottle",
+            }
+        )
+        record, created = drink_logs.create_drink_log(
+            dynamodb,
+            s3,
+            "DrinkLogs-test",
+            "AppState-test",
+            "images-test",
+            "user-1",
+            data,
+        )
+        retried, retry_created = drink_logs.create_drink_log(
+            dynamodb,
+            s3,
+            "DrinkLogs-test",
+            "AppState-test",
+            "images-test",
+            "user-1",
+            data,
+        )
+
+        assert created is True
+        assert record["brand_text"] == "Edited Bottle"
+        assert record["brand_source"] == "manual"
+        assert "whiskey_id" not in record
+        assert app_state.get_item(Key={"pk": analysis["pk"]}).get("Item") is None
+        assert retried["id"] == record["id"]
+        assert retry_created is False
+
+
+@pytest.mark.parametrize(
+    ("candidate_index", "brand_source", "whiskey_id"),
+    [(0, "matched", "whiskey-1"), (1, "ai", None)],
+)
+def test_candidate_only_brand_derivation_regression(candidate_index, brand_source, whiskey_id):
+    with mock_aws():
+        dynamodb, s3, _drinklogs, _app_state, analysis, _upload_uuid = (
+            _moto_create_dependencies()
+        )
+        record, created = drink_logs.create_drink_log(
+            dynamodb,
+            s3,
+            "DrinkLogs-test",
+            "AppState-test",
+            "images-test",
+            "user-1",
+            drink_logs.validate_create_input(
+                {"analysis_id": analysis["pk"], "candidate_index": candidate_index}
+            ),
+        )
+
+        assert created is True
+        assert record["brand_source"] == brand_source
+        assert record.get("whiskey_id") == whiskey_id
+
+
+def test_create_confirmation_overrides_are_written_to_completed_record():
+    with mock_aws():
+        dynamodb, s3, _drinklogs, _app_state, analysis, _upload_uuid = (
+            _moto_create_dependencies()
+        )
+        record, _created = drink_logs.create_drink_log(
+            dynamodb,
+            s3,
+            "DrinkLogs-test",
+            "AppState-test",
+            "images-test",
+            "user-1",
+            drink_logs.validate_create_input(
+                {
+                    "analysis_id": analysis["pk"],
+                    "candidate_index": 1,
+                    "serving_style": "ROCKS",
+                    "store": {"name": "Bar 621", "place_id": "place-621"},
+                    "rating": 4.5,
+                    "notes": "確認フォームで追記",
+                }
+            ),
+        )
+
+        assert record["serving_style"] == "ROCKS"
+        assert record["store"] == {"name": "Bar 621", "place_id": "place-621"}
+        assert record["rating"] == Decimal("4.5")
+        assert record["notes"] == "確認フォームで追記"
+
+
+def test_manual_consume_condition_keeps_image_binding_without_candidate_claim():
+    upload_uuid = "12345678-1234-4234-8234-123456789abc"
+    body = _image_bytes("PNG")
+    result = _analysis_item("user-1", upload_uuid, body, "image/png")
+    result["candidates"] = []
+    result.pop("confidence")
+    result.pop("whiskey_id", None)
+    dynamodb = FakeDynamoDB({"AppState-test": StaticTable(item=result)})
+    s3 = MemoryS3(
+        {result["s3_key"]: {"body": body, "content_type": "image/png", "etag": '"etag-1"'}}
+    )
+    pending, consume = drink_logs._prepare_initial_record(
+        dynamodb,
+        s3,
+        "AppState-test",
+        "images-test",
+        "user-1",
+        result["pk"],
+        upload_uuid,
+        None,
+        {"brand_text": "自家製ハイボール"},
+    )
+
+    delete = consume["Delete"]
+    assert delete["ConditionExpression"] == (
+        "#user = :user AND s3_key = :s3_key AND #etag = :etag AND expires_at > :now_epoch"
+    )
+    assert "#candidates" not in delete["ExpressionAttributeNames"]
+    assert ":candidate" not in delete["ExpressionAttributeValues"]
+    assert pending["_completion"]["brand_source"] == "manual"
+
+
+@pytest.mark.parametrize("candidate_index", [None, 0])
+def test_create_rejects_changed_image_for_manual_and_candidate_paths(candidate_index):
+    with mock_aws():
+        dynamodb, s3, _drinklogs, app_state, analysis, _upload_uuid = (
+            _moto_create_dependencies()
+        )
+        s3.put_object(
+            Bucket="images-test",
+            Key=analysis["s3_key"],
+            Body=_image_bytes("PNG", color="blue"),
+            ContentType="image/png",
+        )
+        payload = {"analysis_id": analysis["pk"]}
+        if candidate_index is None:
+            payload["brand_text"] = "Manual"
+        else:
+            payload["candidate_index"] = candidate_index
+
+        with pytest.raises(drink_logs.AnalysisConflict, match="changed after analysis"):
+            drink_logs.create_drink_log(
+                dynamodb,
+                s3,
+                "DrinkLogs-test",
+                "AppState-test",
+                "images-test",
+                "user-1",
+                drink_logs.validate_create_input(payload),
+            )
+        assert app_state.get_item(Key={"pk": analysis["pk"]}).get("Item") is not None
+
+
+@pytest.mark.parametrize("candidate_index", [None, 0])
+def test_create_rejects_expired_analysis_for_manual_and_candidate_paths(candidate_index):
+    with mock_aws():
+        dynamodb, s3, _drinklogs, app_state, analysis, _upload_uuid = (
+            _moto_create_dependencies()
+        )
+        app_state.update_item(
+            Key={"pk": analysis["pk"]},
+            UpdateExpression="SET expires_at = :expired",
+            ExpressionAttributeValues={
+                ":expired": int(datetime.now(timezone.utc).timestamp()) - 1,
+            },
+        )
+        payload = {"analysis_id": analysis["pk"]}
+        if candidate_index is None:
+            payload["brand_text"] = "Manual"
+        else:
+            payload["candidate_index"] = candidate_index
+
+        with pytest.raises(drink_logs.AnalysisConflict, match="expired"):
+            drink_logs.create_drink_log(
+                dynamodb,
+                s3,
+                "DrinkLogs-test",
+                "AppState-test",
+                "images-test",
+                "user-1",
+                drink_logs.validate_create_input(payload),
+            )
+
+
+def test_candidate_consumption_rejects_candidate_tampering(monkeypatch):
+    with mock_aws():
+        dynamodb, s3, _drinklogs, app_state, analysis, _upload_uuid = (
+            _moto_create_dependencies()
+        )
+        original_transaction = drink_logs._initial_create_transaction
+
+        def tamper_then_transact(*args, **kwargs):
+            app_state.update_item(
+                Key={"pk": analysis["pk"]},
+                UpdateExpression="SET candidates[0].brand_text = :brand",
+                ExpressionAttributeValues={":brand": "Tampered"},
+            )
+            return original_transaction(*args, **kwargs)
+
+        monkeypatch.setattr(drink_logs, "_initial_create_transaction", tamper_then_transact)
+        with pytest.raises(drink_logs.AnalysisConflict, match="stale or already consumed"):
+            drink_logs.create_drink_log(
+                dynamodb,
+                s3,
+                "DrinkLogs-test",
+                "AppState-test",
+                "images-test",
+                "user-1",
+                drink_logs.validate_create_input(
+                    {"analysis_id": analysis["pk"], "candidate_index": 0}
+                ),
+            )
 
 
 def test_initial_transaction_binds_ai_etag_candidate_and_all_counters():

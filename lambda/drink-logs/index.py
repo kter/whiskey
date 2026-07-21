@@ -48,8 +48,8 @@ CONTENT_TYPES = {
     "image/png": ("png", "png"),
     "image/webp": ("webp", "webp"),
 }
-CREATE_FIELDS = {"analysis_id", "candidate_index"}
 UPDATE_FIELDS = {"brand_text", "store", "notes", "rating", "serving_style"}
+CREATE_FIELDS = {"analysis_id", "candidate_index"} | UPDATE_FIELDS
 # Strip internal bookkeeping and raw bucket-key structure from API responses.
 # Clients receive a presigned `image_url` instead of the raw S3 keys; the quota
 # and delete-lifecycle fields are server-side reconciliation state only.
@@ -151,19 +151,32 @@ def validate_create_input(data: Mapping[str, Any]) -> dict[str, Any]:
     errors: dict[str, str] = {}
     for field in sorted(set(data) - CREATE_FIELDS):
         errors[field] = "Field is not accepted"
-    for field in CREATE_FIELDS:
-        if field not in data:
-            errors[field] = "Field is required"
-
     analysis_id = data.get("analysis_id")
-    if not isinstance(analysis_id, str) or not ANALYSIS_ID_RE.fullmatch(analysis_id):
+    if "analysis_id" not in data:
+        errors["analysis_id"] = "Field is required"
+    elif not isinstance(analysis_id, str) or not ANALYSIS_ID_RE.fullmatch(analysis_id):
         errors["analysis_id"] = "Must be a valid analysis result token"
     candidate_index = data.get("candidate_index")
-    if isinstance(candidate_index, bool) or not isinstance(candidate_index, int) or candidate_index < 0:
+    if "candidate_index" in data and (
+        isinstance(candidate_index, bool)
+        or not isinstance(candidate_index, int)
+        or candidate_index < 0
+    ):
         errors["candidate_index"] = "Must be a non-negative integer"
+
+    mutable_input = {field: data[field] for field in UPDATE_FIELDS if field in data}
+    validated_mutable: dict[str, Any] = {}
+    if mutable_input:
+        try:
+            validated_mutable = validate_update_input(mutable_input)
+        except ValidationError as exc:
+            errors.update(exc.fields)
     if errors:
         raise ValidationError(errors)
-    return {"analysis_id": analysis_id, "candidate_index": candidate_index}
+    validated = {"analysis_id": analysis_id, **validated_mutable}
+    if "candidate_index" in data:
+        validated["candidate_index"] = candidate_index
+    return validated
 
 
 def _validate_place_id(value: Any, *, nullable: bool) -> str | None:
@@ -412,12 +425,19 @@ def _candidate_brand(candidate: Any) -> str:
     return brand
 
 
-def _completion_from_analysis(result: Mapping[str, Any], candidate: Any) -> dict[str, Any]:
-    brand_text = _candidate_brand(candidate)
+def _completion_from_analysis(
+    result: Mapping[str, Any],
+    candidate: Any,
+    overrides: Mapping[str, Any],
+    *,
+    candidate_selected: bool,
+) -> dict[str, Any]:
+    brand_text = _candidate_brand(candidate) if candidate_selected else ""
     whiskey_id = None
     if isinstance(candidate, Mapping):
         whiskey_id = candidate.get("whiskey_id") or candidate.get("matched_whiskey_id")
-    whiskey_id = whiskey_id or result.get("whiskey_id") or result.get("matched_whiskey_id")
+    if candidate_selected:
+        whiskey_id = whiskey_id or result.get("whiskey_id") or result.get("matched_whiskey_id")
     if whiskey_id is not None and (not isinstance(whiskey_id, str) or not whiskey_id):
         raise AnalysisConflict("Matched whiskey ID is invalid")
     serving_style = result.get("serving_style", "NEAT")
@@ -426,7 +446,7 @@ def _completion_from_analysis(result: Mapping[str, Any], candidate: Any) -> dict
 
     completion: dict[str, Any] = {
         "brand_text": brand_text,
-        "brand_source": "matched" if whiskey_id else "ai",
+        "brand_source": "manual" if not candidate_selected else ("matched" if whiskey_id else "ai"),
         "serving_style": serving_style,
         "store": {"name": ""},
     }
@@ -436,7 +456,7 @@ def _completion_from_analysis(result: Mapping[str, Any], candidate: Any) -> dict
     confidence = result.get("confidence")
     if isinstance(candidate, Mapping) and candidate.get("confidence") is not None:
         confidence = candidate.get("confidence")
-    if model_id is not None or confidence is not None:
+    if confidence is not None or (candidate_selected and model_id is not None):
         if not isinstance(model_id, str) or not model_id:
             raise AnalysisConflict("Analysis model ID is invalid")
         try:
@@ -446,6 +466,24 @@ def _completion_from_analysis(result: Mapping[str, Any], candidate: Any) -> dict
         if not confidence_decimal.is_finite() or not Decimal("0") <= confidence_decimal <= Decimal("1"):
             raise AnalysisConflict("Analysis confidence is invalid")
         completion["ai"] = {"model_id": model_id, "confidence": confidence_decimal}
+
+    if "brand_text" in overrides:
+        completion["brand_text"] = overrides["brand_text"]
+        completion["brand_source"] = "manual"
+        completion.pop("whiskey_id", None)
+    if "serving_style" in overrides:
+        completion["serving_style"] = overrides["serving_style"]
+    if "store" in overrides:
+        store = {"name": ""}
+        if "name" in overrides["store"]:
+            store["name"] = overrides["store"]["name"]
+        place_id = overrides["store"].get("place_id")
+        if place_id is not None:
+            store["place_id"] = place_id
+        completion["store"] = store
+    for field in ("rating", "notes"):
+        if field in overrides:
+            completion[field] = overrides[field]
     return completion
 
 
@@ -457,7 +495,8 @@ def _prepare_initial_record(
     user_id: str,
     analysis_pk: str,
     upload_uuid: str,
-    candidate_index: int,
+    candidate_index: int | None,
+    overrides: Mapping[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     result = dynamodb.Table(app_state_table_name).get_item(
         Key={"pk": analysis_pk},
@@ -479,11 +518,18 @@ def _prepare_initial_record(
     etag = result.get(etag_name)
     if not isinstance(etag, str) or not etag:
         raise AnalysisConflict("Analysis result ETag is invalid")
-    candidates = result.get("candidates")
-    if not isinstance(candidates, list) or candidate_index >= len(candidates):
-        raise AnalysisConflict("Selected analysis candidate is unavailable")
-    candidate = candidates[candidate_index]
-    completion = _completion_from_analysis(result, candidate)
+    candidate = None
+    if candidate_index is not None:
+        candidates = result.get("candidates")
+        if not isinstance(candidates, list) or candidate_index >= len(candidates):
+            raise AnalysisConflict("Selected analysis candidate is unavailable")
+        candidate = candidates[candidate_index]
+    completion = _completion_from_analysis(
+        result,
+        candidate,
+        overrides or {},
+        candidate_selected=candidate_index is not None,
+    )
 
     try:
         head = s3.head_object(Bucket=bucket_name, Key=s3_key)
@@ -513,26 +559,26 @@ def _prepare_initial_record(
         "created_at": now,
         "updated_at": now,
     }
+    condition = "#user = :user AND s3_key = :s3_key AND #etag = :etag"
+    names = {"#user": "user", "#etag": etag_name}
+    values = {
+        ":user": user_id,
+        ":s3_key": s3_key,
+        ":etag": etag,
+        ":now_epoch": now_epoch,
+    }
+    if candidate_index is not None:
+        condition += f" AND #candidates[{candidate_index}] = :candidate"
+        names["#candidates"] = "candidates"
+        values[":candidate"] = candidate
+    condition += " AND expires_at > :now_epoch"
     consume = {
         "Delete": {
             "TableName": app_state_table_name,
             "Key": {"pk": analysis_pk},
-            "ConditionExpression": (
-                "#user = :user AND s3_key = :s3_key AND #etag = :etag "
-                f"AND #candidates[{candidate_index}] = :candidate AND expires_at > :now_epoch"
-            ),
-            "ExpressionAttributeNames": {
-                "#user": "user",
-                "#etag": etag_name,
-                "#candidates": "candidates",
-            },
-            "ExpressionAttributeValues": {
-                ":user": user_id,
-                ":s3_key": s3_key,
-                ":etag": etag,
-                ":candidate": candidate,
-                ":now_epoch": now_epoch,
-            },
+            "ConditionExpression": condition,
+            "ExpressionAttributeNames": names,
+            "ExpressionAttributeValues": values,
         }
     }
     return pending, consume
@@ -719,7 +765,7 @@ def _complete_pending_record(
         "#store = :store",
         "#updated_at = :updated_at",
     ]
-    for field in ("whiskey_id", "ai"):
+    for field in ("whiskey_id", "ai", "rating", "notes"):
         if field in completion:
             names[f"#{field}"] = field
             values[f":{field}"] = completion[field]
@@ -875,7 +921,8 @@ def create_drink_log(
         user_id,
         analysis_pk,
         upload_uuid,
-        data["candidate_index"],
+        data.get("candidate_index"),
+        data,
     )
     client = dynamodb.meta.client
     try:
