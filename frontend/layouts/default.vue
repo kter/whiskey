@@ -14,7 +14,7 @@ const handleSignOut = async () => {
 </script>
 
 <template>
-  <div>
+  <div class="flex min-h-screen flex-col">
     <nav class="bg-stone-900 shadow-lg border-b border-amber-800">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between h-16">
@@ -32,11 +32,17 @@ const handleSignOut = async () => {
               <NuxtLink to="/ranking" class="inline-flex items-center px-1 pt-1 text-amber-100 hover:text-amber-300 transition-colors">
                 ランキング
               </NuxtLink>
+              <NuxtLink v-if="authReady && isAuthenticated" to="/logs/new" class="inline-flex items-center px-1 pt-1 text-amber-100 hover:text-amber-300 transition-colors">
+                記録
+              </NuxtLink>
             </div>
           </div>
           <div v-if="authReady" class="flex items-center">
             <div v-if="isAuthenticated" class="flex items-center space-x-3">
               <span class="hidden sm:inline text-amber-200 text-sm">こんにちは、{{ getDisplayName() }}さん</span>
+              <NuxtLink to="/logs/new" class="sm:hidden px-3 py-1.5 border border-amber-700 text-xs font-medium rounded-md text-amber-100 bg-stone-700 hover:bg-stone-600">
+                記録
+              </NuxtLink>
               <NuxtLink to="/profile" class="px-3 py-1.5 border border-amber-700 text-xs font-medium rounded-md text-amber-100 bg-stone-700 hover:bg-stone-600">
                 プロフィール
               </NuxtLink>
@@ -56,8 +62,14 @@ const handleSignOut = async () => {
         </div>
       </div>
     </nav>
-    <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+    <main class="mx-auto w-full max-w-7xl flex-1 py-6 sm:px-6 lg:px-8">
       <slot />
     </main>
+    <footer class="border-t border-stone-700 bg-stone-900">
+      <div class="mx-auto flex max-w-7xl flex-wrap justify-center gap-x-6 gap-y-2 px-4 py-5 text-sm text-stone-300 sm:justify-end sm:px-6 lg:px-8">
+        <NuxtLink to="/terms" class="hover:text-amber-200">利用規約</NuxtLink>
+        <NuxtLink to="/privacy" class="hover:text-amber-200">プライバシーポリシー</NuxtLink>
+      </div>
+    </footer>
   </div>
 </template>
