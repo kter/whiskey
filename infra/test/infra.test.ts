@@ -586,11 +586,14 @@ describe('Lambda bundling and shared layer', () => {
 
   test('drink log functions pin handlers, sizing, concurrency, and cost-matrix environment', () => {
     const { json } = createAppStack('dev');
+    // 2026-07-21: dev のアカウント同時実行上限が 10（絶対最低値）のため予約並列度は
+    // 無効化。既定 dev 設定では全関数の ReservedConcurrentExecutions は undefined。
+    // 設定時に値が反映されることは下の「added only when configured」テストで担保。
     const expected = [
       ['drink-logs-dev', 'index.lambda_handler', 1024, 25, undefined],
-      ['drink-log-analyze-dev', 'index.lambda_handler', 1024, 28, 2],
-      ['drink-log-places-dev', 'places.lambda_handler', 256, 10, 3],
-      ['drink-log-reconciler-dev', 'reconciler.lambda_handler', 512, 300, 1],
+      ['drink-log-analyze-dev', 'index.lambda_handler', 1024, 28, undefined],
+      ['drink-log-places-dev', 'places.lambda_handler', 256, 10, undefined],
+      ['drink-log-reconciler-dev', 'reconciler.lambda_handler', 512, 300, undefined],
     ] as const;
     for (const [name, handler, memory, timeout, concurrency] of expected) {
       const fn = lambdaByName(json, name);
@@ -646,13 +649,21 @@ describe('Lambda bundling and shared layer', () => {
       .toEqual(expect.objectContaining({ RECONCILE_AGE_HOURS: '48' }));
   });
 
-  test('aggregator reserved concurrency is added only when configured', () => {
+  test('reserved concurrency is added only when configured', () => {
     const previous = environments.dev.lambdaReservedConcurrency;
-    environments.dev.lambdaReservedConcurrency = { aggregator: 2 };
+    environments.dev.lambdaReservedConcurrency = {
+      aggregator: 2,
+      analyze: 2,
+      places: 3,
+      reconciler: 1,
+    };
     try {
-      const aggregator = resourcesOf(createAppStack('dev').json, 'AWS::Lambda::Function')
-        .find(([, fn]) => fn.Properties?.FunctionName === 'ranking-aggregator-dev')![1];
-      expect(aggregator.Properties?.ReservedConcurrentExecutions).toBe(2);
+      const { json } = createAppStack('dev');
+      const rcOf = (name: string) => lambdaByName(json, name).Properties?.ReservedConcurrentExecutions;
+      expect(rcOf('ranking-aggregator-dev')).toBe(2);
+      expect(rcOf('drink-log-analyze-dev')).toBe(2);
+      expect(rcOf('drink-log-places-dev')).toBe(3);
+      expect(rcOf('drink-log-reconciler-dev')).toBe(1);
     } finally {
       environments.dev.lambdaReservedConcurrency = previous;
     }

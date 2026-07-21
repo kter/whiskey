@@ -16,6 +16,7 @@ export interface EnvironmentConfig {
     drinkLogs?: number;
     analyze?: number;
     places?: number;
+    reconciler?: number;
   };
 }
 
@@ -33,7 +34,12 @@ export const environments: Record<string, EnvironmentConfig> = {
     gatewayErrorOrigin: 'https://dev.whiskeybar.site',
     retainResources: false,
     allowedOrigins: ['https://dev.whiskeybar.site', 'http://localhost:3000'],
-    lambdaReservedConcurrency: { analyze: 2, places: 3 },
+    // 2026-07-21: このアカウントの Lambda 同時実行上限は 10（絶対最低値）で、
+    // 予約並列度を 1 でも設定すると未予約枠が 10 を割り拒否される。
+    // よって D14 層② の予約並列度は無効化（費用の硬い上限は AppState 原子カウンタ
+    // ＋ API GW メソッドスロットリングが担うため保証は不変）。
+    // 同時実行クォータ引き上げ後に再付与推奨:
+    // lambdaReservedConcurrency: { analyze: 2, places: 3, reconciler: 1 },
   },
   prd: {
     region: 'ap-northeast-1',

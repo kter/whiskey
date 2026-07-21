@@ -693,7 +693,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
       layers: [commonLayer],
       timeout: cdk.Duration.seconds(300),
       memorySize: 512,
-      reservedConcurrentExecutions: 1,
+      reservedConcurrentExecutions: envConfig.lambdaReservedConcurrency?.reconciler,
       role: drinkLogReconcilerRole,
       logGroup: drinkLogReconcilerLogGroup,
       environment: {
