@@ -427,9 +427,9 @@ describe('least-privilege Lambda roles', () => {
     ]));
     expect(appStatePatterns(policies.logs, 'dynamodb:GetItem')).toEqual(['ai-result:*']);
     expect(appStatePatterns(policies.logs, 'dynamodb:DeleteItem')).toEqual(['ai-result:*']);
-    expect(appStatePatterns(policies.analyze, 'dynamodb:UpdateItem')).toEqual(expect.arrayContaining([
-      'drinklog-counter#*', 'ai-result:*',
-    ]));
+    expect(appStatePatterns(policies.analyze, 'dynamodb:UpdateItem')).toEqual(['drinklog-counter#*']);
+    // analyze は解析結果キャッシュを put_item で保存するため ai-result:* は PutItem。
+    expect(appStatePatterns(policies.analyze, 'dynamodb:PutItem')).toEqual(['ai-result:*']);
     expect(appStatePatterns(policies.analyze, 'dynamodb:GetItem')).toEqual(['drinklog-counter#*']);
     expect(appStatePatterns(policies.places, 'dynamodb:UpdateItem')).toEqual(['drinklog-counter#*']);
     expect(appStatePatterns(policies.reconciler, 'dynamodb:UpdateItem')).toEqual(['drinklog-quota#*']);
@@ -719,6 +719,13 @@ describe('Lambda bundling and shared layer', () => {
     expect(logs).toContain('Pillow==11.0.0');
     expect(analyze).toContain('Pillow==11.0.0');
     expect(analyze).toContain('requests==2.32.5');
+    // whiskey_common.jwt_utils imports `jwt` and `requests` at module load, so every
+    // function bundling it (via the shared layer) must pin PyJWT[crypto] and requests
+    // or the Lambda fails at import with "No module named 'jwt'". Regression guard.
+    for (const requirement of ['PyJWT[crypto]==2.10.1', 'requests==2.32.5']) {
+      expect(logs).toContain(requirement);
+      expect(analyze).toContain(requirement);
+    }
   });
 });
 

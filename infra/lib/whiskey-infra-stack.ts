@@ -427,8 +427,11 @@ export class WhiskeyInfraStack extends cdk.Stack {
       ['dynamodb:GetItem', 'dynamodb:UpdateItem'],
       DRINKLOG_COUNTER_PREFIX,
     ));
+    // analyze は解析結果キャッシュを put_item（全項目の新規書き込み）で保存するため
+    // PutItem が必要。UpdateItem では AccessDenied になる（実コード lambda/drink-log-analyze
+    // /index.py の put_item と一致させる）。
     drinkLogAnalyzeRole.addToPolicy(appStatePrefixStatement(
-      ['dynamodb:UpdateItem'],
+      ['dynamodb:PutItem'],
       AI_RESULT_PREFIX,
     ));
 
