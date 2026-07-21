@@ -24,6 +24,7 @@ export interface DrinkLogStore {
 
 export interface DrinkLog {
   id: string
+  user_id: string
   status: 'pending' | 'complete' | 'deleting'
   image_url?: string
   brand_text: string
@@ -33,6 +34,7 @@ export interface DrinkLog {
   datetime: string
   notes?: string
   rating?: number
+  ai?: Record<string, unknown>
   created_at?: string
   updated_at?: string
 }
@@ -58,7 +60,22 @@ export interface DrinkLogFormValues {
   rating?: number | null
 }
 
-export type UpdateDrinkLogPayload = Omit<CreateDrinkLogPayload, 'analysis_id' | 'candidate_index'>
+export interface DrinkLogEditValues {
+  brandText: string
+  servingStyle: string
+  storeName: string
+  placeId?: string
+  notes: string
+  rating: number | null
+}
+
+export interface UpdateDrinkLogPayload {
+  brand_text?: string
+  store?: { name: string; place_id?: string | null }
+  notes?: string
+  rating?: number
+  serving_style?: string
+}
 
 export interface DrinkLogListParams {
   limit?: number
@@ -125,6 +142,33 @@ export const candidateIndexAfterBrandEdit = (
   selectedIndex: number | null,
   brandText: string,
 ) => selectedIndex !== null && candidates[selectedIndex]?.brand_text === brandText ? selectedIndex : null
+
+export const buildUpdateDrinkLogPayload = (form: DrinkLogEditValues): UpdateDrinkLogPayload => ({
+  brand_text: form.brandText.trim(),
+  store: {
+    name: form.storeName.trim(),
+    ...(form.placeId ? { place_id: form.placeId } : {}),
+  },
+  serving_style: form.servingStyle,
+  notes: form.notes.trim(),
+  ...(form.rating === null ? {} : { rating: form.rating }),
+})
+
+const drinkLogTimestamp = (log: DrinkLog) => {
+  const timestamp = Date.parse(log.datetime)
+  return Number.isNaN(timestamp) ? 0 : timestamp
+}
+
+export const sortDrinkLogs = (logs: DrinkLog[]) => [...logs].sort((left, right) => {
+  const byDate = drinkLogTimestamp(right) - drinkLogTimestamp(left)
+  return byDate || left.id.localeCompare(right.id)
+})
+
+export const mergeDrinkLogs = (...collections: DrinkLog[][]) => {
+  const byId = new Map<string, DrinkLog>()
+  collections.flat().forEach(log => byId.set(log.id, log))
+  return sortDrinkLogs([...byId.values()])
+}
 
 export const useDrinkLogs = () => {
   const api = useApi()
@@ -241,9 +285,15 @@ export const useDrinkLogs = () => {
   )
 
   const upsertLog = (log: DrinkLog) => {
-    const index = logs.value.findIndex(item => item.id === log.id)
-    if (index === -1) logs.value = [log, ...logs.value]
-    else logs.value = logs.value.map(item => item.id === log.id ? log : item)
+    logs.value = mergeDrinkLogs(logs.value, [log])
+  }
+
+  const upsertLogs = (records: DrinkLog[]) => {
+    logs.value = mergeDrinkLogs(logs.value, records)
+  }
+
+  const removeLog = (id: string) => {
+    logs.value = logs.value.filter(log => log.id !== id)
   }
 
   return {
@@ -261,5 +311,7 @@ export const useDrinkLogs = () => {
     searchPlaces,
     resolvePlaces,
     upsertLog,
+    upsertLogs,
+    removeLog,
   }
 }

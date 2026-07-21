@@ -1,7 +1,10 @@
 import { defineConfig } from 'vitest/config'
 import { fileURLToPath } from 'node:url'
+import vue from '@vitejs/plugin-vue'
 
 export default defineConfig({
+  // Nuxt and Vitest currently resolve separate compatible Vite type copies.
+  plugins: [vue() as never],
   define: {
     'import.meta.dev': 'true',
     'import.meta.client': 'true'

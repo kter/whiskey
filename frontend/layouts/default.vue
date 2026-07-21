@@ -32,7 +32,7 @@ const handleSignOut = async () => {
               <NuxtLink to="/ranking" class="inline-flex items-center px-1 pt-1 text-amber-100 hover:text-amber-300 transition-colors">
                 ランキング
               </NuxtLink>
-              <NuxtLink v-if="authReady && isAuthenticated" to="/logs/new" class="inline-flex items-center px-1 pt-1 text-amber-100 hover:text-amber-300 transition-colors">
+              <NuxtLink v-if="authReady && isAuthenticated" to="/logs" class="inline-flex items-center px-1 pt-1 text-amber-100 hover:text-amber-300 transition-colors">
                 記録
               </NuxtLink>
             </div>
@@ -40,7 +40,7 @@ const handleSignOut = async () => {
           <div v-if="authReady" class="flex items-center">
             <div v-if="isAuthenticated" class="flex items-center space-x-3">
               <span class="hidden sm:inline text-amber-200 text-sm">こんにちは、{{ getDisplayName() }}さん</span>
-              <NuxtLink to="/logs/new" class="sm:hidden px-3 py-1.5 border border-amber-700 text-xs font-medium rounded-md text-amber-100 bg-stone-700 hover:bg-stone-600">
+              <NuxtLink to="/logs" class="sm:hidden px-3 py-1.5 border border-amber-700 text-xs font-medium rounded-md text-amber-100 bg-stone-700 hover:bg-stone-600">
                 記録
               </NuxtLink>
               <NuxtLink to="/profile" class="px-3 py-1.5 border border-amber-700 text-xs font-medium rounded-md text-amber-100 bg-stone-700 hover:bg-stone-600">

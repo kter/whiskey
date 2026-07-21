@@ -12,7 +12,8 @@ export default defineNuxtConfig({
   nitro: {
     compatibilityDate: '2025-05-22',
     prerender: {
-      routes: ['/'], // ルートページを事前生成
+      // Dynamic SPA routes are also emitted so static hosting has an explicit route artifact.
+      routes: ['/', '/logs', '/logs/[id]'],
       crawlLinks: true // リンクを自動で辿って生成
     }
   },

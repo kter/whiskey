@@ -9,6 +9,16 @@ vi.mock('~/composables/useApi', async importOriginal => {
 
 import { useDrinkLogs } from '~/composables/useDrinkLogs'
 
+const record = (id: string, datetime: string, brandText = id) => ({
+  id,
+  user_id: 'user-1',
+  status: 'complete' as const,
+  datetime,
+  brand_text: brandText,
+  brand_source: 'manual' as const,
+  store: { name: '' },
+})
+
 const state = new Map<string, ReturnType<typeof ref>>()
 
 describe('useDrinkLogs API contract', () => {
@@ -103,5 +113,16 @@ describe('useDrinkLogs API contract', () => {
     expect(progress).toHaveBeenLastCalledWith(100)
     expect(request).not.toHaveBeenCalled()
   })
-})
 
+  it('upserts by ID, removes duplicates and re-sorts newest first', () => {
+    const drinkLogs = useDrinkLogs()
+    drinkLogs.upsertLog(record('older', '2026-07-20T12:00:00Z'))
+    drinkLogs.upsertLog(record('newer', '2026-07-21T12:00:00Z'))
+    drinkLogs.upsertLog(record('older', '2026-07-22T12:00:00Z', '更新済み'))
+
+    expect(drinkLogs.logs.value.map(log => [log.id, log.brand_text])).toEqual([
+      ['older', '更新済み'],
+      ['newer', 'newer'],
+    ])
+  })
+})
