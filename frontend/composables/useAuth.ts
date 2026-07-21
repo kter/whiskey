@@ -14,6 +14,7 @@ import {
   type AuthUser,
 } from '@aws-amplify/auth'
 import { isGoogleAuthEnabled } from '~/utils/googleAuth'
+import { isFlagEnabled } from '~/utils/flags'
 
 const USERNAME_SALT = 'whiskey-log-signup-username-v1'
 const PENDING_SIGNUP_KEY = 'whiskey.pending-signup-username'
@@ -119,7 +120,7 @@ const createAuth = (isDevelopment: boolean) => {
   const config = useRuntimeConfig()
   const authState = getState()
   const { isAuthenticated, user, profile, loading, profileLoading, authReady } = authState
-  const mockAuth = isDevelopment && config.public.mockAuth === '1'
+  const mockAuth = isDevelopment && isFlagEnabled(config.public.mockAuth)
 
   const currentUserId = computed(() => user.value?.userId || profile.value?.user_id || null)
 

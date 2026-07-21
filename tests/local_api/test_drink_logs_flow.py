@@ -18,7 +18,7 @@ from PIL import Image
 pytest.importorskip("fastapi")
 
 
-LOCAL_USER_ID = "local-test-user"
+LOCAL_USER_ID = "local-user"
 DRINKLOGS_TABLE = "DrinkLogs-local"
 APP_STATE_TABLE = "AppState-local"
 WHISKEYS_TABLE = "WhiskeySearch-local"

@@ -22,7 +22,7 @@ from starlette.concurrency import run_in_threadpool
 
 ROOT = Path(__file__).resolve().parents[1]
 COMMON_PYTHON = ROOT / "lambda" / "common" / "python"
-LOCAL_USER_ID = "local-test-user"
+LOCAL_USER_ID = "local-user"
 LAMBDA_TIMEOUT_SECONDS = 30
 
 
