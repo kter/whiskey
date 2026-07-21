@@ -8,17 +8,20 @@ AWS CDK (TypeScript) を使用したウィスキーアプリケーションの�
 
 ### 🏗️ 構築されるリソース
 
-- **VPC**: パブリック/プライベートサブネット構成
-- **Cognito**: ユーザープール + アプリクライアント
-- **S3**: 
-  - ウイスキー画像保存用バケット（署名付きURL、CORS設定済み）
-  - Nuxt.js SPA用Webホスティングバケット
-- **CloudFront**: SPA配信用CDN
-- **DynamoDB**: 
-  - Whiskeysテーブル（GSI: NameIndex）
-  - Reviewsテーブル（GSI: UserDateIndex）
-- **IAM**: Lambda/ECS実行ロール、GitHub Actions用ロール
-- **Secrets Manager**: アプリケーション機密情報管理
+- **Lambda**: whiskeys-search/list、reviews、ranking-aggregator、drink-logs、drink-log-analyze、drink-log-places、drink-log-reconciler（VPC 外実行、VPC なし）
+- **Cognito**: ユーザープール + アプリクライアント（Google OAuth）
+- **S3**:
+  - 飲酒ログ画像バケット（presigned URL、`tmp/` は2日ライフサイクル、CORS 設定済み）
+  - Nuxt.js SPA 用 Web ホスティングバケット
+- **CloudFront**: SPA 配信用 CDN（ResponseHeadersPolicy / HSTS）
+- **DynamoDB**:
+  - `WhiskeySearch`（GSI: NameEnIndex/NameJaIndex）
+  - `Reviews`（GSI: UserDateIndex, PublicDateIndex）
+  - `DrinkLogs`（GSI: UserDatetimeIndex）
+  - `AppState`（PK `pk`、TTL）
+- **Bedrock**: 銘柄/飲み方判別（Nova Lite 既定、APAC 域内固定プロファイル）
+- **IAM**: 関数ごとの最小権限ロール、GitHub Actions 用 OIDC ロール（保護スタック）
+- **Secrets Manager**: アプリ機密（`whiskey-app-secrets`）+ Places キー（`whiskey-places-{env}`）
 
 ### 🌍 環境
 
@@ -54,42 +57,56 @@ export AWS_PROFILE=your-profile
 npx cdk bootstrap
 ```
 
-## 🔧 デプロイ
+## 🔧 デプロイ（deploy.sh ランブック）
 
-### 簡単デプロイ
+`deploy.sh` は **アカウント検証付き**（`sts get-caller-identity` の Account が
+`environments.ts` の期待値と一致しないと中断）。**必ず対象（target）を明示**する。
+生の `npx cdk deploy` はガードを迂回するため使わない。
 
-```bash
-# 開発環境
-./scripts/deploy.sh dev
-
-# 本番環境
-./scripts/deploy.sh prod
+```
+Usage: ./scripts/deploy.sh <dev|prd> <target> [target ...] [options]
+targets: --dns --oidc --cert --base --notifications --observability --frontend
+options: --diff --diff-only --no-confirm --destroy
 ```
 
-### 詳細オプション
+| target | スタック / 動作 |
+|--------|----------------|
+| `--dns` | `WhiskeyDns`（登録ドメインの HostedZone、RETAIN + termination protection） |
+| `--oidc` | `WhiskeyGithubOidc`（GitHub Actions ロール、保護スタック） |
+| `--cert` | `WhiskeyCertificate-<Env>`（us-east-1 証明書） |
+| `--base` | `WhiskeyApp-<Env>`（テーブル・Lambda・API GW・Cognito・S3・CloudFront） |
+| `--notifications` | `WhiskeyNotifications`(us-east-1 Budgets) + `-Tokyo`(アラーム用トピック)。SSM `/whiskey/notifications/email` を両リージョンに要求 |
+| `--observability` | `WhiskeyObservability-<Env>`（S3/リコンサイラのアラーム。**base + notifications-Tokyo の後**にデプロイ） |
+| `--frontend` | スタック出力 → `.env` 生成 → `generate` → `s3 sync --delete` → CloudFront invalidation |
 
+### 初回構築の順序（dev）
 ```bash
-# 差分確認してからデプロイ
-./scripts/deploy.sh dev --diff
-
-# 確認プロンプトをスキップ
-./scripts/deploy.sh dev --no-confirm
-
-# スタック削除
-./scripts/deploy.sh dev --destroy
+cd infra
+AWS_PROFILE=dev bash scripts/deploy.sh dev --dns          # ① NS を出力 → レジストラ更新（ユーザー作業）
+AWS_PROFILE=dev bash scripts/deploy.sh dev --oidc         # ② GitHub OIDC ロール
+AWS_PROFILE=dev bash scripts/deploy.sh dev --cert         # ③ 証明書（DNS 伝播後）
+AWS_PROFILE=dev bash scripts/deploy.sh dev --base         # ④ アプリ本体
+AWS_PROFILE=dev bash scripts/deploy.sh dev --notifications # ⑤ 通知（SSM email 必要）
+AWS_PROFILE=dev bash scripts/deploy.sh dev --observability # ⑥ アラーム
+AWS_PROFILE=dev bash scripts/deploy.sh dev --frontend      # ⑦ フロント
 ```
 
-### 手動デプロイ
-
+### 通常運用
 ```bash
-# 開発環境
-npm run build
-npx cdk deploy -c env=dev
-
-# 本番環境
-npm run build
-npx cdk deploy -c env=prod
+AWS_PROFILE=dev bash scripts/deploy.sh dev --base --diff-only  # 無変更ドライラン
+AWS_PROFILE=dev bash scripts/deploy.sh dev --base --observability --no-confirm
+AWS_PROFILE=dev bash scripts/deploy.sh dev --frontend          # フロントだけ更新
 ```
+
+### 段階投入フラグ（`infra/config/environments.ts` に永続化）
+CLI の `-c` ではなく **設定値**で管理し、通過時にコミットする（揮発性 CLI フラグだと
+次の通常デプロイで剥がれる）。
+- `enableCustomDomain`: カスタムドメイン + 証明書（DNS 完了後に true）
+- `enableGoogleAuth`: Google IdP + クライアントの provider 参照（OAuth クライアント作成後に true）
+- `createOidcProvider`: OIDC プロバイダを新規作成するか import するか
+
+> **絶対に destroy しない**: `WhiskeyDns` / `WhiskeyGithubOidc`（deploy.sh も拒否）。
+> ゾーン/OIDC が消えると DNS 委任と CI 認証が即停止する。prd はスコープ外。
 
 ## 📊 出力値の確認
 
@@ -143,45 +160,28 @@ NUXT_PUBLIC_ENVIRONMENT=dev|prod
 
 ## 🏗️ アーキテクチャ
 
+VPC はなし（Lambda は VPC 外で実行）。全てサーバーレス・従量課金。
+
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                            Internet                              │
-└─────────────────────┬───────────────────────────────────────────┘
-                      │
-                ┌─────▼─────┐
-                │CloudFront │
-                │Distribution│
-                └─────┬─────┘
-                      │
-                ┌─────▼─────┐      ┌─────────────┐
-                │S3 (WebApp)│      │  S3 (Images)│
-                │  Bucket   │      │   Bucket    │
-                └───────────┘      └─────────────┘
-                                           │
-┌─────────────────────────────────────────┼─────────────────────────┐
-│                VPC (10.0.0.0/16)        │                         │
-│  ┌─────────────────────────────────────┐ │                         │
-│  │        Public Subnets               │ │                         │
-│  │  ┌──────────────┐  ┌──────────────┐ │ │                         │
-│  │  │   AZ-1a      │  │   AZ-1c      │ │ │                         │
-│  │  │10.0.0.0/24   │  │10.0.1.0/24   │ │ │                         │
-│  │  └──────────────┘  └──────────────┘ │ │                         │
-│  └─────────────────────────────────────┘ │                         │
-│  ┌─────────────────────────────────────┐ │                         │
-│  │       Private Subnets               │ │                         │
-│  │  ┌──────────────┐  ┌──────────────┐ │ │                         │
-│  │  │   AZ-1a      │  │   AZ-1c      │ │ │                         │
-│  │  │10.0.2.0/24   │  │10.0.3.0/24   │ │ │                         │
-│  │  │              │  │              │ │ │                         │
-│  │  │ Lambda/ECS   │  │ Lambda/ECS   │ │ │                         │
-│  │  └──────┬───────┘  └──────┬───────┘ │ │                         │
-│  └─────────┼──────────────────┼─────────┘ │                         │
-└────────────┼──────────────────┼───────────┼─────────────────────────┘
-             │                  │           │
-        ┌────▼────┐         ┌───▼────┐ ┌────▼────┐
-        │DynamoDB │         │Cognito │ │Secrets  │
-        │ Tables  │         │UserPool│ │Manager  │
-        └─────────┘         └────────┘ └─────────┘
+                         Internet
+                            │
+                    ┌───────▼───────┐        ┌──────────────┐
+                    │  CloudFront   │        │  API Gateway │
+                    │ (静的SPA配信) │         │  (REST + JWT) │
+                    └───────┬───────┘        └───────┬──────┘
+              ┌─────────────┴────────┐               │
+        ┌─────▼─────┐        ┌───────▼──────┐   ┌────▼──────────────┐
+        │ S3 WebApp │        │  S3 Images   │   │  Lambda 関数群      │
+        │ (静的SPA) │        │(tmp/2日, logs)│◄──┤ search/list/reviews│
+        └───────────┘        └──────────────┘   │ ranking-aggregator │
+                                                 │ drink-logs/analyze │
+                                                 │ places/reconciler  │
+                                                 └────┬──────┬────┬───┘
+                          ┌───────────┬───────────────┘      │    │
+                    ┌─────▼───┐ ┌─────▼────┐         ┌────────▼─┐ ┌▼──────────┐
+                    │DynamoDB │ │ Cognito  │         │ Bedrock  │ │  Google   │
+                    │(4 tables)│ │(認証/OAuth)│        │(Nova Lite)│ │  Places   │
+                    └─────────┘ └──────────┘         └──────────┘ └───────────┘
 ```
 
 ## 🔧 設定カスタマイズ

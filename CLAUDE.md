@@ -8,11 +8,12 @@ This is a whiskey tasting review application built with a cost-optimized serverl
 - **Frontend**: Nuxt.js 3 SPA (TypeScript, Tailwind CSS)
 - **Backend**: Serverless Lambda functions with DynamoDB
 - **Infrastructure**: AWS CDK (Lambda, API Gateway, S3, CloudFront, Cognito)
-- **Authentication**: AWS Cognito with Google OAuth
-- **Search**: Multi-language (English/Japanese) whiskey search with 813+ whiskey database
-- **Data**: Large-scale whiskey data extracted from Rakuten API using Amazon Bedrock Nova Lite
-- **Deployment**: GitHub Actions CI/CD
-- **Cost Savings**: 64-83% cost reduction through serverless migration
+- **Authentication**: AWS Cognito with Google OAuth（フロントは **ID トークン**を送信）
+- **Search**: Multi-language (English/Japanese) whiskey search
+- **Drink Log** 🆕: 写真を撮るだけの飲酒ログ（画像→S3、Bedrock で銘柄/飲み方判別、GPS + Google Places で店名推定、タイムライン）
+- **Data**: Rakuten API から Amazon Bedrock Nova Lite で抽出したウイスキーデータ
+- **Deployment**: CDK は手動（`infra/scripts/deploy.sh`）、CI はテスト + フロントデプロイ（`main` push、dev のみ）
+- **Cost Savings**: サーバーレス化 + 原子カウンタ/スロットリングで Bedrock・Places・画像ストレージの費用に上界
 
 ## AWS Account Configuration
 
@@ -22,11 +23,16 @@ This is a whiskey tasting review application built with a cost-optimized serverl
 - **Region**: ap-northeast-1
 
 ### Deployment Commands
-Always use the `dev` profile for development environment:
+CDK デプロイは**アカウント検証付きの `infra/scripts/deploy.sh` を通す**（生の `cdk deploy` は使わない）。
+スタック順序・フラグ運用は `infra/README.md` のランブック参照。
 ```bash
-AWS_PROFILE=dev npm run deploy:dev
-AWS_PROFILE=dev npx cdk deploy WhiskeyApp-Dev --require-approval never
+cd infra
+AWS_PROFILE=dev bash scripts/deploy.sh dev --base            # アプリスタック
+AWS_PROFILE=dev bash scripts/deploy.sh dev --observability   # アラーム
+AWS_PROFILE=dev bash scripts/deploy.sh dev --frontend        # フロント（generate + sync + invalidation）
+AWS_PROFILE=dev bash scripts/deploy.sh dev --base --diff-only # 無変更ドライラン
 ```
+> prd はスコープ外（アカウント確定後の別ブートストラップ）。
 
 ## Development Commands
 
@@ -40,11 +46,18 @@ npm run lint:fix      # Fix ESLint issues
 
 # Infrastructure (in infra/)
 npm run build         # Compile TypeScript
-npm run test          # Run CDK tests
-npm run deploy:dev    # Deploy to dev environment
-npm run deploy:prod   # Deploy to prod environment
-npm run diff:dev      # Show infrastructure diff
-npm run synth:dev     # Synthesize CloudFormation
+npm run test          # Run CDK tests (jest)
+npm run synth:dev     # Synthesize CloudFormation (lookup-free)
+# デプロイは deploy.sh を使う（上記 Deployment Commands 参照）
+
+# Lambda tests (repo root)
+python -m pytest tests
+
+# Local full stack（詳細は docs/LOCAL_DEV.md）
+docker compose up -d   # DynamoDB Local(:8001) + MinIO(:9000/9001)
+make local-init        # テーブル作成 + シード + ランキング集計
+make api               # FastAPI アダプタ(:8000)
+# フロントは frontend/ で npm run dev（localhost:3000 を使う）
 ```
 
 ### Data Management
@@ -85,19 +98,26 @@ curl "https://api.dev.whiskeybar.site/api/whiskeys/search/?q=%E3%83%9C%E3%82%A6%
 4. **Search Layer**: Dedicated WhiskeySearch table with multi-language support
 
 ### Key Infrastructure Components（全て従量課金）
-- **VPC**: Multi-AZ with public/private subnets (**natGateways: 0** - 費用ゼロ)
+- **VPC なし**: 未使用の VPC は削除済み。Lambda は常に VPC 外で実行（NAT Gateway/ALB/EC2/ECS/RDS は不使用）
 - **Lambda**: Serverless compute platform for API（実行時のみ課金）
-  - `whiskey-list-dev`: Whiskey listing
-  - `whiskey-search-dev`: Multi-language search with manual filtering
-  - `reviews-dev`: Review management
+  - `whiskey-list-dev` / `whiskey-search-dev`: 一覧・多言語検索（手動フィルタ）
+  - `reviews-dev`: レビュー CRUD・公開一覧
+  - `ranking-aggregator-dev`: ランキング事前集計（EventBridge 15分毎）
+  - `drink-logs-dev`: 飲酒ログ CRUD・presigned URL・画像サニタイズ
+  - `drink-log-analyze-dev`: Bedrock で銘柄/飲み方判別（Converse）
+  - `drink-log-places-dev`: Google Places 検索・表示時解決
+  - `drink-log-reconciler-dev`: 孤児画像/未収束レコードの日次収束
 - **API Gateway**: RESTful API endpoint with CORS support（リクエスト従量）
 - **S3**: Static site hosting + image storage（ストレージ従量）
 - **CloudFront**: CDN for global content delivery（転送量従量）
 - **DynamoDB**: NoSQL database - Pay per request（アクセス従量）
-  - `Whiskeys-dev`: Basic whiskey data
   - `WhiskeySearch-dev`: Optimized search with English/Japanese names
   - `Reviews-dev`: User reviews
-  - `Users-dev`: User profiles
+  - `DrinkLogs-dev`: 飲酒ログ（写真・銘柄・店・飲み方。GSI `UserDatetimeIndex`）
+  - `AppState-dev`: ランキングキャッシュ + 濫用/コスト防御カウンタ（PK `pk`、TTL 有効）
+  - ~~`Users-dev`~~: 廃止（プロフィールは Cognito 属性の読み取り専用表示）
+  - ~~`Whiskeys-dev`~~: 廃止（`WhiskeySearch-dev` に統合）
+- **Bedrock**: 画像から銘柄/飲み方を判別（`jp.amazon.nova-2-lite-v1:0` 既定 / `jp.anthropic.claude-haiku-4-5` フォールバック、APAC 域内固定プロファイル、Converse API）
 - **Cognito**: User authentication + Google OAuth（MAU従量）
 - **Route53**: DNS management with custom domains（クエリ従量）
 
@@ -122,8 +142,6 @@ curl "https://api.dev.whiskeybar.site/api/whiskeys/search/?q=%E3%83%9C%E3%82%A6%
   "id": "uuid",
   "name_en": "English whiskey name",
   "name_ja": "日本語ウイスキー名",
-  "distillery_en": "English distillery name",
-  "distillery_ja": "日本語蒸留所名",
   "normalized_name_en": "searchable english name",
   "normalized_name_ja": "検索可能な日本語名",
   "description": "Description",
@@ -197,7 +215,9 @@ curl "https://api.dev.whiskeybar.site/api/whiskeys/search/?q=%E3%83%9C%E3%82%A6%
 The application uses AWS Cognito for authentication:
 1. Users can sign up/in with email or Google OAuth
 2. Frontend receives JWT tokens (access, ID, refresh)
-3. API validates JWT tokens via Cognito middleware
+3. 書き込み・個人データ系は API Gateway の Cognito オーソライザーで検証。REST の
+   Cognito オーソライザーは **ID トークン**を検証するため、フロントは `getToken()` で
+   **ID トークン**を送る（`aud` == クライアントID、`token_use == 'id'` を多層検証）
 4. Automatic token refresh handled by frontend
 
 ## API Endpoints
@@ -227,33 +247,39 @@ curl "https://api.dev.whiskeybar.site/api/whiskeys/search/?q="
 
 ## Environment Variables
 
-### Lambda Environment Variables
+### Lambda Environment Variables（主なもの）
 ```bash
 ENVIRONMENT=dev                                    # Environment name
-WHISKEYS_TABLE=Whiskeys-dev                       # Basic whiskey table
 WHISKEY_SEARCH_TABLE=WhiskeySearch-dev            # Search-optimized table
 REVIEWS_TABLE=Reviews-dev                         # Reviews table
+DRINKLOGS_TABLE=DrinkLogs-dev                      # Drink logs table
+APP_STATE_TABLE=AppState-dev                       # Ranking cache + abuse/cost counters
+IMAGES_BUCKET=whiskey-images-dev-<account>         # Drink log images bucket
+BEDROCK_MODEL_ID=jp.amazon.nova-2-lite-v1:0        # Analyze model (allowlist gated)
 ```
 
 ### Frontend (.env)
 ```bash
 NUXT_PUBLIC_API_BASE_URL=https://api.dev.whiskeybar.site
-NUXT_PUBLIC_USER_POOL_ID=ap-northeast-1_jEgeFKRCu
-NUXT_PUBLIC_USER_POOL_CLIENT_ID=5iilnqou9ndfreukuk76533o0t
+NUXT_PUBLIC_USER_POOL_ID=ap-northeast-1_xxxxxxxx
+NUXT_PUBLIC_USER_POOL_CLIENT_ID=xxxxxxxxxxxxxxxxxxxxxxxxxx
 NUXT_PUBLIC_REGION=ap-northeast-1
+NUXT_PUBLIC_COGNITO_DOMAIN=<Cognito Hosted UI ホスト名>
+NUXT_PUBLIC_GOOGLE_AUTH_ENABLED=1
+NUXT_PUBLIC_ENVIRONMENT=dev
 ```
 
 ## Data Management
 
 ### External Data Processing
-1. **Fetch Data**: `python scripts/fetch_whiskey_data.py --mode fetch --whiskeys 100`
-2. **Process & Translate**: `python scripts/fetch_whiskey_data.py --mode process --file raw_whiskey_data_*.json`
-3. **Verification**: Check DynamoDB table counts and test search functionality
+1. **Fetch**: `python scripts/fetch_rakuten_names_only.py`（楽天から商品名取得）
+2. **Extract**: `python scripts/extract_whiskey_names_nova_lite.py --input-file rakuten_*.json`（Bedrock Nova Lite で抽出）
+3. **Seed/Insert**: `python scripts/local/seed_whiskeys.py --target dev`（厳選シード）/ `insert_whiskeys_to_dynamodb.py`（大規模投入）
+4. **Verification**: DynamoDB のカウントと検索の動作確認（英語/日本語）
 
 ### Current Data Status
-- **Total Records**: 768+ whiskey entries
-- **Languages**: English and Japanese names/distilleries
-- **Source**: TheWhiskyEdition.com API with AWS Translate enhancement
+- **Languages**: English and Japanese names（名前検索に特化、蒸留所検索は削除済み）
+- **Source**: 楽天市場API + Amazon Bedrock Nova Lite で抽出
 - **Search Coverage**: Full text search across both languages
 
 ## AWS Profile Configuration
