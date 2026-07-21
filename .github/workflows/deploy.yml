@@ -1,207 +1,231 @@
-name: Deploy Whiskey App
+name: CI / Deploy
+
+# CI (tests, lint, typecheck, build, synth) runs on every PR and push.
+# Jobs that assume the AWS OIDC role run ONLY on push to main and only after CI
+# passes, so a pull request (including from a fork) can never obtain AWS
+# credentials. CDK infrastructure is deployed MANUALLY via infra/scripts/deploy.sh
+# (see infra/README.md); this workflow deploys only the frontend on push to main.
+# prd is out of scope here: it will get its own workflow after the prd account is
+# finalized. Third-party actions are pinned to commit SHAs (Dependabot keeps them
+# current via .github/dependabot.yml).
 
 on:
   push:
     branches:
-      - main        # dev環境へのデプロイ
-      - production  # prod環境へのデプロイ
+      - main
   pull_request:
     branches:
       - main
-      - production
 
 env:
   NODE_VERSION: '22'
+  PYTHON_VERSION: '3.11'
+  AWS_REGION: ap-northeast-1
+
+# Least privilege by default; jobs that need OIDC opt in explicitly.
+permissions:
+  contents: read
 
 jobs:
-  # 共通の設定を取得
-  setup:
+  # ---------------------------------------------------------------------------
+  # CI: no AWS credentials. Runs on PR and push.
+  # ---------------------------------------------------------------------------
+  ci:
+    name: Test / Lint / Build
     runs-on: ubuntu-latest
-    environment: ${{ github.ref == 'refs/heads/production' && 'prd' || 'dev' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # --- Lambda (Python) ---
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python dev dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run Lambda tests
+        run: python -m pytest tests
+
+      # --- Node toolchain (shared by infra + frontend) ---
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # --- Infrastructure (CDK) ---
+      - name: Install infra dependencies
+        run: npm ci
+        working-directory: infra
+
+      - name: Build infra (tsc)
+        run: npm run build
+        working-directory: infra
+
+      - name: Run CDK tests
+        run: npx jest
+        working-directory: infra
+
+      - name: CDK synth (dev, lookup-free)
+        run: npx cdk synth -c env=dev --quiet
+        working-directory: infra
+
+      # --- Frontend (Nuxt) ---
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Lint frontend
+        run: npm run lint
+        working-directory: frontend
+
+      - name: Typecheck frontend
+        run: npm run typecheck
+        working-directory: frontend
+
+      - name: Test frontend
+        run: npm run test -- --run
+        working-directory: frontend
+
+      - name: Build frontend (generate)
+        run: npm run generate
+        working-directory: frontend
+
+  # ---------------------------------------------------------------------------
+  # Resolve dev stack outputs. Push-only, needs CI. Assumes the OIDC role.
+  # ---------------------------------------------------------------------------
+  setup:
+    name: Resolve dev outputs
+    needs: ci
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: dev
     permissions:
       id-token: write
       contents: read
     outputs:
-      environment: ${{ steps.env.outputs.environment }}
       bucket_name: ${{ steps.infra.outputs.bucket_name }}
       distribution_id: ${{ steps.infra.outputs.distribution_id }}
       user_pool_id: ${{ steps.infra.outputs.user_pool_id }}
       user_pool_client_id: ${{ steps.infra.outputs.user_pool_client_id }}
-      images_bucket: ${{ steps.infra.outputs.images_bucket }}
-
+      cognito_domain: ${{ steps.infra.outputs.cognito_domain }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Determine environment
-        id: env
-        run: |
-          if [[ "${{ github.ref }}" == "refs/heads/production" ]]; then
-            echo "environment=prd" >> $GITHUB_OUTPUT
-          else
-            echo "environment=dev" >> $GITHUB_OUTPUT
-          fi
-          echo "Detected environment: ${{ github.ref }} -> $(if [[ "${{ github.ref }}" == "refs/heads/production" ]]; then echo "prd"; else echo "dev"; fi)"
-
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ap-northeast-1
-          role-session-name: GitHubActions-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHubActions-Setup-${{ github.run_id }}
 
-      - name: Get infrastructure outputs
+      - name: Get WhiskeyApp-Dev outputs
         id: infra
         run: |
-          ENV=${{ steps.env.outputs.environment }}
-          echo "Getting outputs for environment: $ENV"
-          
-          # スタック名を確認（dev->Dev, prd->Prd に変換）
-          if [[ "$ENV" == "dev" ]]; then
-            STACK_NAME="WhiskeyApp-Dev"
-          elif [[ "$ENV" == "prd" ]]; then
-            STACK_NAME="WhiskeyApp-Prd"
-          else
-            echo "Error: Unknown environment $ENV"
-            exit 1
-          fi
-          echo "Stack name: $STACK_NAME"
-          
-          # スタックの存在を確認
-          if ! aws cloudformation describe-stacks --stack-name "$STACK_NAME" >/dev/null 2>&1; then
-            echo "Error: Stack $STACK_NAME not found"
-            echo "Available stacks:"
-            aws cloudformation list-stacks --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE --query 'StackSummaries[].StackName' --output text
-            exit 1
-          fi
-          
-          # フロントエンド用の出力取得
-          BUCKET_NAME=$(aws cloudformation describe-stacks \
-            --stack-name "$STACK_NAME" \
-            --query "Stacks[0].Outputs[?OutputKey=='WebAppBucketName'].OutputValue" \
-            --output text)
-          DISTRIBUTION_ID=$(aws cloudformation describe-stacks \
-            --stack-name "$STACK_NAME" \
-            --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDistributionId'].OutputValue" \
-            --output text)
-          USER_POOL_ID=$(aws cloudformation describe-stacks \
-            --stack-name "$STACK_NAME" \
-            --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" \
-            --output text)
-          USER_POOL_CLIENT_ID=$(aws cloudformation describe-stacks \
-            --stack-name "$STACK_NAME" \
-            --query "Stacks[0].Outputs[?OutputKey=='UserPoolClientId'].OutputValue" \
-            --output text)
-          IMAGES_BUCKET=$(aws cloudformation describe-stacks \
-            --stack-name "$STACK_NAME" \
-            --query "Stacks[0].Outputs[?OutputKey=='ImagesBucketName'].OutputValue" \
-            --output text)
-          
-          
-          echo "Retrieved values:"
-          echo "Bucket: $BUCKET_NAME"
-          echo "Distribution: $DISTRIBUTION_ID"
-          echo "User Pool: $USER_POOL_ID"
-          echo "Client ID: $USER_POOL_CLIENT_ID"
-          echo "Images Bucket: $IMAGES_BUCKET"
-          
-          if [[ -z "$BUCKET_NAME" || "$BUCKET_NAME" == "None" ]]; then
-            echo "Error: Could not retrieve bucket name"
-            exit 1
-          fi
-          
-          echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
-          echo "distribution_id=$DISTRIBUTION_ID" >> $GITHUB_OUTPUT
-          echo "user_pool_id=$USER_POOL_ID" >> $GITHUB_OUTPUT
-          echo "user_pool_client_id=$USER_POOL_CLIENT_ID" >> $GITHUB_OUTPUT
-          echo "images_bucket=$IMAGES_BUCKET" >> $GITHUB_OUTPUT
+          set -euo pipefail
+          STACK_NAME="WhiskeyApp-Dev"
+          get_output() {
+            aws cloudformation describe-stacks \
+              --stack-name "$STACK_NAME" \
+              --region "$AWS_REGION" \
+              --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" \
+              --output text
+          }
+          BUCKET_NAME=$(get_output WebAppBucketName)
+          DISTRIBUTION_ID=$(get_output CloudFrontDistributionId)
+          USER_POOL_ID=$(get_output UserPoolId)
+          USER_POOL_CLIENT_ID=$(get_output UserPoolClientId)
+          COGNITO_DOMAIN=$(get_output CognitoHostedUiHostname)
+          # Cognito Hosted UI hostname must be a bare host (Amplify oauth.domain).
+          COGNITO_DOMAIN=${COGNITO_DOMAIN#https://}
+          COGNITO_DOMAIN=${COGNITO_DOMAIN#http://}
+          COGNITO_DOMAIN=${COGNITO_DOMAIN%%/*}
+          for pair in "bucket:$BUCKET_NAME" "distribution:$DISTRIBUTION_ID" \
+                      "user pool:$USER_POOL_ID" "client:$USER_POOL_CLIENT_ID" \
+                      "cognito domain:$COGNITO_DOMAIN"; do
+            value=${pair#*:}
+            if [[ -z "$value" || "$value" == "None" ]]; then
+              echo "Error: missing stack output for ${pair%%:*}" >&2
+              exit 1
+            fi
+          done
+          {
+            echo "bucket_name=$BUCKET_NAME"
+            echo "distribution_id=$DISTRIBUTION_ID"
+            echo "user_pool_id=$USER_POOL_ID"
+            echo "user_pool_client_id=$USER_POOL_CLIENT_ID"
+            echo "cognito_domain=$COGNITO_DOMAIN"
+          } >> "$GITHUB_OUTPUT"
 
-  # フロントエンドデプロイ
+  # ---------------------------------------------------------------------------
+  # Build and deploy the frontend to dev. Push-only, needs setup.
+  # ---------------------------------------------------------------------------
   deploy-frontend:
-    runs-on: ubuntu-latest
+    name: Deploy frontend (dev)
     needs: setup
-    environment: ${{ github.ref == 'refs/heads/production' && 'prd' || 'dev' }}
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: dev
     permissions:
       id-token: write
       contents: read
-
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ap-northeast-1
+          aws-region: ${{ env.AWS_REGION }}
           role-session-name: GitHubActions-Frontend-${{ github.run_id }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: frontend/package.json
 
       - name: Install frontend dependencies
-        run: |
-          cd frontend
-          echo "Installing dependencies..."
-          npm install
-          echo "Dependencies installed successfully"
+        run: npm ci
+        working-directory: frontend
 
       - name: Create environment file
+        # Mirrors infra/scripts/deploy.sh --frontend (the canonical source). dev has
+        # enableCustomDomain=true and enableGoogleAuth=true; keep these in sync with
+        # infra/config/environments.ts if the dev flags ever change.
         run: |
-          cd frontend
-          echo "Creating environment file for ${{ needs.setup.outputs.environment }} environment..."
-          cat > .env << EOF
+          cat > frontend/.env << EOF
+          NUXT_PUBLIC_API_BASE_URL=https://api.dev.whiskeybar.site
           NUXT_PUBLIC_USER_POOL_ID=${{ needs.setup.outputs.user_pool_id }}
           NUXT_PUBLIC_USER_POOL_CLIENT_ID=${{ needs.setup.outputs.user_pool_client_id }}
-          NUXT_PUBLIC_REGION=ap-northeast-1
-          NUXT_PUBLIC_IMAGES_BUCKET=${{ needs.setup.outputs.images_bucket }}
-          NUXT_PUBLIC_API_BASE_URL=${{ needs.setup.outputs.environment == 'prd' && 'https://api.whiskeybar.site' || 'https://api.dev.whiskeybar.site' }}
-          NUXT_PUBLIC_ENVIRONMENT=${{ needs.setup.outputs.environment }}
+          NUXT_PUBLIC_REGION=${{ env.AWS_REGION }}
+          NUXT_PUBLIC_COGNITO_DOMAIN=${{ needs.setup.outputs.cognito_domain }}
+          NUXT_PUBLIC_GOOGLE_AUTH_ENABLED=1
+          NUXT_PUBLIC_ENVIRONMENT=dev
           EOF
-          echo "Environment file created:"
-          cat .env
 
-      - name: Build Nuxt.js application
-        run: |
-          cd frontend
-          echo "Building Nuxt.js application for static hosting..."
-          npm run generate
-          echo "Build completed successfully"
-          echo "Output directory contents:"
-          ls -la .output/ || echo "Output directory not found"
-          ls -la .output/public/ || echo "Public directory not found"
+      - name: Build frontend (generate)
+        run: env -u NUXT_PUBLIC_MOCK_AUTH NODE_ENV=production npm run generate
+        working-directory: frontend
 
       - name: Deploy to S3
-        run: |
-          cd frontend
-          echo "Deploying to S3 bucket: ${{ needs.setup.outputs.bucket_name }}"
-          aws s3 sync .output/public/ s3://${{ needs.setup.outputs.bucket_name }}/ --delete
-          echo "S3 deployment completed"
+        run: aws s3 sync frontend/.output/public "s3://${{ needs.setup.outputs.bucket_name }}" --delete
 
       - name: Invalidate CloudFront
         run: |
-          echo "Invalidating CloudFront distribution: ${{ needs.setup.outputs.distribution_id }}"
           aws cloudfront create-invalidation \
-            --distribution-id ${{ needs.setup.outputs.distribution_id }} \
+            --distribution-id "${{ needs.setup.outputs.distribution_id }}" \
             --paths "/*"
-          echo "CloudFront invalidation completed"
 
   notify:
-    runs-on: ubuntu-latest
-    needs: [setup, deploy-frontend]
+    name: Deployment summary
+    needs: [ci, setup, deploy-frontend]
     if: always()
-
+    runs-on: ubuntu-latest
     steps:
-      - name: Notify deployment status
+      - name: Report status
         run: |
-          FRONTEND_STATUS="${{ needs.deploy-frontend.result }}"
-          ENV="${{ needs.setup.outputs.environment }}"
-          
-          echo "=== Deployment Summary ==="
-          echo "Environment: $ENV"
-          echo "Frontend Status: $FRONTEND_STATUS"
-          echo "✅ Full deployment to $ENV environment successful!"
+          echo "=== Summary ==="
+          echo "CI:               ${{ needs.ci.result }}"
+          echo "Setup (dev):      ${{ needs.setup.result }}"
+          echo "Frontend (dev):   ${{ needs.deploy-frontend.result }}"
