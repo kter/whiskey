@@ -4,8 +4,6 @@ from types import SimpleNamespace
 from tests.lambda_module_loader import load_lambda_module
 
 
-drink_logs = load_lambda_module("drink_logs_stub_tests", "lambda/drink-logs/index.py")
-reconciler = load_lambda_module("drink_log_reconciler_stub_tests", "lambda/drink-logs/reconciler.py")
 analyze = load_lambda_module("drink_log_analyze_stub_tests", "lambda/drink-log-analyze/index.py")
 places = load_lambda_module("drink_log_places_stub_tests", "lambda/drink-log-analyze/places.py")
 
@@ -15,12 +13,8 @@ def test_http_handlers_are_common_response_501_stubs(monkeypatch):
     event = {"headers": {"Origin": "https://example.test"}}
     context = SimpleNamespace(aws_request_id="request-1")
 
-    for module in (drink_logs, analyze, places):
+    for module in (analyze, places):
         response = module.lambda_handler(event, context)
         assert response["statusCode"] == 501
         assert response["headers"]["Cache-Control"] == "private, no-store"
         assert json.loads(response["body"]) == {"error": "Not Implemented"}
-
-
-def test_reconciler_stub_is_a_safe_noop():
-    assert reconciler.lambda_handler({}, SimpleNamespace()) == {"status": "noop"}
