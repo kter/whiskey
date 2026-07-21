@@ -7,13 +7,15 @@ Base URLs:
 
 ## Authentication
 
-Private review routes require a Cognito **ID token**.
+Private review and drink-log routes require a Cognito **ID token**.
 
 ```http
 Authorization: Bearer <id_token>
 ```
 
 Access tokens are not accepted by the reviews Lambda. API Gateway validates the token first, and the Lambda rechecks `aud` and `token_use=id`. Local invocations without API Gateway perform complete RS256, expiry, issuer, audience, and token-use validation.
+
+The Phase 4 drink-log routes are currently infrastructure stubs and return `501 Not Implemented` until Tasks 07 and 08 replace their handlers.
 
 ## Pagination
 
@@ -95,6 +97,70 @@ Deletes an owned review. Missing and foreign reviews both return 404.
 ### `GET /api/reviews/public?limit=20&next_token=...`
 
 Returns public reviews without authentication. Public listing is available only on this dedicated path; `?public=true` on `/api/reviews` is not supported. User identifiers are omitted.
+
+## Drink logs
+
+Drink-log datetimes use normalized RFC3339 UTC strings. A stored item has this shape:
+
+```json
+{
+  "id": "log-id",
+  "user_id": "cognito-sub",
+  "status": "complete",
+  "datetime": "2026-07-21T12:34:56Z",
+  "s3_image_key": "logs/cognito-sub/log-id.jpg",
+  "tmp_s3_key": "tmp/cognito-sub/upload-id",
+  "quota_allocated": true,
+  "whiskey_id": "optional-whiskey-id",
+  "brand_text": "Ardbeg 10",
+  "brand_source": "matched",
+  "serving_style": "NEAT",
+  "store": {"name": "Bar name", "place_id": "optional-place-id"},
+  "notes": "optional notes",
+  "rating": 4.5,
+  "ai": {"model_id": "jp.amazon.nova-2-lite-v1:0", "confidence": 0.93},
+  "created_at": "2026-07-21T12:35:00Z",
+  "updated_at": "2026-07-21T12:35:00Z"
+}
+```
+
+`status` is `pending`, `complete`, or `deleting`; `brand_source` is `ai`, `manual`, or `matched`. `tmp_s3_key`, `whiskey_id`, `notes`, `rating`, `ai`, and `store.place_id` are optional. `store.name` is user input and may be empty. GPS coordinates and Google-provided display names are never persisted.
+
+### `POST /api/drink-logs/upload-url`
+
+Creates a constrained temporary-image upload URL. The temporary object is under `tmp/` and expires after two days.
+
+### `POST /api/drink-logs/analyze`
+
+Analyzes a temporary image using an allowlisted Bedrock inference profile.
+
+### `POST /api/drink-logs/places`
+
+Looks up nearby Places candidates. Coordinates are accepted in the JSON body, not the URL, and are not stored.
+
+### `POST /api/drink-logs/places/resolve`
+
+Resolves an owned log's optional Place ID for display without persisting a Google display name.
+
+### `POST /api/drink-logs`
+
+Creates a drink log and moves the sanitized image from `tmp/` to `logs/`.
+
+### `GET /api/drink-logs?limit=20&next_token=...&brand=...&store=...&place_id=...`
+
+Returns the authenticated user's timeline. `brand`, `store`, and `place_id` are optional filters.
+
+### `GET /api/drink-logs/{id}`
+
+Returns one owned drink log.
+
+### `PUT /api/drink-logs/{id}`
+
+Updates an owned drink log.
+
+### `DELETE /api/drink-logs/{id}`
+
+Marks and removes an owned drink log through the recoverable deletion flow.
 
 ## Errors
 

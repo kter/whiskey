@@ -19,6 +19,7 @@ import { Construct } from 'constructs';
 import * as fs from 'fs';
 import * as path from 'path';
 import { environments } from '../config/environments';
+import { BedrockModel, bedrockInvokeStatements, bedrockModelAllowlist } from './bedrock-models';
 
 export interface WhiskeyInfraStackProps extends cdk.StackProps {
   environment: string;
@@ -34,6 +35,9 @@ const RANKING_CACHE_PREFIX = 'ranking-cache/*';
 const REVIEW_RATE_PREFIX = 'review-rate#*';
 const REVIEW_CHANGE_COUNTER = 'review-change-counter';
 const WHISKEY_CHANGE_COUNTER = 'whiskey-change-counter';
+const DRINKLOG_COUNTER_PREFIX = 'drinklog-counter#*';
+const DRINKLOG_QUOTA_PREFIX = 'drinklog-quota#*';
+const AI_RESULT_PREFIX = 'ai-result:*';
 const BUNDLING_COMMAND = "if [ -f requirements.txt ]; then pip install -r requirements.txt -t /asset-output; fi && cp -au . /asset-output && find /asset-output -name __pycache__ -type d -exec rm -rf {} +";
 
 function parseExtraOrigins(value: unknown): string[] {
@@ -47,6 +51,9 @@ function parseExtraOrigins(value: unknown): string[] {
 }
 
 export class WhiskeyInfraStack extends cdk.Stack {
+  public readonly imagesBucketName: string;
+  public readonly drinkLogReconcilerFunctionName: string;
+
   constructor(scope: Construct, id: string, props: WhiskeyInfraStackProps) {
     super(scope, id, props);
 
@@ -81,6 +88,13 @@ export class WhiskeyInfraStack extends cdk.Stack {
     const imagesBucket = new s3.Bucket(this, 'WhiskeyImagesBucket', {
       ...bucketDefaults,
       bucketName: `whiskey-images-${environment}-${this.account}`,
+      lifecycleRules: [{ prefix: 'tmp/', expiration: cdk.Duration.days(2) }],
+      // Paid, best-effort request metrics expose PostRequests/BytesUploaded for tmp and
+      // GetRequests/BytesDownloaded for logs; AppState counters enforce the cost ceilings.
+      metrics: [
+        { id: 'tmp', prefix: 'tmp/' },
+        { id: 'logs', prefix: 'logs/' },
+      ],
       cors: [{
         allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.PUT, s3.HttpMethods.POST],
         allowedOrigins,
@@ -88,6 +102,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
         exposedHeaders: ['ETag'],
       }],
     });
+    this.imagesBucketName = imagesBucket.bucketName;
 
     const webAppBucket = new s3.Bucket(this, 'WhiskeyWebAppBucket', {
       ...bucketDefaults,
@@ -172,6 +187,23 @@ export class WhiskeyInfraStack extends cdk.Stack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       removalPolicy,
     });
+    const drinkLogsTable = new dynamodb.Table(this, 'DrinkLogsTable', {
+      tableName: `DrinkLogs-${environment}`,
+      partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy,
+    });
+    drinkLogsTable.addGlobalSecondaryIndex({
+      indexName: 'UserDatetimeIndex',
+      partitionKey: { name: 'user_id', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'datetime', type: dynamodb.AttributeType.STRING },
+    });
+
+    const placesSecret = secretsmanager.Secret.fromSecretNameV2(
+      this,
+      'PlacesSecret',
+      `whiskey-places-${environment}`,
+    );
 
     const userPool = new cognito.UserPool(this, 'WhiskeyUserPool', {
       userPoolName: `whiskey-users-${environment}`,
@@ -271,6 +303,26 @@ export class WhiskeyInfraStack extends cdk.Stack {
       retention: logRetention,
       removalPolicy: logRemovalPolicy,
     });
+    const drinkLogsLogGroup = new logs.LogGroup(this, 'DrinkLogsLogGroup', {
+      logGroupName: `/whiskey/${environment}/drink-logs`,
+      retention: logRetention,
+      removalPolicy: logRemovalPolicy,
+    });
+    const drinkLogAnalyzeLogGroup = new logs.LogGroup(this, 'DrinkLogAnalyzeLogGroup', {
+      logGroupName: `/whiskey/${environment}/drink-log-analyze`,
+      retention: logRetention,
+      removalPolicy: logRemovalPolicy,
+    });
+    const drinkLogPlacesLogGroup = new logs.LogGroup(this, 'DrinkLogPlacesLogGroup', {
+      logGroupName: `/whiskey/${environment}/drink-log-places`,
+      retention: logRetention,
+      removalPolicy: logRemovalPolicy,
+    });
+    const drinkLogReconcilerLogGroup = new logs.LogGroup(this, 'DrinkLogReconcilerLogGroup', {
+      logGroupName: `/whiskey/${environment}/drink-log-reconciler`,
+      retention: logRetention,
+      removalPolicy: logRemovalPolicy,
+    });
 
     const createLambdaRole = (id: string, roleName: string, logGroup: logs.ILogGroup): iam.Role => {
       const role = new iam.Role(this, id, {
@@ -288,6 +340,26 @@ export class WhiskeyInfraStack extends cdk.Stack {
       'RankingAggregatorRole',
       `ranking-aggregator-role-${environment}`,
       rankingAggregatorLogGroup,
+    );
+    const drinkLogsRole = createLambdaRole(
+      'DrinkLogsRole',
+      `drink-logs-role-${environment}`,
+      drinkLogsLogGroup,
+    );
+    const drinkLogAnalyzeRole = createLambdaRole(
+      'DrinkLogAnalyzeRole',
+      `drink-log-analyze-role-${environment}`,
+      drinkLogAnalyzeLogGroup,
+    );
+    const drinkLogPlacesRole = createLambdaRole(
+      'DrinkLogPlacesRole',
+      `drink-log-places-role-${environment}`,
+      drinkLogPlacesLogGroup,
+    );
+    const drinkLogReconcilerRole = createLambdaRole(
+      'DrinkLogReconcilerRole',
+      `drink-log-reconciler-role-${environment}`,
+      drinkLogReconcilerLogGroup,
     );
 
     whiskeySearchTable.grantReadData(listRole);
@@ -331,6 +403,82 @@ export class WhiskeyInfraStack extends cdk.Stack {
       [REVIEW_CHANGE_COUNTER, WHISKEY_CHANGE_COUNTER],
     ));
 
+    drinkLogsTable.grantReadWriteData(drinkLogsRole);
+    whiskeySearchTable.grantReadData(drinkLogsRole);
+    drinkLogsRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject'],
+      resources: [imagesBucket.arnForObjects('tmp/*'), imagesBucket.arnForObjects('logs/*')],
+    }));
+    drinkLogsRole.addToPolicy(appStatePrefixStatement(
+      ['dynamodb:UpdateItem'],
+      [DRINKLOG_COUNTER_PREFIX, DRINKLOG_QUOTA_PREFIX],
+    ));
+    drinkLogsRole.addToPolicy(appStatePrefixStatement(
+      ['dynamodb:GetItem', 'dynamodb:UpdateItem', 'dynamodb:DeleteItem'],
+      AI_RESULT_PREFIX,
+    ));
+
+    whiskeySearchTable.grantReadData(drinkLogAnalyzeRole);
+    drinkLogAnalyzeRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['s3:GetObject'],
+      resources: [imagesBucket.arnForObjects('tmp/*')],
+    }));
+    drinkLogAnalyzeRole.addToPolicy(appStatePrefixStatement(
+      ['dynamodb:GetItem', 'dynamodb:UpdateItem'],
+      DRINKLOG_COUNTER_PREFIX,
+    ));
+    drinkLogAnalyzeRole.addToPolicy(appStatePrefixStatement(
+      ['dynamodb:UpdateItem'],
+      AI_RESULT_PREFIX,
+    ));
+
+    drinkLogPlacesRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['dynamodb:BatchGetItem'],
+      resources: [drinkLogsTable.tableArn],
+    }));
+    drinkLogPlacesRole.addToPolicy(appStatePrefixStatement(
+      ['dynamodb:GetItem', 'dynamodb:UpdateItem'],
+      DRINKLOG_COUNTER_PREFIX,
+    ));
+    placesSecret.grantRead(drinkLogPlacesRole);
+
+    drinkLogsTable.grantReadWriteData(drinkLogReconcilerRole);
+    drinkLogReconcilerRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['s3:ListBucket'],
+      resources: [imagesBucket.bucketArn],
+      conditions: { StringLike: { 's3:prefix': ['logs/*', 'tmp/*'] } },
+    }));
+    drinkLogReconcilerRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['s3:GetObject', 's3:DeleteObject'],
+      resources: [imagesBucket.arnForObjects('logs/*'), imagesBucket.arnForObjects('tmp/*')],
+    }));
+    drinkLogReconcilerRole.addToPolicy(appStatePrefixStatement(
+      ['dynamodb:UpdateItem'],
+      DRINKLOG_QUOTA_PREFIX,
+    ));
+
+    const bedrockModels: readonly BedrockModel[] = [
+      {
+        type: 'profile',
+        profileArn: `arn:aws:bedrock:${this.region}:${this.account}:inference-profile/jp.amazon.nova-2-lite-v1:0`,
+        destinationArns: [
+          'arn:aws:bedrock:ap-northeast-1::foundation-model/amazon.nova-2-lite-v1:0',
+          'arn:aws:bedrock:ap-northeast-3::foundation-model/amazon.nova-2-lite-v1:0',
+        ],
+      },
+      {
+        type: 'profile',
+        profileArn: `arn:aws:bedrock:${this.region}:${this.account}:inference-profile/jp.anthropic.claude-haiku-4-5-20251001-v1:0`,
+        destinationArns: [
+          'arn:aws:bedrock:ap-northeast-1::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0',
+          'arn:aws:bedrock:ap-northeast-3::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0',
+        ],
+      },
+    ];
+    for (const statement of bedrockInvokeStatements(bedrockModels)) {
+      drinkLogAnalyzeRole.addToPolicy(statement);
+    }
+
     const bundledPythonCode = (directory: string): lambda.AssetCode => {
       const sourceDirectory = path.join(__dirname, '..', '..', 'lambda', directory);
       return lambda.Code.fromAsset(sourceDirectory, {
@@ -363,6 +511,16 @@ export class WhiskeyInfraStack extends cdk.Stack {
       compatibleRuntimes: [lambda.Runtime.PYTHON_3_11],
       code: bundledPythonCode('common'),
     });
+
+    const authenticatedDrinkLogEnvironment = {
+      ENVIRONMENT: environment,
+      APP_STATE_TABLE: appStateTable.tableName,
+      DRINKLOGS_TABLE: drinkLogsTable.tableName,
+      IMAGES_BUCKET: imagesBucket.bucketName,
+      ALLOWED_ORIGINS: allowedOrigins.join(','),
+      COGNITO_USER_POOL_ID: userPool.userPoolId,
+      COGNITO_CLIENT_ID: userPoolClient.userPoolClientId,
+    };
 
     const whiskeyListLambda = new lambda.Function(this, 'WhiskeyListFunction', {
       functionName: `whiskey-list-${environment}`,
@@ -454,6 +612,100 @@ export class WhiskeyInfraStack extends cdk.Stack {
       },
     });
 
+    const drinkLogsLambda = new lambda.Function(this, 'DrinkLogsFunction', {
+      functionName: `drink-logs-${environment}`,
+      runtime: lambda.Runtime.PYTHON_3_11,
+      architecture: lambda.Architecture.X86_64,
+      handler: 'index.lambda_handler',
+      code: bundledPythonCode('drink-logs'),
+      layers: [commonLayer],
+      timeout: cdk.Duration.seconds(25),
+      memorySize: 1024,
+      reservedConcurrentExecutions: envConfig.lambdaReservedConcurrency?.drinkLogs,
+      role: drinkLogsRole,
+      logGroup: drinkLogsLogGroup,
+      environment: {
+        ...authenticatedDrinkLogEnvironment,
+        WHISKEY_SEARCH_TABLE: whiskeySearchTable.tableName,
+        UPLOAD_USER_DAILY_LIMIT: '30',
+        UPLOAD_GLOBAL_DAILY_LIMIT: '100',
+        CREATE_USER_DAILY_LIMIT: '30',
+        CREATE_GLOBAL_DAILY_LIMIT: '100',
+        STORAGE_USER_LIMIT: '2000',
+        STORAGE_GLOBAL_LIMIT: '20000',
+        IMAGE_MAX_BYTES: '1572864',
+        UPLOAD_MAX_BYTES: '3670016',
+      },
+    });
+
+    const drinkLogAnalyzeLambda = new lambda.Function(this, 'DrinkLogAnalyzeFunction', {
+      functionName: `drink-log-analyze-${environment}`,
+      runtime: lambda.Runtime.PYTHON_3_11,
+      architecture: lambda.Architecture.X86_64,
+      handler: 'index.lambda_handler',
+      code: bundledPythonCode('drink-log-analyze'),
+      layers: [commonLayer],
+      timeout: cdk.Duration.seconds(28),
+      memorySize: 1024,
+      reservedConcurrentExecutions: envConfig.lambdaReservedConcurrency?.analyze,
+      role: drinkLogAnalyzeRole,
+      logGroup: drinkLogAnalyzeLogGroup,
+      environment: {
+        ...authenticatedDrinkLogEnvironment,
+        WHISKEY_SEARCH_TABLE: whiskeySearchTable.tableName,
+        BEDROCK_MODEL_ID: 'jp.amazon.nova-2-lite-v1:0',
+        BEDROCK_MODEL_ALLOWLIST: bedrockModelAllowlist(bedrockModels).join(','),
+        ANALYZE_USER_DAILY_LIMIT: '20',
+        ANALYZE_GLOBAL_DAILY_LIMIT: '50',
+        ANALYZE_GLOBAL_MONTHLY_LIMIT: '1000',
+        IMAGE_MAX_BYTES: '1572864',
+        UPLOAD_MAX_BYTES: '3670016',
+      },
+    });
+
+    const drinkLogPlacesLambda = new lambda.Function(this, 'DrinkLogPlacesFunction', {
+      functionName: `drink-log-places-${environment}`,
+      runtime: lambda.Runtime.PYTHON_3_11,
+      architecture: lambda.Architecture.X86_64,
+      handler: 'places.lambda_handler',
+      code: bundledPythonCode('drink-log-analyze'),
+      layers: [commonLayer],
+      timeout: cdk.Duration.seconds(10),
+      memorySize: 256,
+      reservedConcurrentExecutions: envConfig.lambdaReservedConcurrency?.places,
+      role: drinkLogPlacesRole,
+      logGroup: drinkLogPlacesLogGroup,
+      environment: {
+        ...authenticatedDrinkLogEnvironment,
+        PLACES_USER_DAILY_LIMIT: '30',
+        PLACES_GLOBAL_DAILY_LIMIT: '15',
+        PLACES_GLOBAL_MONTHLY_LIMIT: '150',
+        PLACES_SECRET_NAME: `whiskey-places-${environment}`,
+      },
+    });
+
+    const drinkLogReconcilerLambda = new lambda.Function(this, 'DrinkLogReconcilerFunction', {
+      functionName: `drink-log-reconciler-${environment}`,
+      runtime: lambda.Runtime.PYTHON_3_11,
+      architecture: lambda.Architecture.X86_64,
+      handler: 'reconciler.lambda_handler',
+      code: bundledPythonCode('drink-logs'),
+      layers: [commonLayer],
+      timeout: cdk.Duration.seconds(300),
+      memorySize: 512,
+      reservedConcurrentExecutions: 1,
+      role: drinkLogReconcilerRole,
+      logGroup: drinkLogReconcilerLogGroup,
+      environment: {
+        ENVIRONMENT: environment,
+        DRINKLOGS_TABLE: drinkLogsTable.tableName,
+        IMAGES_BUCKET: imagesBucket.bucketName,
+        APP_STATE_TABLE: appStateTable.tableName,
+        RECONCILE_AGE_HOURS: '48',
+      },
+    });
+    this.drinkLogReconcilerFunctionName = drinkLogReconcilerLambda.functionName;
+
     const rankingScheduleDlq = new sqs.Queue(this, 'RankingScheduleDlq', {
       queueName: `ranking-aggregator-dlq-${environment}`,
       encryption: sqs.QueueEncryption.SQS_MANAGED,
@@ -498,6 +750,52 @@ export class WhiskeyInfraStack extends cdk.Stack {
     });
     rankingSchedule.addDependency(rankingScheduleGroup);
 
+    const drinkLogReconcilerScheduleDlq = new sqs.Queue(this, 'DrinkLogReconcilerScheduleDlq', {
+      queueName: `drink-log-reconciler-dlq-${environment}`,
+      encryption: sqs.QueueEncryption.SQS_MANAGED,
+      retentionPeriod: cdk.Duration.days(14),
+      removalPolicy,
+    });
+    const drinkLogReconcilerScheduleGroup = new scheduler.CfnScheduleGroup(
+      this,
+      'DrinkLogReconcilerScheduleGroup',
+      { name: `drink-log-reconciler-${environment}` },
+    );
+    const drinkLogReconcilerScheduleRole = new iam.Role(this, 'DrinkLogReconcilerScheduleTargetRole', {
+      roleName: `drink-log-reconciler-scheduler-target-role-${environment}`,
+      assumedBy: new iam.ServicePrincipal('scheduler.amazonaws.com', {
+        conditions: {
+          ArnEquals: { 'aws:SourceArn': drinkLogReconcilerScheduleGroup.attrArn },
+          StringEquals: { 'aws:SourceAccount': this.account },
+        },
+      }),
+    });
+    drinkLogReconcilerScheduleRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['lambda:InvokeFunction'],
+      resources: [drinkLogReconcilerLambda.functionArn],
+    }));
+    drinkLogReconcilerScheduleRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['sqs:SendMessage'],
+      resources: [drinkLogReconcilerScheduleDlq.queueArn],
+    }));
+    const drinkLogReconcilerSchedule = new scheduler.CfnSchedule(this, 'DrinkLogReconcilerSchedule', {
+      name: `drink-log-reconciler-daily-${environment}`,
+      groupName: drinkLogReconcilerScheduleGroup.name,
+      scheduleExpression: 'rate(1 day)',
+      flexibleTimeWindow: { mode: 'OFF' },
+      target: {
+        arn: drinkLogReconcilerLambda.functionArn,
+        roleArn: drinkLogReconcilerScheduleRole.roleArn,
+        input: '{}',
+        deadLetterConfig: { arn: drinkLogReconcilerScheduleDlq.queueArn },
+        retryPolicy: {
+          maximumEventAgeInSeconds: 3600,
+          maximumRetryAttempts: 3,
+        },
+      },
+    });
+    drinkLogReconcilerSchedule.addDependency(drinkLogReconcilerScheduleGroup);
+
     let apiCertificate: acm.Certificate | undefined;
     if (enableCustomDomain) {
       apiCertificate = new acm.Certificate(this, 'ApiCertificate', {
@@ -516,6 +814,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
         loggingLevel: apigateway.MethodLoggingLevel.INFO,
         dataTraceEnabled: false,
         metricsEnabled: true,
+        // API Gateway throttles are best-effort protections, not guaranteed ceilings; AppState counters enforce limits.
         methodOptions: {
           '/api/whiskeys/GET': { throttlingRateLimit: 5, throttlingBurstLimit: 10 },
           '/api/whiskeys/search/GET': { throttlingRateLimit: 5, throttlingBurstLimit: 10 },
@@ -523,6 +822,15 @@ export class WhiskeyInfraStack extends cdk.Stack {
           '/api/whiskeys/search/suggest/GET': { throttlingRateLimit: 5, throttlingBurstLimit: 10 },
           '/api/whiskeys/ranking/GET': { throttlingRateLimit: 5, throttlingBurstLimit: 10 },
           '/api/reviews/POST': { throttlingRateLimit: 1, throttlingBurstLimit: 5 },
+          '/api/drink-logs/upload-url/POST': { throttlingRateLimit: 2, throttlingBurstLimit: 5 },
+          '/api/drink-logs/analyze/POST': { throttlingRateLimit: 2, throttlingBurstLimit: 5 },
+          '/api/drink-logs/places/POST': { throttlingRateLimit: 2, throttlingBurstLimit: 5 },
+          '/api/drink-logs/places/resolve/POST': { throttlingRateLimit: 2, throttlingBurstLimit: 5 },
+          '/api/drink-logs/POST': { throttlingRateLimit: 2, throttlingBurstLimit: 5 },
+          '/api/drink-logs/GET': { throttlingRateLimit: 5, throttlingBurstLimit: 10 },
+          '/api/drink-logs/{id}/GET': { throttlingRateLimit: 5, throttlingBurstLimit: 10 },
+          '/api/drink-logs/{id}/PUT': { throttlingRateLimit: 2, throttlingBurstLimit: 5 },
+          '/api/drink-logs/{id}/DELETE': { throttlingRateLimit: 2, throttlingBurstLimit: 5 },
         },
       },
       defaultCorsPreflightOptions: {
@@ -598,6 +906,31 @@ export class WhiskeyInfraStack extends cdk.Stack {
     reviewByIdResource.addMethod('PUT', integration(reviewsLambda), authenticated);
     reviewByIdResource.addMethod('DELETE', integration(reviewsLambda), authenticated);
 
+    const drinkLogsResource = apiResource.addResource('drink-logs');
+    drinkLogsResource.addMethod('POST', integration(drinkLogsLambda), authenticated);
+    drinkLogsResource.addMethod('GET', integration(drinkLogsLambda), authenticated);
+    drinkLogsResource.addResource('upload-url').addMethod(
+      'POST',
+      integration(drinkLogsLambda),
+      authenticated,
+    );
+    drinkLogsResource.addResource('analyze').addMethod(
+      'POST',
+      integration(drinkLogAnalyzeLambda),
+      authenticated,
+    );
+    const drinkLogPlacesResource = drinkLogsResource.addResource('places');
+    drinkLogPlacesResource.addMethod('POST', integration(drinkLogPlacesLambda), authenticated);
+    drinkLogPlacesResource.addResource('resolve').addMethod(
+      'POST',
+      integration(drinkLogPlacesLambda),
+      authenticated,
+    );
+    const drinkLogByIdResource = drinkLogsResource.addResource('{id}');
+    drinkLogByIdResource.addMethod('GET', integration(drinkLogsLambda), authenticated);
+    drinkLogByIdResource.addMethod('PUT', integration(drinkLogsLambda), authenticated);
+    drinkLogByIdResource.addMethod('DELETE', integration(drinkLogsLambda), authenticated);
+
     if (enableCustomDomain) {
       new route53.ARecord(this, 'DomainARecord', {
         zone: props.hostedZone!,
@@ -610,12 +943,6 @@ export class WhiskeyInfraStack extends cdk.Stack {
         target: route53.RecordTarget.fromAlias(new targets.ApiGateway(api)),
       });
     }
-
-    const placesSecret = secretsmanager.Secret.fromSecretNameV2(
-      this,
-      'PlacesSecret',
-      `whiskey-places-${environment}`,
-    );
 
     const hostedUiHostname = `${envConfig.cognitoDomainPrefix}.auth.${this.region}.amazoncognito.com`;
     new cdk.CfnOutput(this, 'UserPoolId', { value: userPool.userPoolId });
@@ -631,15 +958,24 @@ export class WhiskeyInfraStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'WhiskeysTableName', { value: whiskeySearchTable.tableName });
     new cdk.CfnOutput(this, 'ReviewsTableName', { value: reviewsTable.tableName });
     new cdk.CfnOutput(this, 'AppStateTableName', { value: appStateTable.tableName });
+    new cdk.CfnOutput(this, 'DrinkLogsTableName', { value: drinkLogsTable.tableName });
     new cdk.CfnOutput(this, 'WhiskeyListRoleArn', { value: listRole.roleArn });
     new cdk.CfnOutput(this, 'WhiskeySearchRoleArn', { value: searchRole.roleArn });
     new cdk.CfnOutput(this, 'ReviewsRoleArn', { value: reviewsRole.roleArn });
     new cdk.CfnOutput(this, 'RankingAggregatorRoleArn', { value: rankingAggregatorRole.roleArn });
+    new cdk.CfnOutput(this, 'DrinkLogsRoleArn', { value: drinkLogsRole.roleArn });
+    new cdk.CfnOutput(this, 'DrinkLogAnalyzeRoleArn', { value: drinkLogAnalyzeRole.roleArn });
+    new cdk.CfnOutput(this, 'DrinkLogPlacesRoleArn', { value: drinkLogPlacesRole.roleArn });
+    new cdk.CfnOutput(this, 'DrinkLogReconcilerRoleArn', { value: drinkLogReconcilerRole.roleArn });
     new cdk.CfnOutput(this, 'PlacesSecretArn', { value: placesSecret.secretArn });
     new cdk.CfnOutput(this, 'WhiskeyListLambdaArn', { value: whiskeyListLambda.functionArn });
     new cdk.CfnOutput(this, 'WhiskeySearchLambdaArn', { value: whiskeySearchLambda.functionArn });
     new cdk.CfnOutput(this, 'ReviewsLambdaArn', { value: reviewsLambda.functionArn });
     new cdk.CfnOutput(this, 'RankingAggregatorLambdaArn', { value: rankingAggregatorLambda.functionArn });
+    new cdk.CfnOutput(this, 'DrinkLogsLambdaArn', { value: drinkLogsLambda.functionArn });
+    new cdk.CfnOutput(this, 'DrinkLogAnalyzeLambdaArn', { value: drinkLogAnalyzeLambda.functionArn });
+    new cdk.CfnOutput(this, 'DrinkLogPlacesLambdaArn', { value: drinkLogPlacesLambda.functionArn });
+    new cdk.CfnOutput(this, 'DrinkLogReconcilerLambdaArn', { value: drinkLogReconcilerLambda.functionArn });
     new cdk.CfnOutput(this, 'ApiGatewayRestApiId', { value: api.restApiId });
     new cdk.CfnOutput(this, 'ApiGatewayUrl', { value: api.url });
 

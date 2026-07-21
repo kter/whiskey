@@ -8,7 +8,9 @@ import { CertificateStack } from '../lib/certificate-stack';
 import { DNS_ACCOUNT, DnsStack } from '../lib/dns-stack';
 import { GithubOidcStack } from '../lib/github-oidc-stack';
 import { NotificationsStack } from '../lib/notifications-stack';
+import { ObservabilityStack } from '../lib/observability-stack';
 import { WhiskeyInfraStack } from '../lib/whiskey-infra-stack';
+import { bedrockInvokeStatements } from '../lib/bedrock-models';
 
 type Resource = {
   Type: string;
@@ -102,6 +104,13 @@ function rolePolicy(json: Synthesized, roleName: string): Record<string, any>[] 
   return policy![1].Properties?.PolicyDocument.Statement as Record<string, any>[];
 }
 
+function lambdaByName(json: Synthesized, functionName: string): Resource {
+  const entry = resourcesOf(json, 'AWS::Lambda::Function')
+    .find(([, fn]) => fn.Properties?.FunctionName === functionName);
+  expect(entry).toBeDefined();
+  return entry![1];
+}
+
 describe('stateful resource lifecycle and storage security', () => {
   test('dev deletes and prd retains stateful resources', () => {
     const dev = createAppStack('dev').json;
@@ -153,6 +162,20 @@ describe('stateful resource lifecycle and storage security', () => {
     }
   });
 
+  test('images bucket expires only tmp objects and enables the two filtered request metrics', () => {
+    const { json } = createAppStack('dev');
+    const images = resourcesOf(json, 'AWS::S3::Bucket')
+      .find(([, bucket]) => bucket.Properties?.BucketName === `whiskey-images-dev-${DEV_ACCOUNT}`)![1];
+    expect(images.Properties?.VersioningConfiguration).toBeUndefined();
+    expect(images.Properties?.LifecycleConfiguration.Rules).toEqual([
+      expect.objectContaining({ Prefix: 'tmp/', ExpirationInDays: 2, Status: 'Enabled' }),
+    ]);
+    expect(images.Properties?.MetricsConfigurations).toEqual([
+      { Id: 'tmp', Prefix: 'tmp/' },
+      { Id: 'logs', Prefix: 'logs/' },
+    ]);
+  });
+
   test('source has no stale production comparison or lookup escape hatches', () => {
     const sourceDirs = ['lib', 'bin', 'config'].map((directory) => path.join(__dirname, '..', directory));
     const source = sourceDirs.flatMap((directory) =>
@@ -173,6 +196,15 @@ describe('API Gateway authentication, CORS, and defenses', () => {
     'GET /api/reviews/{id}',
     'PUT /api/reviews/{id}',
     'DELETE /api/reviews/{id}',
+    'POST /api/drink-logs/upload-url',
+    'POST /api/drink-logs/analyze',
+    'POST /api/drink-logs/places',
+    'POST /api/drink-logs/places/resolve',
+    'POST /api/drink-logs',
+    'GET /api/drink-logs',
+    'GET /api/drink-logs/{id}',
+    'PUT /api/drink-logs/{id}',
+    'DELETE /api/drink-logs/{id}',
   ];
   const publicRoutes = [
     'GET /api/whiskeys',
@@ -193,6 +225,28 @@ describe('API Gateway authentication, CORS, and defenses', () => {
       expect(methods[route]?.AuthorizationType).toBe('NONE');
       expect(methods[route]?.AuthorizerId).toBeUndefined();
     }
+  });
+
+  test('drink log routes are wired to the intended function assets', () => {
+    const { json } = createAppStack('dev');
+    const methods = apiMethods(json);
+    const functionLogicalId = (name: string): string => resourcesOf(json, 'AWS::Lambda::Function')
+      .find(([, fn]) => fn.Properties?.FunctionName === name)![0];
+    const expectations: Record<string, string> = {
+      'POST /api/drink-logs/upload-url': 'drink-logs-dev',
+      'POST /api/drink-logs/analyze': 'drink-log-analyze-dev',
+      'POST /api/drink-logs/places': 'drink-log-places-dev',
+      'POST /api/drink-logs/places/resolve': 'drink-log-places-dev',
+      'POST /api/drink-logs': 'drink-logs-dev',
+      'GET /api/drink-logs': 'drink-logs-dev',
+      'GET /api/drink-logs/{id}': 'drink-logs-dev',
+      'PUT /api/drink-logs/{id}': 'drink-logs-dev',
+      'DELETE /api/drink-logs/{id}': 'drink-logs-dev',
+    };
+    for (const [route, functionName] of Object.entries(expectations)) {
+      expect(JSON.stringify(methods[route]?.Integration.Uri)).toContain(functionLogicalId(functionName));
+    }
+    expect(methods['GET /api/drink-logs/places']).toBeUndefined();
   });
 
   test('authorizer pins aud to the exact app client ID', () => {
@@ -230,6 +284,18 @@ describe('API Gateway authentication, CORS, and defenses', () => {
     expect(settings).toEqual(expect.arrayContaining([
       expect.objectContaining({ HttpMethod: 'GET', ThrottlingRateLimit: 5, ThrottlingBurstLimit: 10 }),
       expect.objectContaining({ HttpMethod: 'POST', ThrottlingRateLimit: 1, ThrottlingBurstLimit: 5 }),
+      expect.objectContaining({
+        ResourcePath: '/~1api~1drink-logs~1analyze',
+        HttpMethod: 'POST',
+        ThrottlingRateLimit: 2,
+        ThrottlingBurstLimit: 5,
+      }),
+      expect.objectContaining({
+        ResourcePath: '/~1api~1drink-logs~1{id}',
+        HttpMethod: 'GET',
+        ThrottlingRateLimit: 5,
+        ThrottlingBurstLimit: 10,
+      }),
     ]));
     const methods = Object.values(apiMethods(json));
     expect(methods).toHaveLength(authenticated.length + publicRoutes.length);
@@ -341,6 +407,94 @@ describe('least-privilege Lambda roles', () => {
         ?.includes('whiskey-change-counter'))!;
     expect(actions(aggregatorCounters)).toEqual(['dynamodb:GetItem']);
   });
+
+  test('drink log roles isolate AppState keyspaces and share AI results only as designed', () => {
+    const json = createAppStack('dev').json;
+    const policies = {
+      logs: rolePolicy(json, 'drink-logs-role-dev'),
+      analyze: rolePolicy(json, 'drink-log-analyze-role-dev'),
+      places: rolePolicy(json, 'drink-log-places-role-dev'),
+      reconciler: rolePolicy(json, 'drink-log-reconciler-role-dev'),
+    };
+    const appStatePatterns = (policy: Record<string, any>[], action: string): string[] =>
+      policy
+        .filter((statement) => actions(statement).includes(action)
+          && statement.Condition?.['ForAllValues:StringLike']?.['dynamodb:LeadingKeys'])
+        .flatMap((statement) => statement.Condition['ForAllValues:StringLike']['dynamodb:LeadingKeys']);
+
+    expect(appStatePatterns(policies.logs, 'dynamodb:UpdateItem')).toEqual(expect.arrayContaining([
+      'drinklog-counter#*', 'drinklog-quota#*', 'ai-result:*',
+    ]));
+    expect(appStatePatterns(policies.logs, 'dynamodb:GetItem')).toEqual(['ai-result:*']);
+    expect(appStatePatterns(policies.logs, 'dynamodb:DeleteItem')).toEqual(['ai-result:*']);
+    expect(appStatePatterns(policies.analyze, 'dynamodb:UpdateItem')).toEqual(expect.arrayContaining([
+      'drinklog-counter#*', 'ai-result:*',
+    ]));
+    expect(appStatePatterns(policies.analyze, 'dynamodb:GetItem')).toEqual(['drinklog-counter#*']);
+    expect(appStatePatterns(policies.places, 'dynamodb:UpdateItem')).toEqual(['drinklog-counter#*']);
+    expect(appStatePatterns(policies.reconciler, 'dynamodb:UpdateItem')).toEqual(['drinklog-quota#*']);
+
+    for (const policy of Object.values(policies)) {
+      for (const statement of policy.filter((candidate) => candidate.Condition?.['ForAllValues:StringLike'])) {
+        expect(statement.Condition.Null).toEqual({ 'dynamodb:LeadingKeys': 'false' });
+      }
+    }
+    expect(appStatePatterns(policies.analyze, 'dynamodb:UpdateItem')).not.toContain('drinklog-quota#*');
+    expect(appStatePatterns(policies.places, 'dynamodb:UpdateItem')).not.toContain('ai-result:*');
+    expect(appStatePatterns(policies.reconciler, 'dynamodb:UpdateItem')).not.toContain('drinklog-counter#*');
+    expect(appStatePatterns(policies.logs, 'dynamodb:UpdateItem')).not.toContain('ranking-cache/*');
+  });
+
+  test('Places secret belongs only to Places and reconciler list access covers both image prefixes', () => {
+    const json = createAppStack('dev').json;
+    const analyze = rolePolicy(json, 'drink-log-analyze-role-dev');
+    const places = rolePolicy(json, 'drink-log-places-role-dev');
+    const reconciler = rolePolicy(json, 'drink-log-reconciler-role-dev');
+    expect(places.some((statement) => actions(statement).includes('secretsmanager:GetSecretValue'))).toBe(true);
+    expect(analyze.some((statement) => actions(statement).some((action) => action.startsWith('secretsmanager:'))))
+      .toBe(false);
+    expect(places.some((statement) => actions(statement).includes('dynamodb:BatchGetItem'))).toBe(true);
+    const list = reconciler.find((statement) => actions(statement).includes('s3:ListBucket'))!;
+    expect(list.Condition).toEqual({ StringLike: { 's3:prefix': ['logs/*', 'tmp/*'] } });
+    expect(reconciler.some((statement) => actions(statement).includes('s3:PutObject'))).toBe(false);
+  });
+
+  test('Bedrock permissions match both approved profiles and destinations without discovery access', () => {
+    const json = createAppStack('dev').json;
+    const analyze = rolePolicy(json, 'drink-log-analyze-role-dev');
+    const bedrock = analyze.filter((statement) => actions(statement).includes('bedrock:InvokeModel'));
+    const profileArns = [
+      `arn:aws:bedrock:ap-northeast-1:${DEV_ACCOUNT}:inference-profile/jp.amazon.nova-2-lite-v1:0`,
+      `arn:aws:bedrock:ap-northeast-1:${DEV_ACCOUNT}:inference-profile/jp.anthropic.claude-haiku-4-5-20251001-v1:0`,
+    ];
+    const destinationArns = [
+      'arn:aws:bedrock:ap-northeast-1::foundation-model/amazon.nova-2-lite-v1:0',
+      'arn:aws:bedrock:ap-northeast-3::foundation-model/amazon.nova-2-lite-v1:0',
+      'arn:aws:bedrock:ap-northeast-1::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0',
+      'arn:aws:bedrock:ap-northeast-3::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0',
+    ];
+    expect(bedrock).toHaveLength(2);
+    expect(bedrock[0].Resource).toEqual(profileArns);
+    expect(bedrock[1].Resource).toEqual(destinationArns);
+    expect(bedrock[1].Condition).toEqual({
+      StringEquals: { 'bedrock:InferenceProfileArn': profileArns },
+    });
+    expect(JSON.stringify(analyze)).not.toContain('bedrock:GetInferenceProfile');
+    expect(JSON.stringify(bedrock)).not.toContain('*');
+    expect(JSON.stringify(bedrock)).not.toContain('foundation-model/unapproved');
+  });
+
+  test('Bedrock statement builder supports exact direct model grants', () => {
+    const directArn = 'arn:aws:bedrock:ap-northeast-1::foundation-model/example.direct-v1:0';
+    const statements = bedrockInvokeStatements([{ type: 'direct', modelArn: directArn }])
+      .map((statement) => statement.toStatementJson());
+    expect(statements).toEqual([{
+      Effect: 'Allow',
+      Action: 'bedrock:InvokeModel',
+      Resource: directArn,
+    }]);
+    expect(JSON.stringify(statements)).not.toContain('inference-profile');
+  });
 });
 
 describe('tables, logs, and removed infrastructure', () => {
@@ -362,9 +516,30 @@ describe('tables, logs, and removed infrastructure', () => {
     template.resourceCountIs('AWS::Route53::HostedZone', 0);
   });
 
+  test('DrinkLogs uses the user datetime GSI and intentionally has no TTL', () => {
+    const { json } = createAppStack('dev');
+    const table = resourcesOf(json, 'AWS::DynamoDB::Table')
+      .find(([, resource]) => resource.Properties?.TableName === 'DrinkLogs-dev')![1];
+    expect(table.Properties).toEqual(expect.objectContaining({
+      BillingMode: 'PAY_PER_REQUEST',
+      KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
+      GlobalSecondaryIndexes: [expect.objectContaining({
+        IndexName: 'UserDatetimeIndex',
+        KeySchema: [
+          { AttributeName: 'user_id', KeyType: 'HASH' },
+          { AttributeName: 'datetime', KeyType: 'RANGE' },
+        ],
+      })],
+    }));
+    expect(table.Properties?.TimeToLiveSpecification).toBeUndefined();
+  });
+
   test('every function uses its dedicated /whiskey/{env}/ log group', () => {
     const { template } = createAppStack('dev');
-    for (const name of ['whiskeys-list', 'whiskeys-search', 'reviews', 'ranking-aggregator']) {
+    for (const name of [
+      'whiskeys-list', 'whiskeys-search', 'reviews', 'ranking-aggregator',
+      'drink-logs', 'drink-log-analyze', 'drink-log-places', 'drink-log-reconciler',
+    ]) {
       template.hasResourceProperties('AWS::Logs::LogGroup', {
         LogGroupName: `/whiskey/dev/${name}`,
       });
@@ -409,6 +584,68 @@ describe('Lambda bundling and shared layer', () => {
     expect(resourcesOf(json, 'AWS::Lambda::LayerVersion')).toHaveLength(1);
   });
 
+  test('drink log functions pin handlers, sizing, concurrency, and cost-matrix environment', () => {
+    const { json } = createAppStack('dev');
+    const expected = [
+      ['drink-logs-dev', 'index.lambda_handler', 1024, 25, undefined],
+      ['drink-log-analyze-dev', 'index.lambda_handler', 1024, 28, 2],
+      ['drink-log-places-dev', 'places.lambda_handler', 256, 10, 3],
+      ['drink-log-reconciler-dev', 'reconciler.lambda_handler', 512, 300, 1],
+    ] as const;
+    for (const [name, handler, memory, timeout, concurrency] of expected) {
+      const fn = lambdaByName(json, name);
+      expect(fn.Properties).toEqual(expect.objectContaining({
+        Runtime: 'python3.11',
+        Architectures: ['x86_64'],
+        Handler: handler,
+        MemorySize: memory,
+        Timeout: timeout,
+      }));
+      expect(fn.Properties?.Layers).toHaveLength(1);
+      expect(fn.Properties?.ReservedConcurrentExecutions).toBe(concurrency);
+    }
+
+    const logsEnv = lambdaByName(json, 'drink-logs-dev').Properties?.Environment.Variables;
+    expect(logsEnv).toEqual(expect.objectContaining({
+      ENVIRONMENT: 'dev',
+      UPLOAD_USER_DAILY_LIMIT: '30',
+      UPLOAD_GLOBAL_DAILY_LIMIT: '100',
+      CREATE_USER_DAILY_LIMIT: '30',
+      CREATE_GLOBAL_DAILY_LIMIT: '100',
+      STORAGE_USER_LIMIT: '2000',
+      STORAGE_GLOBAL_LIMIT: '20000',
+      IMAGE_MAX_BYTES: '1572864',
+      UPLOAD_MAX_BYTES: '3670016',
+    }));
+    const analyzeEnv = lambdaByName(json, 'drink-log-analyze-dev').Properties?.Environment.Variables;
+    expect(analyzeEnv).toEqual(expect.objectContaining({
+      BEDROCK_MODEL_ID: 'jp.amazon.nova-2-lite-v1:0',
+      BEDROCK_MODEL_ALLOWLIST: 'jp.amazon.nova-2-lite-v1:0,jp.anthropic.claude-haiku-4-5-20251001-v1:0',
+      ANALYZE_USER_DAILY_LIMIT: '20',
+      ANALYZE_GLOBAL_DAILY_LIMIT: '50',
+      ANALYZE_GLOBAL_MONTHLY_LIMIT: '1000',
+    }));
+    const placesEnv = lambdaByName(json, 'drink-log-places-dev').Properties?.Environment.Variables;
+    expect(placesEnv).toEqual(expect.objectContaining({
+      PLACES_USER_DAILY_LIMIT: '30',
+      PLACES_GLOBAL_DAILY_LIMIT: '15',
+      PLACES_GLOBAL_MONTHLY_LIMIT: '150',
+      PLACES_SECRET_NAME: 'whiskey-places-dev',
+    }));
+    for (const env of [logsEnv, analyzeEnv, placesEnv]) {
+      expect(env).toEqual(expect.objectContaining({
+        APP_STATE_TABLE: expect.anything(),
+        DRINKLOGS_TABLE: expect.anything(),
+        IMAGES_BUCKET: expect.anything(),
+        ALLOWED_ORIGINS: expect.stringContaining('https://dev.whiskeybar.site'),
+        COGNITO_USER_POOL_ID: expect.anything(),
+        COGNITO_CLIENT_ID: expect.anything(),
+      }));
+    }
+    expect(lambdaByName(json, 'drink-log-reconciler-dev').Properties?.Environment.Variables)
+      .toEqual(expect.objectContaining({ RECONCILE_AGE_HOURS: '48' }));
+  });
+
   test('aggregator reserved concurrency is added only when configured', () => {
     const previous = environments.dev.lambdaReservedConcurrency;
     environments.dev.lambdaReservedConcurrency = { aggregator: 2 };
@@ -438,6 +675,39 @@ describe('Lambda bundling and shared layer', () => {
       expect(assetHash).toBeDefined();
       expect(fs.existsSync(path.join(outdir, `asset.${assetHash}`, 'index.py'))).toBe(true);
     }
+  });
+
+  test('local bundling contains every deployed drink log handler module', () => {
+    const { json, outdir } = createAppStack('dev');
+    const expected = [
+      ['drink-logs-dev', 'index.py'],
+      ['drink-log-analyze-dev', 'index.py'],
+      ['drink-log-places-dev', 'places.py'],
+      ['drink-log-reconciler-dev', 'reconciler.py'],
+    ];
+    for (const [functionName, handlerFile] of expected) {
+      const fn = lambdaByName(json, functionName);
+      const assetHash = JSON.stringify(fn.Properties?.Code).match(/[a-f0-9]{64}/)?.[0];
+      expect(assetHash).toBeDefined();
+      expect(fs.existsSync(path.join(outdir, `asset.${assetHash}`, handlerFile))).toBe(true);
+    }
+  });
+
+  test('drink log dependencies are pinned only in the new functions, not the shared layer', () => {
+    const lambdaRoot = path.join(__dirname, '..', '..', 'lambda');
+    const common = fs.readFileSync(path.join(lambdaRoot, 'common', 'requirements.txt'), 'utf8');
+    const logs = fs.readFileSync(path.join(lambdaRoot, 'drink-logs', 'requirements.txt'), 'utf8');
+    const analyze = fs.readFileSync(path.join(lambdaRoot, 'drink-log-analyze', 'requirements.txt'), 'utf8');
+    for (const requirement of ['boto3==1.43.4', 'botocore==1.43.4']) {
+      // The new functions bundle their own SDK; the shared layer must NOT pin boto3
+      // so the frozen list/search/reviews/ranking functions keep runtime-provided boto3.
+      expect(common).not.toContain(requirement);
+      expect(logs).toContain(requirement);
+      expect(analyze).toContain(requirement);
+    }
+    expect(logs).toContain('Pillow==11.0.0');
+    expect(analyze).toContain('Pillow==11.0.0');
+    expect(analyze).toContain('requests==2.32.5');
   });
 });
 
@@ -479,6 +749,37 @@ describe('scheduled ranking aggregation', () => {
     expect(targetPolicy.map((statement) => actions(statement))).toEqual(
       expect.arrayContaining([['lambda:InvokeFunction'], ['sqs:SendMessage']]),
     );
+  });
+
+  test('drink log reconciler runs daily with its own safe target role and DLQ', () => {
+    const { json, template } = createAppStack('dev');
+    template.hasResourceProperties('AWS::Scheduler::Schedule', {
+      Name: 'drink-log-reconciler-daily-dev',
+      GroupName: 'drink-log-reconciler-dev',
+      ScheduleExpression: 'rate(1 day)',
+      FlexibleTimeWindow: { Mode: 'OFF' },
+      Target: Match.objectLike({
+        DeadLetterConfig: { Arn: Match.anyValue() },
+        RetryPolicy: { MaximumEventAgeInSeconds: 3600, MaximumRetryAttempts: 3 },
+      }),
+    });
+    template.hasResourceProperties('AWS::SQS::Queue', {
+      QueueName: 'drink-log-reconciler-dlq-dev',
+      MessageRetentionPeriod: 1209600,
+      SqsManagedSseEnabled: true,
+    });
+    const group = resourcesOf(json, 'AWS::Scheduler::ScheduleGroup')
+      .find(([, resource]) => resource.Properties?.Name === 'drink-log-reconciler-dev')!;
+    const role = resourcesOf(json, 'AWS::IAM::Role')
+      .find(([, resource]) => resource.Properties?.RoleName === 'drink-log-reconciler-scheduler-target-role-dev')![1];
+    expect(role.Properties?.AssumeRolePolicyDocument.Statement[0].Condition).toEqual({
+      ArnEquals: { 'aws:SourceArn': { 'Fn::GetAtt': [group[0], 'Arn'] } },
+      StringEquals: { 'aws:SourceAccount': DEV_ACCOUNT },
+    });
+    expect(rolePolicy(json, 'drink-log-reconciler-scheduler-target-role-dev')
+      .map((statement) => actions(statement))).toEqual(expect.arrayContaining([
+      ['lambda:InvokeFunction'], ['sqs:SendMessage'],
+    ]));
   });
 });
 
@@ -588,9 +889,75 @@ describe('split stacks', () => {
     expect(dependencies).toContain(topicPolicyLogicalId);
   });
 
+  test('observability stack contains only Tokyo alarms with filtered S3 and reconciler metrics', () => {
+    const app = new cdk.App();
+    const stack = new ObservabilityStack(app, 'Observability', {
+      env: { account: DEV_ACCOUNT, region: 'ap-northeast-1' },
+      environment: 'dev',
+      notificationTopicArn: `arn:aws:sns:ap-northeast-1:${DEV_ACCOUNT}:alerts`,
+      imagesBucketName: `whiskey-images-dev-${DEV_ACCOUNT}`,
+      reconcilerFunctionName: 'drink-log-reconciler-dev',
+    });
+    const synthesized = Template.fromStack(stack).toJSON() as Synthesized & { templateFile?: string };
+    const { templateFile: _ignored, ...json } = synthesized;
+    expect(resourcesOf(json, 'AWS::CloudWatch::Alarm')).toHaveLength(3);
+    expect(resourcesOf(json, 'AWS::Route53::HostedZone')).toHaveLength(0);
+    expect(resourcesOf(json, 'AWS::Lambda::Function')).toHaveLength(0);
+    const alarms = resourcesOf(json, 'AWS::CloudWatch::Alarm').map(([, alarm]) => alarm.Properties!);
+    expect(alarms).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        MetricName: 'PostRequests',
+        Namespace: 'AWS/S3',
+        TreatMissingData: 'notBreaching',
+        Dimensions: expect.arrayContaining([
+          { Name: 'BucketName', Value: `whiskey-images-dev-${DEV_ACCOUNT}` },
+          { Name: 'FilterId', Value: 'tmp' },
+        ]),
+      }),
+      expect.objectContaining({
+        MetricName: 'GetRequests',
+        Namespace: 'AWS/S3',
+        TreatMissingData: 'notBreaching',
+        Dimensions: expect.arrayContaining([
+          { Name: 'FilterId', Value: 'logs' },
+        ]),
+      }),
+      expect.objectContaining({
+        MetricName: 'Errors',
+        Namespace: 'AWS/Lambda',
+        Threshold: 1,
+        TreatMissingData: 'notBreaching',
+        Dimensions: [{ Name: 'FunctionName', Value: 'drink-log-reconciler-dev' }],
+      }),
+    ]));
+    for (const alarm of alarms) {
+      expect(alarm.AlarmActions).toEqual([
+        `arn:aws:sns:ap-northeast-1:${DEV_ACCOUNT}:alerts`,
+      ]);
+    }
+  });
+
+  test('entrypoint and deployment guard preserve Notifications then App then Observability', () => {
+    const binSource = fs.readFileSync(path.join(__dirname, '..', 'bin', 'infra.ts'), 'utf8');
+    const deploySource = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'deploy.sh'), 'utf8');
+    const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+    expect(binSource).toContain('appStack.addDependency(tokyoNotifications)');
+    expect(binSource).toContain('observabilityStack.addDependency(appStack)');
+    expect(binSource).toContain('observabilityStack.addDependency(tokyoNotifications)');
+    expect(binSource).toContain('crossRegionReferences: true');
+    expect(deploySource).toContain('[[ "$SELECT_OBSERVABILITY" == true ]] && STACKS+=("WhiskeyObservability-$ENV_NAME")');
+    expect(deploySource).toContain('|| "$SELECT_OBSERVABILITY" == true');
+    expect(packageJson.scripts['deploy:observability:dev']).toContain('--observability');
+    expect(packageJson.scripts['diff:observability:dev']).toContain('--observability --diff-only');
+  });
+
   test.each([
     [false, false], [false, true], [true, false], [true, true],
   ])('dev feature combination custom=%s google=%s synthesizes', (customDomain, googleAuth) => {
     expect(() => createAppStack('dev', { customDomain, googleAuth })).not.toThrow();
+  });
+
+  test('prd without feature flags synthesizes without lookups', () => {
+    expect(() => createAppStack('prd')).not.toThrow();
   });
 });

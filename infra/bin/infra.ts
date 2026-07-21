@@ -5,6 +5,7 @@ import { CertificateStack } from '../lib/certificate-stack';
 import { DNS_ACCOUNT, DnsStack } from '../lib/dns-stack';
 import { GithubOidcStack } from '../lib/github-oidc-stack';
 import { NotificationsStack } from '../lib/notifications-stack';
+import { ObservabilityStack } from '../lib/observability-stack';
 import { WhiskeyInfraStack } from '../lib/whiskey-infra-stack';
 
 function contextBoolean(app: cdk.App, key: string, fallback: boolean): boolean {
@@ -91,7 +92,6 @@ const budgetNotifications = new NotificationsStack(app, 'WhiskeyNotifications', 
   kind: 'budget',
   tags,
 });
-budgetNotifications.addDependency(appStack);
 
 const tokyoNotifications = new NotificationsStack(app, 'WhiskeyNotifications-Tokyo', {
   env: { account, region: 'ap-northeast-1' },
@@ -100,3 +100,16 @@ const tokyoNotifications = new NotificationsStack(app, 'WhiskeyNotifications-Tok
   tags,
 });
 tokyoNotifications.addDependency(budgetNotifications);
+appStack.addDependency(tokyoNotifications);
+
+const observabilityStack = new ObservabilityStack(app, `WhiskeyObservability-${environmentName}`, {
+  env: { account, region: 'ap-northeast-1' },
+  crossRegionReferences: true,
+  environment,
+  notificationTopicArn: tokyoNotifications.topic.topicArn,
+  imagesBucketName: appStack.imagesBucketName,
+  reconcilerFunctionName: appStack.drinkLogReconcilerFunctionName,
+  tags,
+});
+observabilityStack.addDependency(appStack);
+observabilityStack.addDependency(tokyoNotifications);

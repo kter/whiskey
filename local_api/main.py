@@ -33,7 +33,7 @@ def configure_local_environment() -> None:
         "WHISKEYS_TABLE": "WhiskeySearch-local",
         "WHISKEY_SEARCH_TABLE": "WhiskeySearch-local",
         "REVIEWS_TABLE": "Reviews-local",
-        "DRINK_LOGS_TABLE": "DrinkLogs-local",
+        "DRINKLOGS_TABLE": "DrinkLogs-local",
         "APP_STATE_TABLE": "AppState-local",
         "IMAGES_BUCKET": "whiskey-images-local",
         "PUBLIC_SCAN_MAX_PAGES": "5",
@@ -96,6 +96,18 @@ WHISKEY_SEARCH = load_lambda_module(
 REVIEWS = load_lambda_module(
     "local_lambda_reviews",
     "lambda/reviews/index.py",
+)
+DRINK_LOGS = load_lambda_module(
+    "local_lambda_drink_logs",
+    "lambda/drink-logs/index.py",
+)
+DRINK_LOG_ANALYZE = load_lambda_module(
+    "local_lambda_drink_log_analyze",
+    "lambda/drink-log-analyze/index.py",
+)
+DRINK_LOG_PLACES = load_lambda_module(
+    "local_lambda_drink_log_places",
+    "lambda/drink-log-analyze/places.py",
 )
 
 
@@ -191,7 +203,7 @@ async def invoke(
 
 app = FastAPI(
     title="Whiskey Log Local API",
-    version="2.1.0-local",
+    version="2.2.0-local",
     redirect_slashes=False,
 )
 app.add_middleware(
@@ -232,6 +244,31 @@ async def public_reviews(request: Request) -> Response:
 @app.delete("/api/reviews/{id}")
 async def review_item(id: str, request: Request) -> Response:
     return await invoke(request, REVIEWS.lambda_handler, {"id": id})
+
+
+@app.post("/api/drink-logs/upload-url")
+@app.post("/api/drink-logs")
+@app.get("/api/drink-logs")
+async def drink_logs_collection(request: Request) -> Response:
+    return await invoke(request, DRINK_LOGS.lambda_handler)
+
+
+@app.post("/api/drink-logs/analyze")
+async def analyze_drink_log(request: Request) -> Response:
+    return await invoke(request, DRINK_LOG_ANALYZE.lambda_handler)
+
+
+@app.post("/api/drink-logs/places")
+@app.post("/api/drink-logs/places/resolve")
+async def drink_log_places(request: Request) -> Response:
+    return await invoke(request, DRINK_LOG_PLACES.lambda_handler)
+
+
+@app.get("/api/drink-logs/{id}")
+@app.put("/api/drink-logs/{id}")
+@app.delete("/api/drink-logs/{id}")
+async def drink_log_item(id: str, request: Request) -> Response:
+    return await invoke(request, DRINK_LOGS.lambda_handler, {"id": id})
 
 
 def aggregate_local_rankings() -> dict[str, Any]:

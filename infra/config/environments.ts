@@ -13,6 +13,7 @@ export interface EnvironmentConfig {
   allowedOrigins: string[];
   lambdaReservedConcurrency?: {
     aggregator?: number;
+    drinkLogs?: number;
     analyze?: number;
     places?: number;
   };
@@ -32,6 +33,7 @@ export const environments: Record<string, EnvironmentConfig> = {
     gatewayErrorOrigin: 'https://dev.whiskeybar.site',
     retainResources: false,
     allowedOrigins: ['https://dev.whiskeybar.site', 'http://localhost:3000'],
+    lambdaReservedConcurrency: { analyze: 2, places: 3 },
   },
   prd: {
     region: 'ap-northeast-1',

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Whiskey Log API
-  version: 2.1.0
+  version: 2.2.0
 servers:
   - url: https://api.dev.whiskeybar.site
   - url: https://api.whiskeybar.site
@@ -144,6 +144,70 @@ paths:
         '204': {description: Review deleted}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
+  /api/drink-logs/upload-url:
+    post:
+      security: [{bearerAuth: []}]
+      summary: Create a temporary image upload URL
+      responses:
+        '501': {$ref: '#/components/responses/NotImplemented'}
+  /api/drink-logs/analyze:
+    post:
+      security: [{bearerAuth: []}]
+      summary: Analyze a temporary drink image
+      responses:
+        '501': {$ref: '#/components/responses/NotImplemented'}
+  /api/drink-logs/places:
+    post:
+      security: [{bearerAuth: []}]
+      summary: Find nearby Places candidates from body coordinates
+      description: GPS coordinates are accepted only in the request body and are never persisted.
+      responses:
+        '501': {$ref: '#/components/responses/NotImplemented'}
+  /api/drink-logs/places/resolve:
+    post:
+      security: [{bearerAuth: []}]
+      summary: Resolve the optional Place ID of an owned drink log
+      description: Google-provided display names are returned for display only and are never persisted.
+      responses:
+        '501': {$ref: '#/components/responses/NotImplemented'}
+  /api/drink-logs:
+    post:
+      security: [{bearerAuth: []}]
+      summary: Create a drink log
+      responses:
+        '501': {$ref: '#/components/responses/NotImplemented'}
+    get:
+      security: [{bearerAuth: []}]
+      summary: List the authenticated user's drink-log timeline
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/NextToken'
+        - {name: brand, in: query, schema: {type: string}}
+        - {name: store, in: query, schema: {type: string}}
+        - {name: place_id, in: query, schema: {type: string}}
+      responses:
+        '501': {$ref: '#/components/responses/NotImplemented'}
+  /api/drink-logs/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+    get:
+      security: [{bearerAuth: []}]
+      summary: Get an owned drink log
+      responses:
+        '501': {$ref: '#/components/responses/NotImplemented'}
+    put:
+      security: [{bearerAuth: []}]
+      summary: Update an owned drink log
+      responses:
+        '501': {$ref: '#/components/responses/NotImplemented'}
+    delete:
+      security: [{bearerAuth: []}]
+      summary: Delete an owned drink log through the recoverable deletion flow
+      responses:
+        '501': {$ref: '#/components/responses/NotImplemented'}
 components:
   securitySchemes:
     bearerAuth:
@@ -173,6 +237,11 @@ components:
           schema: {$ref: '#/components/schemas/Error'}
     NotFound:
       description: Review not found
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    NotImplemented:
+      description: Phase 4 route stub; Tasks 07 and 08 install the implementation
       content:
         application/json:
           schema: {$ref: '#/components/schemas/Error'}
@@ -270,3 +339,47 @@ components:
         serving_style: {$ref: '#/components/schemas/ServingStyle'}
         date: {type: string, format: date}
         is_public: {type: boolean}
+    DrinkLog:
+      type: object
+      description: GPS coordinates and Google-provided display names are never stored.
+      required:
+        - id
+        - user_id
+        - status
+        - datetime
+        - s3_image_key
+        - quota_allocated
+        - brand_text
+        - brand_source
+        - serving_style
+        - store
+        - created_at
+        - updated_at
+      properties:
+        id: {type: string}
+        user_id: {type: string}
+        status: {type: string, enum: [pending, complete, deleting]}
+        datetime: {type: string, format: date-time, description: Normalized RFC3339 UTC}
+        s3_image_key: {type: string, pattern: '^logs/'}
+        tmp_s3_key: {type: string, pattern: '^tmp/'}
+        quota_allocated: {type: boolean}
+        whiskey_id: {type: string}
+        brand_text: {type: string}
+        brand_source: {type: string, enum: [ai, manual, matched]}
+        serving_style: {$ref: '#/components/schemas/ServingStyle'}
+        store:
+          type: object
+          required: [name]
+          properties:
+            name: {type: string, description: User-entered and allowed to be empty}
+            place_id: {type: string}
+        notes: {type: string}
+        rating: {$ref: '#/components/schemas/Rating'}
+        ai:
+          type: object
+          required: [model_id, confidence]
+          properties:
+            model_id: {type: string}
+            confidence: {type: number, minimum: 0, maximum: 1}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}

@@ -29,7 +29,10 @@ def test_adapter_cold_imports_all_handlers_from_repository_root():
                 "import local_api.main as main; "
                 "assert callable(main.WHISKEY_LIST.lambda_handler); "
                 "assert callable(main.WHISKEY_SEARCH.lambda_handler); "
-                "assert callable(main.REVIEWS.lambda_handler)"
+                "assert callable(main.REVIEWS.lambda_handler); "
+                "assert callable(main.DRINK_LOGS.lambda_handler); "
+                "assert callable(main.DRINK_LOG_ANALYZE.lambda_handler); "
+                "assert callable(main.DRINK_LOG_PLACES.lambda_handler)"
             ),
         ],
         cwd=ROOT,

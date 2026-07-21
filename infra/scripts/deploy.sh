@@ -12,8 +12,7 @@ show_usage() {
   echo "Usage: $0 <dev|prd> <target> [target ...] [options]"
   echo
   echo "Targets (at least one is required):"
-  echo "  --dns --oidc --cert --base --notifications"
-  echo "  --observability   Reserved for a later task"
+  echo "  --dns --oidc --cert --base --notifications --observability"
   echo "  --frontend        Generate and deploy the frontend"
   echo
   echo "Options:"
@@ -67,12 +66,6 @@ done
 if [[ $TARGET_COUNT -eq 0 ]]; then
   echo -e "${RED}Error: select at least one deployment target.${NC}"
   show_usage
-fi
-if [[ "$SELECT_OBSERVABILITY" == true ]]; then
-  echo -e "${YELLOW}Warning: --observability is planned for a later task; there is currently nothing to deploy.${NC}"
-  if [[ $TARGET_COUNT -eq 1 ]]; then
-    exit 0
-  fi
 fi
 if [[ "$DESTROY" == true && ("$SELECT_DNS" == true || "$SELECT_OIDC" == true) ]]; then
   echo -e "${RED}Error: WhiskeyDns and WhiskeyGithubOidc cannot be destroyed by this script.${NC}"
@@ -132,7 +125,8 @@ bootstrap_region() {
 }
 
 if [[ "$SELECT_DNS" == true || "$SELECT_OIDC" == true || "$SELECT_CERT" == true \
-  || "$SELECT_BASE" == true || "$SELECT_NOTIFICATIONS" == true ]]; then
+  || "$SELECT_BASE" == true || "$SELECT_NOTIFICATIONS" == true \
+  || "$SELECT_OBSERVABILITY" == true ]]; then
   bootstrap_region ap-northeast-1
   bootstrap_region us-east-1
 fi
@@ -154,10 +148,11 @@ STACKS=()
 [[ "$SELECT_DNS" == true ]] && STACKS+=(WhiskeyDns)
 [[ "$SELECT_OIDC" == true ]] && STACKS+=(WhiskeyGithubOidc)
 [[ "$SELECT_CERT" == true ]] && STACKS+=("WhiskeyCertificate-$ENV_NAME")
-[[ "$SELECT_BASE" == true ]] && STACKS+=("WhiskeyApp-$ENV_NAME")
 if [[ "$SELECT_NOTIFICATIONS" == true ]]; then
   STACKS+=(WhiskeyNotifications WhiskeyNotifications-Tokyo)
 fi
+[[ "$SELECT_BASE" == true ]] && STACKS+=("WhiskeyApp-$ENV_NAME")
+[[ "$SELECT_OBSERVABILITY" == true ]] && STACKS+=("WhiskeyObservability-$ENV_NAME")
 
 CDK_CONTEXT=(-c "env=$ENVIRONMENT" --profile "$PROFILE")
 
