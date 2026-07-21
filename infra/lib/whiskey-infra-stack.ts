@@ -409,6 +409,14 @@ export class WhiskeyInfraStack extends cdk.Stack {
       actions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject'],
       resources: [imagesBucket.arnForObjects('tmp/*'), imagesBucket.arnForObjects('logs/*')],
     }));
+    // create の削除確認（_object_absent）が head_object で 404 を得るには ListBucket が
+    // 必要。無いと存在しないオブジェクトへの HeadObject が 403（存在秘匿）になり、
+    // 404 前提の不在判定が誤って例外→500 になる。プレフィックスで tmp/logs に限定。
+    drinkLogsRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['s3:ListBucket'],
+      resources: [imagesBucket.bucketArn],
+      conditions: { StringLike: { 's3:prefix': ['logs/*', 'tmp/*'] } },
+    }));
     drinkLogsRole.addToPolicy(appStatePrefixStatement(
       ['dynamodb:UpdateItem'],
       [DRINKLOG_COUNTER_PREFIX, DRINKLOG_QUOTA_PREFIX],
