@@ -46,6 +46,16 @@ def configure_local_environment() -> None:
         "AWS_EC2_METADATA_DISABLED": "true",
         "AWS_ENDPOINT_URL_DYNAMODB": "http://127.0.0.1:8001",
         "AWS_ENDPOINT_URL_S3": "http://127.0.0.1:9000",
+        "MOCK_AUTH": os.environ.get("MOCK_AUTH", "1"),
+        "MOCK_AI": os.environ.get("MOCK_AI", "1"),
+        "MOCK_PLACES": os.environ.get("MOCK_PLACES", "1"),
+        "BEDROCK_MODEL_ID": "jp.amazon.nova-2-lite-v1:0",
+        "BEDROCK_MODEL_ALLOWLIST": (
+            "jp.amazon.nova-2-lite-v1:0,"
+            "jp.anthropic.claude-haiku-4-5-20251001-v1:0"
+        ),
+        "PLACES_SECRET_NAME": "whiskey-places-local",
+        "RECONCILE_AGE_HOURS": "48",
     }
     if os.environ.get("AWS_ENDPOINT_URL"):
         raise RuntimeError("AWS_ENDPOINT_URL must not be set; use service-specific endpoints")

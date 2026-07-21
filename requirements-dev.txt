@@ -1,7 +1,9 @@
 boto3==1.43.4
 botocore==1.43.4
 fastapi==0.115.12
-moto[dynamodb]==5.1.22
+httpx==0.28.1
+moto[dynamodb,s3]==5.1.22
+Pillow==11.0.0
 PyJWT[crypto]==2.10.1
 pytest==9.0.3
 PyYAML==6.0.3

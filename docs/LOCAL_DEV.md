@@ -31,6 +31,65 @@ curl --get --data-urlencode 'q=山崎' \
 curl http://localhost:8000/api/whiskeys/ranking
 ```
 
+## 飲酒ログをローカルで動かす
+
+飲酒ログも通常の起動手順で利用できます。
+`docker compose up -d`を直接実行する場合は、MinIOのバケット作成が完了してから初期化してください。
+
+```bash
+docker compose up -d
+make local-init
+make api
+```
+
+`make local-up`を使うとDynamoDB Local、MinIO、バケット作成の完了まで待つので、普段はこちらで大丈夫です。
+
+ローカルAPIは`MOCK_AI=1`と`MOCK_PLACES=1`が既定です。
+写真解析は「モックウイスキー」、周辺店舗検索は「モックバー」を決定的に返すため、Bedrock、Google Places、Secrets Managerへはアクセスしません。
+写真のpresigned POST先はMinIOで、ブラウザからのアップロードはMinIOのCORS（`http://localhost:3000`）を経由します。
+
+飲酒ログの作成や削除ではランキングキャッシュを自動更新しません。
+ランキングへ反映したいタイミングで下記を実行する感じです。
+
+```bash
+make local-aggregate
+```
+
+### 実Google Places APIを使う場合
+
+PlacesハンドラはAPIキーを環境変数から直接読まず、`PLACES_SECRET_NAME`のSecrets Manager JSONから読みます。
+そのため、実Placesを試す場合は別途ローカルのSecrets Manager互換エンドポイントを用意してください（現在の`docker-compose.yml`には含まれていません）。
+
+未追跡の`.env.local`はこんな感じです。
+
+```dotenv
+MOCK_PLACES=0
+PLACES_SECRET_NAME=whiskey-places-local
+AWS_ENDPOINT_URL_SECRETS_MANAGER=http://127.0.0.1:4566
+PLACES_API_KEY=replace-with-your-key
+```
+
+`.env.local`は`.gitignore`の対象です。
+APIキーをSecrets Manager互換サービスへ投入します。
+
+```bash
+set -a
+source .env.local
+set +a
+
+secret_json="$(python -c 'import json, os; print(json.dumps({"apiKey": os.environ["PLACES_API_KEY"]}))')"
+aws --endpoint-url "$AWS_ENDPOINT_URL_SECRETS_MANAGER" \
+  secretsmanager create-secret \
+  --name "$PLACES_SECRET_NAME" \
+  --secret-string "$secret_json"
+unset secret_json PLACES_API_KEY
+
+make api
+```
+
+※同名のsecretを作成済みなら`create-secret`ではなく`put-secret-value`を使います。
+※`AWS_ENDPOINT_URL`全体は設定しないでください。DynamoDB、S3、Secrets Managerのサービス別endpointだけを使います。
+
 停止するときは次を実行します。
 
 ```bash
