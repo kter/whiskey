@@ -1,12 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { HeicUnsupportedError, resizeImage } from '~/utils/imageResize'
+import heic2any from 'heic2any'
+import { resizeImage } from '~/utils/imageResize'
 
 let sourceWidth = 3200
 let sourceHeight = 1600
 let encodedSizes: number[] = []
+let failedImageLoads = 0
 let canvas: HTMLCanvasElement
 const qualities: number[] = []
 const drawImage = vi.fn()
+const heic2anyMock = vi.mocked(heic2any)
 
 class MockImage {
   naturalWidth = sourceWidth
@@ -17,7 +20,12 @@ class MockImage {
   onerror: null | (() => void) = null
 
   set src(_value: string) {
-    this.onload?.()
+    if (failedImageLoads > 0) {
+      failedImageLoads -= 1
+      this.onerror?.()
+    } else {
+      this.onload?.()
+    }
   }
 }
 
@@ -26,8 +34,10 @@ describe('resizeImage', () => {
     sourceWidth = 3200
     sourceHeight = 1600
     encodedSizes = [100]
+    failedImageLoads = 0
     qualities.length = 0
     drawImage.mockReset()
+    heic2anyMock.mockReset()
     vi.stubGlobal('Image', MockImage)
     vi.stubGlobal('URL', {
       createObjectURL: vi.fn(() => 'blob:test'),
@@ -48,8 +58,9 @@ describe('resizeImage', () => {
       configurable: true,
       value: vi.fn((callback: BlobCallback, type?: string, quality?: number) => {
         qualities.push(Number(quality))
-        const size = encodedSizes.shift() ?? 100
-        callback({ size, type } as Blob)
+        const blob = new Blob(['encoded'], { type })
+        Object.defineProperty(blob, 'size', { value: encodedSizes.shift() ?? 100 })
+        callback(blob)
       }),
     })
   })
@@ -62,10 +73,52 @@ describe('resizeImage', () => {
   it.each([
     ['photo.heic', ''],
     ['photo.jpg', 'image/heif'],
-  ])('rejects HEIC/HEIF before decoding (%s, %s)', async (name, type) => {
+  ])('uses the lazy HEIC converter after native decoding fails (%s, %s)', async (name, type) => {
+    failedImageLoads = 1
+    const converted = new Blob(['jpeg'], { type: 'image/jpeg' })
+    heic2anyMock.mockResolvedValue(converted)
     const file = new File(['image'], name, { type })
-    await expect(resizeImage(file)).rejects.toBeInstanceOf(HeicUnsupportedError)
-    expect(URL.createObjectURL).not.toHaveBeenCalled()
+
+    const result = await resizeImage(file)
+
+    expect(heic2anyMock).toHaveBeenCalledWith({ blob: file, toType: 'image/jpeg', quality: 0.92 })
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(2)
+    expect(result.blob).toBeInstanceOf(Blob)
+    expect(result.blob.type).toBe('image/jpeg')
+    expect(result.contentType).toBe('image/jpeg')
+  })
+
+  it('uses native decoding for HEIC when the browser supports it', async () => {
+    await resizeImage(new File(['image'], 'native.heic', { type: 'image/heic' }))
+
+    expect(heic2anyMock).not.toHaveBeenCalled()
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses the first JPEG when the converter returns multiple blobs', async () => {
+    failedImageLoads = 1
+    const first = new Blob(['first'], { type: 'image/jpeg' })
+    heic2anyMock.mockResolvedValue([first, new Blob(['second'], { type: 'image/jpeg' })])
+
+    await resizeImage(new File(['image'], 'burst.heic', { type: 'image/heic' }))
+
+    expect(URL.createObjectURL).toHaveBeenNthCalledWith(2, first)
+  })
+
+  it('does not load the HEIC converter when a non-HEIC image cannot be decoded', async () => {
+    failedImageLoads = 1
+
+    await expect(resizeImage(new File(['image'], 'broken.jpg', { type: 'image/jpeg' })))
+      .rejects.toThrow('画像を読み込めませんでした。')
+    expect(heic2anyMock).not.toHaveBeenCalled()
+  })
+
+  it('returns a clear error when HEIC conversion fails', async () => {
+    failedImageLoads = 1
+    heic2anyMock.mockRejectedValue(new Error('decode failed'))
+
+    await expect(resizeImage(new File(['image'], 'broken.heic', { type: 'image/heic' })))
+      .rejects.toThrow('HEIC画像を変換できませんでした。JPEGで撮り直してください。')
   })
 
   it('reduces quality and dimensions in stages when the encoded image remains large', async () => {

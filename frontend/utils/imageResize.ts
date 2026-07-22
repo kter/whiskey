@@ -12,13 +12,6 @@ const resizeAttempts = [
   { maxDimension: 1024, quality: 0.55 },
 ] as const
 
-export class HeicUnsupportedError extends Error {
-  constructor() {
-    super('HEIC/HEIF形式には対応していません。')
-    this.name = 'HeicUnsupportedError'
-  }
-}
-
 export class ImageTooLargeError extends Error {
   constructor() {
     super('画像を3.5MB以下に縮小できませんでした。')
@@ -26,8 +19,8 @@ export class ImageTooLargeError extends Error {
   }
 }
 
-const loadImage = (file: File): Promise<HTMLImageElement> => new Promise((resolve, reject) => {
-  const objectUrl = URL.createObjectURL(file)
+const loadImage = (blob: Blob): Promise<HTMLImageElement> => new Promise((resolve, reject) => {
+  const objectUrl = URL.createObjectURL(blob)
   const image = new Image()
   image.onload = () => {
     URL.revokeObjectURL(objectUrl)
@@ -57,11 +50,28 @@ const canvasToBlob = (canvas: HTMLCanvasElement, quality: number): Promise<Blob>
 
 /** Remove metadata and resize an image to a bounded JPEG suitable for Drink Logs. */
 export const resizeImage = async (file: File): Promise<{ blob: Blob, contentType: string }> => {
-  if (HEIC_MIME_TYPES.has(file.type.toLowerCase()) || HEIC_EXTENSION_PATTERN.test(file.name)) {
-    throw new HeicUnsupportedError()
+  const isHeic = HEIC_MIME_TYPES.has(file.type.toLowerCase()) || HEIC_EXTENSION_PATTERN.test(file.name)
+  let image: HTMLImageElement
+
+  try {
+    image = await loadImage(file)
+  } catch (nativeDecodeError) {
+    if (!isHeic) throw nativeDecodeError
+
+    try {
+      // A future CSP must add 'wasm-unsafe-eval' to script-src for this lazy HEIC decoder.
+      const { default: heic2any } = await import('heic2any')
+      const converted = await heic2any({ blob: file, toType: OUTPUT_CONTENT_TYPE, quality: 0.92 })
+      const jpegBlob = Array.isArray(converted) ? converted[0] : converted
+      if (!jpegBlob) throw new Error('HEIC変換結果が空です。')
+      image = await loadImage(jpegBlob)
+    } catch (conversionError) {
+      // Keep the underlying cause in the console to aid real-device field diagnostics.
+      console.warn('HEIC conversion failed', conversionError)
+      throw new Error('HEIC画像を変換できませんでした。JPEGで撮り直してください。')
+    }
   }
 
-  const image = await loadImage(file)
   const canvas = document.createElement('canvas')
   const context = canvas.getContext('2d')
   if (!context) throw new Error('画像処理を開始できませんでした。')
@@ -79,4 +89,3 @@ export const resizeImage = async (file: File): Promise<{ blob: Blob, contentType
 
   throw new ImageTooLargeError()
 }
-
