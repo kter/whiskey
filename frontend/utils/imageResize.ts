@@ -60,9 +60,10 @@ export const resizeImage = async (file: File): Promise<{ blob: Blob, contentType
 
     try {
       // A future CSP must add 'wasm-unsafe-eval' to script-src for this lazy HEIC decoder.
-      const { default: heic2any } = await import('heic2any')
-      const converted = await heic2any({ blob: file, toType: OUTPUT_CONTENT_TYPE, quality: 0.92 })
-      const jpegBlob = Array.isArray(converted) ? converted[0] : converted
+      // heic-to's current libheif decodes modern iPhone HEIC (grid-tiled HEVC + HDR gain
+      // map) that the older heic2any rejected with "ERR_LIBHEIF format not supported".
+      const { heicTo } = await import('heic-to')
+      const jpegBlob = await heicTo({ blob: file, type: OUTPUT_CONTENT_TYPE, quality: 0.92 })
       if (!jpegBlob) throw new Error('HEIC変換結果が空です。')
       image = await loadImage(jpegBlob)
     } catch (conversionError) {
