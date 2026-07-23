@@ -5,12 +5,12 @@ useHead({ title: 'プライバシーポリシー | Whiskey Log' })
 <template>
   <article class="mx-auto max-w-3xl px-4 text-stone-200 sm:px-0">
     <h1 class="text-3xl font-semibold text-amber-200">プライバシーポリシー</h1>
-    <p class="mt-3 text-sm text-stone-400">最終更新日: 2026年7月21日</p>
+    <p class="mt-3 text-sm text-stone-400">最終更新日: 2026年7月23日</p>
 
     <div class="mt-8 space-y-8 leading-relaxed">
       <section>
         <h2 class="text-xl font-medium text-amber-200">1. 位置情報とGoogle Places</h2>
-        <p class="mt-2">「近くの店を探す」を選んだ場合に限り、端末から取得したGPS座標を当サービスのサーバー経由でGoogle Placesへ送信します。利用目的は周辺の店候補検索のみで、GPS座標は保存しません。位置情報の提供は任意であり、拒否した場合や取得できない場合も店名を手入力して記録できます。</p>
+        <p class="mt-2">アップロードした写真に位置情報（EXIF）が含まれる場合はそのGPS座標を使って自動検索し、「近くの店を探す」を選んだ場合はお使いの端末から取得したGPS座標を使って検索します。いずれの座標も当サービスのサーバー経由でGoogle Placesへ送信し、周辺の店候補検索だけに使用して保存しません。位置情報の提供は任意であり、写真に位置情報がない場合や端末の現在地を取得できない場合も店名を手入力して記録できます。</p>
         <p class="mt-2">Google Placesから取得した表示名・住所・帰属情報は候補表示のためだけに使用し、永続保存しません。記録に保存する店舗情報はplace_idと、ユーザーが自由入力した店名のみです。Googleによる情報の取扱いについては<a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer" class="text-amber-300 underline hover:text-amber-200">Googleプライバシーポリシー</a>をご確認ください。</p>
       </section>
 
@@ -32,4 +32,3 @@ useHead({ title: 'プライバシーポリシー | Whiskey Log' })
     </div>
   </article>
 </template>
-

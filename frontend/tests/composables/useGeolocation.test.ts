@@ -10,6 +10,7 @@ describe('useGeolocation', () => {
 
     const geolocation = useGeolocation()
     expect(geolocation.disclosure).toBe(GEOLOCATION_DISCLOSURE)
+    expect(geolocation.disclosure).toContain('写真の位置情報（EXIF）')
     expect(geolocation.disclosure).toContain('Google Places')
     expect(geolocation.disclosure).toContain('保存しません')
     expect(getCurrentPosition).not.toHaveBeenCalled()
@@ -38,4 +39,3 @@ describe('useGeolocation', () => {
     await expect(useGeolocation().requestPosition()).resolves.toBeNull()
   })
 })
-

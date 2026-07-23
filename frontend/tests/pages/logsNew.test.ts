@@ -1,12 +1,86 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import process from 'node:process'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { computed, defineComponent, reactive, ref } from 'vue'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ImageLightbox from '~/components/ImageLightbox.vue'
 import { buildDrinkLogPayload, candidateIndexAfterBrandEdit } from '~/composables/useDrinkLogs'
+import LogsNewPage from '~/pages/logs/new.vue'
 import { SERVING_STYLES } from '~/types/whiskey'
+
+const pageMocks = vi.hoisted(() => ({
+  processFiles: vi.fn(),
+  readExifGps: vi.fn(),
+  requestPosition: vi.fn(),
+  savePending: vi.fn(),
+  searchPlaces: vi.fn(),
+  upsertLogs: vi.fn(),
+}))
+
+vi.mock('~/utils/exifLocation', () => ({
+  readExifGps: pageMocks.readExifGps,
+}))
+
+vi.mock('~/composables/useDrinkLogs', async importOriginal => {
+  const actual = await importOriginal<typeof import('~/composables/useDrinkLogs')>()
+  return {
+    ...actual,
+    useDrinkLogs: () => ({
+      searchPlaces: pageMocks.searchPlaces,
+      upsertLogs: pageMocks.upsertLogs,
+    }),
+  }
+})
+
+vi.mock('~/composables/useGeolocation', async importOriginal => {
+  const actual = await importOriginal<typeof import('~/composables/useGeolocation')>()
+  const { ref: vueRef } = await import('vue')
+  return {
+    ...actual,
+    useGeolocation: () => ({
+      disclosure: actual.GEOLOCATION_DISCLOSURE,
+      requesting: vueRef(false),
+      requestPosition: pageMocks.requestPosition,
+    }),
+  }
+})
+
+vi.mock('~/composables/useDrinkLogBatch', async importOriginal => {
+  const actual = await importOriginal<typeof import('~/composables/useDrinkLogBatch')>()
+  const { computed: vueComputed, ref: vueRef } = await import('vue')
+
+  return {
+    ...actual,
+    useDrinkLogBatch: () => {
+      const items = vueRef<ReturnType<typeof batchItem>[]>([])
+      const processFiles = async (files: File[]) => {
+        pageMocks.processFiles(files)
+        items.value = files.slice(0, actual.MAX_DRINK_LOG_BATCH_SIZE).map(file => ({
+          ...batchItem(),
+          id: `processed-${file.name}`,
+          file,
+          brandText: 'Mock Brand',
+        }))
+        return { accepted: items.value.length, rejected: Math.max(0, files.length - items.value.length) }
+      }
+
+      return {
+        items,
+        isProcessing: vueComputed(() => false),
+        isSaving: vueComputed(() => false),
+        allSaved: vueComputed(() => false),
+        processFiles,
+        retryProcessing: vi.fn(),
+        savePending: pageMocks.savePending,
+        retrySave: vi.fn(),
+        reset: () => {
+          items.value = []
+        },
+      }
+    },
+  }
+})
 
 const source = readFileSync(resolve(process.cwd(), 'pages/logs/new.vue'), 'utf8')
 const template = source.match(/<template>([\s\S]*)<\/template>/)?.[1]
@@ -44,6 +118,7 @@ const renderLogPage = (options: { pageError?: string, placeError?: string, candi
       pageError: ref(options.pageError || ''),
       selectionNotice: ref(''),
       placeError: ref(options.placeError || ''),
+      placeNotice: ref(''),
       lightbox,
       requestingLocation: ref(false),
       disclosure: '座標は Google Places に送信し、保存しません。',
@@ -75,7 +150,29 @@ const renderLogPage = (options: { pageError?: string, placeError?: string, candi
   },
 })
 
+const mountActualLogPage = () => mount(LogsNewPage, {
+  global: {
+    components: { ImageLightbox },
+    stubs: { GoogleAttributions: true, NuxtLink: true },
+  },
+})
+
+const selectFiles = async (wrapper: ReturnType<typeof mountActualLogPage>, files: File[]) => {
+  const input = wrapper.get<HTMLInputElement>('#drink-photo')
+  Object.defineProperty(input.element, 'files', { configurable: true, value: files })
+  input.element.dispatchEvent(new Event('change', { bubbles: true }))
+  await flushPromises()
+}
+
 describe('logs/new form behavior', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    pageMocks.readExifGps.mockResolvedValue(null)
+    pageMocks.requestPosition.mockResolvedValue({ lat: 35.0, lng: 139.0 })
+    pageMocks.savePending.mockResolvedValue([])
+    pageMocks.searchPlaces.mockResolvedValue([])
+  })
+
   it('sends candidate_index only when an AI candidate remains selected', () => {
     expect(buildDrinkLogPayload({ analysisId: 'a1', candidateIndex: 0, brandText: 'AI銘柄' })).toEqual({
       analysis_id: 'a1',
@@ -143,6 +240,61 @@ describe('logs/new form behavior', () => {
     const image = dialog.get('img')
     expect(image.attributes('src')).toBe('blob:preview')
     expect(image.attributes('alt')).toBe('1杯目の飲酒記録写真')
+    wrapper.unmount()
+  })
+
+  it('automatically searches Places with the first photo that has EXIF GPS', async () => {
+    const files = [
+      new File(['first'], 'without-gps.jpg', { type: 'image/jpeg' }),
+      new File(['second'], 'with-gps.heic', { type: 'image/heic' }),
+      new File(['third'], 'unused.jpg', { type: 'image/jpeg' }),
+    ]
+    pageMocks.readExifGps
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ lat: 35.681236, lng: 139.767125 })
+    const wrapper = mountActualLogPage()
+
+    await selectFiles(wrapper, files)
+
+    expect(pageMocks.readExifGps).toHaveBeenCalledTimes(2)
+    expect(pageMocks.readExifGps).toHaveBeenNthCalledWith(1, files[0])
+    expect(pageMocks.readExifGps).toHaveBeenNthCalledWith(2, files[1])
+    expect(pageMocks.searchPlaces).toHaveBeenCalledOnce()
+    expect(pageMocks.searchPlaces).toHaveBeenCalledWith(35.681236, 139.767125)
+    expect(wrapper.text()).toContain('写真の位置情報から近くの店を検索しました。')
+    wrapper.unmount()
+  })
+
+  it('keeps the device-location button as the fallback when photos have no GPS', async () => {
+    const files = [new File(['photo'], 'without-gps.webp', { type: 'image/webp' })]
+    const wrapper = mountActualLogPage()
+
+    await selectFiles(wrapper, files)
+    expect(pageMocks.searchPlaces).not.toHaveBeenCalled()
+
+    const nearbyButton = wrapper.findAll('button').find(button => button.text() === '近くの店を探す')
+    expect(nearbyButton).toBeDefined()
+    nearbyButton!.element.click()
+    await flushPromises()
+
+    expect(pageMocks.requestPosition).toHaveBeenCalledOnce()
+    expect(pageMocks.searchPlaces).toHaveBeenCalledWith(35.0, 139.0)
+    wrapper.unmount()
+  })
+
+  it('does not pass EXIF coordinates into the save pipeline', async () => {
+    const file = new File(['photo'], 'with-gps.jpg', { type: 'image/jpeg' })
+    pageMocks.readExifGps.mockResolvedValue({ lat: 35.681236, lng: 139.767125 })
+    const wrapper = mountActualLogPage()
+
+    await selectFiles(wrapper, [file])
+    wrapper.get('form').element.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    await flushPromises()
+
+    expect(pageMocks.searchPlaces).toHaveBeenCalledWith(35.681236, 139.767125)
+    expect(pageMocks.savePending).toHaveBeenCalledWith('', '')
+    expect(pageMocks.savePending.mock.calls.flat()).not.toContain(35.681236)
+    expect(pageMocks.savePending.mock.calls.flat()).not.toContain(139.767125)
     wrapper.unmount()
   })
 })

@@ -4,6 +4,7 @@ import { useDrinkLogBatch, MAX_DRINK_LOG_BATCH_SIZE, type DrinkLogBatchItem } fr
 import { candidateIndexAfterBrandEdit, useDrinkLogs, type PlaceCandidate } from '~/composables/useDrinkLogs'
 import { useGeolocation } from '~/composables/useGeolocation'
 import { SERVING_STYLES, type ServingStyle } from '~/types/whiskey'
+import { readExifGps, type Coordinates } from '~/utils/exifLocation'
 
 const { searchPlaces, upsertLogs } = useDrinkLogs()
 const {
@@ -25,6 +26,7 @@ const storeName = ref('')
 const pageError = ref('')
 const selectionNotice = ref('')
 const placeError = ref('')
+const placeNotice = ref('')
 const lightbox = reactive({
   open: false,
   src: '',
@@ -98,8 +100,21 @@ const handleFileSelection = async (event: Event) => {
   selectionNotice.value = files.length > MAX_DRINK_LOG_BATCH_SIZE
     ? `一度に登録できるのは${MAX_DRINK_LOG_BATCH_SIZE}枚までです`
     : ''
+  placeNotice.value = ''
   input.value = ''
-  await processFiles(files)
+
+  let exifCoordinates: Coordinates | null = null
+  for (const file of files.slice(0, MAX_DRINK_LOG_BATCH_SIZE)) {
+    exifCoordinates = await readExifGps(file)
+    if (exifCoordinates) break
+  }
+
+  const processing = processFiles(files)
+  const nearbySearch = exifCoordinates
+    ? searchNearbyPlaces(exifCoordinates, true)
+    : Promise.resolve()
+  exifCoordinates = null
+  await Promise.all([processing, nearbySearch])
 }
 
 const handleProcessingRetry = async (item: DrinkLogBatchItem) => {
@@ -107,8 +122,25 @@ const handleProcessingRetry = async (item: DrinkLogBatchItem) => {
   await retryProcessing(item)
 }
 
+const searchNearbyPlaces = async (position: Coordinates, fromExif = false) => {
+  placeError.value = ''
+  placeNotice.value = ''
+
+  try {
+    places.value = await searchPlaces(position.lat, position.lng)
+    selectedPlaceId.value = ''
+    if (fromExif) placeNotice.value = '写真の位置情報から近くの店を検索しました。'
+    if (!places.value.length) placeError.value = '近くの店候補が見つかりませんでした。店名を手入力してください。'
+  } catch (cause) {
+    places.value = []
+    selectedPlaceId.value = ''
+    placeError.value = errorMessage(cause, '近くの店を検索できませんでした。店名は手入力できます。')
+  }
+}
+
 const findNearbyPlaces = async () => {
   placeError.value = ''
+  placeNotice.value = ''
   const position = await requestPosition()
   if (!position) {
     places.value = []
@@ -117,15 +149,7 @@ const findNearbyPlaces = async () => {
     return
   }
 
-  try {
-    places.value = await searchPlaces(position.lat, position.lng)
-    selectedPlaceId.value = ''
-    if (!places.value.length) placeError.value = '近くの店候補が見つかりませんでした。店名を手入力してください。'
-  } catch (cause) {
-    places.value = []
-    selectedPlaceId.value = ''
-    placeError.value = errorMessage(cause, '近くの店を検索できませんでした。店名は手入力できます。')
-  }
+  await searchNearbyPlaces(position)
 }
 
 const updateFailureSummary = () => {
@@ -218,6 +242,7 @@ const openLightbox = (src: string, alt: string) => {
           </button>
         </div>
         <p class="rounded-md border border-blue-900 bg-blue-950/50 p-3 text-xs leading-relaxed text-blue-200">{{ disclosure }}</p>
+        <p v-if="placeNotice" role="status" class="text-sm text-emerald-300">{{ placeNotice }}</p>
         <p v-if="placeError" role="status" class="text-sm text-amber-300">{{ placeError }}</p>
 
         <div v-if="places.length" class="space-y-2">

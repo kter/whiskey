@@ -18,6 +18,7 @@ export default defineConfig({
     alias: {
       '~': fileURLToPath(new URL('./', import.meta.url)),
       '@': fileURLToPath(new URL('./', import.meta.url)),
+      'exifr': fileURLToPath(new URL('./tests/mocks/exifr.ts', import.meta.url)),
       'heic-to': fileURLToPath(new URL('./tests/mocks/heic-to.ts', import.meta.url)),
       '#app': fileURLToPath(new URL('./tests/mocks/nuxt.ts', import.meta.url))
     }

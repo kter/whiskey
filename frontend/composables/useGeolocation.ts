@@ -1,11 +1,7 @@
 import { ref } from 'vue'
+import type { Coordinates } from '~/utils/exifLocation'
 
-export interface Coordinates {
-  lat: number
-  lng: number
-}
-
-export const GEOLOCATION_DISCLOSURE = '現在地の座標はサーバー経由で Google Places に送信し、近くの店候補の検索だけに使用します。座標は保存しません。位置情報を使わず、店名を手入力して登録することもできます。'
+export const GEOLOCATION_DISCLOSURE = '写真の位置情報（EXIF）またはお使いの端末の現在地をサーバー経由で Google Places に送信し、近くの店候補の検索だけに使用します。座標は保存しません。位置情報を使わず、店名を手入力して登録することもできます。'
 
 export const useGeolocation = () => {
   const requesting = ref(false)
@@ -31,4 +27,3 @@ export const useGeolocation = () => {
 
   return { disclosure: GEOLOCATION_DISCLOSURE, requesting, requestPosition }
 }
-
