@@ -39,4 +39,11 @@ describe('log detail editing and deletion', () => {
     expect(source).toContain('cause instanceof ApiError && cause.status === 404')
     expect(source).toContain('削除されたか、表示する権限がありません。')
   })
+
+  it('opens the refreshed detail image in the shared lightbox', () => {
+    expect(source).toContain('class="block w-full cursor-zoom-in disabled:cursor-default"')
+    expect(source).toContain(':disabled="!log.image_url"')
+    expect(source).toContain('lightbox.src = log.value.image_url')
+    expect(source).toContain('<ImageLightbox v-model:open="lightbox.open"')
+  })
 })

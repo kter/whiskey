@@ -2,8 +2,9 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import process from 'node:process'
 import { mount } from '@vue/test-utils'
-import { computed, defineComponent, ref } from 'vue'
+import { computed, defineComponent, reactive, ref } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
+import ImageLightbox from '~/components/ImageLightbox.vue'
 import { buildDrinkLogPayload, candidateIndexAfterBrandEdit } from '~/composables/useDrinkLogs'
 import { SERVING_STYLES } from '~/types/whiskey'
 
@@ -32,34 +33,44 @@ const batchItem = (candidates: unknown[] = []) => ({
 })
 
 const renderLogPage = (options: { pageError?: string, placeError?: string, candidates?: unknown[] } = {}) => mount(defineComponent({
-  setup: () => ({
-    items: ref([batchItem(options.candidates || [])]),
-    places: ref([]),
-    selectedPlaceId: ref(''),
-    selectedPlace: computed(() => null),
-    storeName: ref(''),
-    pageError: ref(options.pageError || ''),
-    selectionNotice: ref(''),
-    placeError: ref(options.placeError || ''),
-    requestingLocation: ref(false),
-    disclosure: '座標は Google Places に送信し、保存しません。',
-    isProcessing: computed(() => false),
-    isSaving: computed(() => false),
-    canSave: computed(() => false),
-    SERVING_STYLES,
-    styleLabels: { NEAT: 'ストレート', ROCKS: 'ロック', WATER: '水割り', SODA: 'ハイボール', COCKTAIL: 'カクテル' },
-    processingLabels: { queued: '処理中', resizing: '処理中', uploading: '処理中', analyzing: '処理中', ready: '解析完了', failed: '失敗' },
-    handleFileSelection: vi.fn(),
-    handleSubmit: vi.fn(),
-    handleCandidateSelection: vi.fn(),
-    handleBrandInput: vi.fn(),
-    findNearbyPlaces: vi.fn(),
-    handleProcessingRetry: vi.fn(),
-    handleSaveRetry: vi.fn(),
-  }),
+  setup: () => {
+    const lightbox = reactive({ open: false, src: '', alt: '' })
+    return {
+      items: ref([batchItem(options.candidates || [])]),
+      places: ref([]),
+      selectedPlaceId: ref(''),
+      selectedPlace: computed(() => null),
+      storeName: ref(''),
+      pageError: ref(options.pageError || ''),
+      selectionNotice: ref(''),
+      placeError: ref(options.placeError || ''),
+      lightbox,
+      requestingLocation: ref(false),
+      disclosure: '座標は Google Places に送信し、保存しません。',
+      isProcessing: computed(() => false),
+      isSaving: computed(() => false),
+      canSave: computed(() => false),
+      SERVING_STYLES,
+      styleLabels: { NEAT: 'ストレート', ROCKS: 'ロック', WATER: '水割り', SODA: 'ハイボール', COCKTAIL: 'カクテル' },
+      processingLabels: { queued: '処理中', resizing: '処理中', uploading: '処理中', analyzing: '処理中', ready: '解析完了', failed: '失敗' },
+      handleFileSelection: vi.fn(),
+      handleSubmit: vi.fn(),
+      handleCandidateSelection: vi.fn(),
+      handleBrandInput: vi.fn(),
+      findNearbyPlaces: vi.fn(),
+      handleProcessingRetry: vi.fn(),
+      handleSaveRetry: vi.fn(),
+      openLightbox: (src: string, alt: string) => {
+        lightbox.src = src
+        lightbox.alt = alt
+        lightbox.open = true
+      },
+    }
+  },
   template,
 }), {
   global: {
+    components: { ImageLightbox },
     stubs: { GoogleAttributions: true, NuxtLink: true },
   },
 })
@@ -120,5 +131,18 @@ describe('logs/new form behavior', () => {
     const wrapper = renderLogPage({ candidates: [] })
     expect(wrapper.text()).toContain('銘柄候補を特定できませんでした。')
     expect(wrapper.get('input[id^="brand-text-"]').attributes('required')).toBeDefined()
+  })
+
+  it('opens the selected confirmation-card preview in the lightbox', async () => {
+    const wrapper = renderLogPage()
+
+    wrapper.get<HTMLButtonElement>('button[aria-label="写真を拡大表示"]').element.click()
+    await wrapper.vm.$nextTick()
+
+    const dialog = wrapper.get('[role="dialog"]')
+    const image = dialog.get('img')
+    expect(image.attributes('src')).toBe('blob:preview')
+    expect(image.attributes('alt')).toBe('1杯目の飲酒記録写真')
+    wrapper.unmount()
   })
 })

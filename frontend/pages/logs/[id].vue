@@ -27,6 +27,11 @@ const loadError = ref('')
 const actionError = ref('')
 const editing = ref(false)
 const showDeleteConfirmation = ref(false)
+const lightbox = reactive({
+  open: false,
+  src: '',
+  alt: '',
+})
 const form = reactive<DrinkLogEditValues>({
   brandText: '',
   servingStyle: 'NEAT',
@@ -67,6 +72,13 @@ const registerStore = (target: Element | ComponentPublicInstance | null) => {
 
 const handleRefreshedImage = (refreshed: DrinkLog) => {
   log.value = refreshed
+}
+
+const openLightbox = () => {
+  if (!log.value?.image_url) return
+  lightbox.src = log.value.image_url
+  lightbox.alt = `${log.value.brand_text}の記録写真`
+  lightbox.open = true
 }
 
 const startEditing = () => {
@@ -148,13 +160,21 @@ onMounted(async () => {
     </div>
 
     <article v-else-if="log" class="mt-6 overflow-hidden rounded-lg border border-amber-800 bg-stone-800 shadow-xl">
-      <DrinkLogImage
-        :log="log"
-        :alt="`${log.brand_text}の記録写真`"
-        image-class="max-h-[42rem] w-full bg-stone-950 object-contain"
-        placeholder-class="flex min-h-72 w-full items-center justify-center bg-stone-950"
-        @refreshed="handleRefreshedImage"
-      />
+      <button
+        type="button"
+        :disabled="!log.image_url"
+        aria-label="写真を拡大表示"
+        class="block w-full cursor-zoom-in disabled:cursor-default"
+        @click="openLightbox"
+      >
+        <DrinkLogImage
+          :log="log"
+          :alt="`${log.brand_text}の記録写真`"
+          image-class="max-h-[42rem] w-full bg-stone-950 object-contain"
+          placeholder-class="flex min-h-72 w-full items-center justify-center bg-stone-950"
+          @refreshed="handleRefreshedImage"
+        />
+      </button>
 
       <div class="p-5 sm:p-7">
         <template v-if="!editing">
@@ -260,5 +280,7 @@ onMounted(async () => {
         </div>
       </div>
     </div>
+
+    <ImageLightbox v-model:open="lightbox.open" :src="lightbox.src" :alt="lightbox.alt" />
   </div>
 </template>

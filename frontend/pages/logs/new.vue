@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import { useDrinkLogBatch, MAX_DRINK_LOG_BATCH_SIZE, type DrinkLogBatchItem } from '~/composables/useDrinkLogBatch'
 import { candidateIndexAfterBrandEdit, useDrinkLogs, type PlaceCandidate } from '~/composables/useDrinkLogs'
 import { useGeolocation } from '~/composables/useGeolocation'
@@ -25,6 +25,11 @@ const storeName = ref('')
 const pageError = ref('')
 const selectionNotice = ref('')
 const placeError = ref('')
+const lightbox = reactive({
+  open: false,
+  src: '',
+  alt: '',
+})
 
 const styleLabels: Record<ServingStyle, string> = {
   NEAT: 'ストレート',
@@ -148,6 +153,13 @@ const handleSaveRetry = async (item: DrinkLogBatchItem) => {
   const created = await retrySave(item, storeName.value, selectedPlaceId.value)
   await finishSave(created ? [created] : [])
 }
+
+const openLightbox = (src: string, alt: string) => {
+  if (!src) return
+  lightbox.src = src
+  lightbox.alt = alt
+  lightbox.open = true
+}
 </script>
 
 <template>
@@ -229,7 +241,14 @@ const handleSaveRetry = async (item: DrinkLogBatchItem) => {
 
       <section v-for="item in items.filter(entry => entry.phase === 'ready')" :key="`card-${item.id}`" class="space-y-5 rounded-lg border border-amber-700 bg-stone-800 p-5 shadow-lg">
         <div class="flex items-start gap-4">
-          <img :src="item.previewUrl" :alt="`${items.indexOf(item) + 1}杯目の飲酒記録写真`" class="h-28 w-28 shrink-0 rounded-lg bg-stone-900 object-cover" />
+          <button
+            type="button"
+            aria-label="写真を拡大表示"
+            class="h-28 w-28 shrink-0 cursor-zoom-in rounded-lg"
+            @click="openLightbox(item.previewUrl, `${items.indexOf(item) + 1}杯目の飲酒記録写真`)"
+          >
+            <img :src="item.previewUrl" :alt="`${items.indexOf(item) + 1}杯目の飲酒記録写真`" class="h-28 w-28 rounded-lg bg-stone-900 object-cover" />
+          </button>
           <div>
             <h2 class="text-lg font-medium text-amber-200">{{ items.indexOf(item) + 1 }}杯目の確認</h2>
             <p class="mt-1 text-xs text-stone-400">記録日時: 今（保存時刻）</p>
@@ -299,5 +318,7 @@ const handleSaveRetry = async (item: DrinkLogBatchItem) => {
         </button>
       </div>
     </form>
+
+    <ImageLightbox v-model:open="lightbox.open" :src="lightbox.src" :alt="lightbox.alt" />
   </div>
 </template>
