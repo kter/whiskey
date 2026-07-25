@@ -67,11 +67,12 @@ npx cdk bootstrap
 Usage: ./scripts/deploy.sh <dev|prd> <target> [target ...] [options]
 targets: --dns --oidc --cert --base --notifications --observability --frontend
 options: --diff --diff-only --no-confirm --destroy
+         -c KEY=VALUE, --context KEY=VALUE（複数回指定可、env は上書き不可）
 ```
 
 | target | スタック / 動作 |
 |--------|----------------|
-| `--dns` | `WhiskeyDns`（登録ドメインの HostedZone、RETAIN + termination protection） |
+| `--dns` | `WhiskeyDns`（環境ごとの HostedZone。prd = apex `whiskeybar.site` + dev への委任ロール `WhiskeyDnsDelegationRole`、dev = 子ゾーン `dev.whiskeybar.site` + apex への NS 委任。RETAIN + termination protection） |
 | `--oidc` | `WhiskeyGithubOidc`（GitHub Actions ロール、保護スタック） |
 | `--cert` | `WhiskeyCertificate-<Env>`（us-east-1 証明書） |
 | `--base` | `WhiskeyApp-<Env>`（テーブル・Lambda・API GW・Cognito・S3・CloudFront） |
@@ -98,15 +99,60 @@ AWS_PROFILE=dev bash scripts/deploy.sh dev --base --observability --no-confirm
 AWS_PROFILE=dev bash scripts/deploy.sh dev --frontend          # フロントだけ更新
 ```
 
-### 段階投入フラグ（`infra/config/environments.ts` に永続化）
-CLI の `-c` ではなく **設定値**で管理し、通過時にコミットする（揮発性 CLI フラグだと
-次の通常デプロイで剥がれる）。
-- `enableCustomDomain`: カスタムドメイン + 証明書（DNS 完了後に true）
-- `enableGoogleAuth`: Google IdP + クライアントの provider 参照（OAuth クライアント作成後に true）
+### 段階投入フラグ
+
+`-c KEY=VALUE` / `--context KEY=VALUE` は複数回指定でき、次の context フラグについて
+`infra/config/environments.ts` の既定値を CLI から一時的に上書きする。環境は第1引数が正典なので、
+`-c env=...` は拒否される。
+
+- `enableCustomDomain`: カスタムドメイン + 証明書
+- `enableZoneDelegation`: dev 子ゾーンの apex への NS 委任（既定値 `true`）
+- `enableGoogleAuth`: Google IdP + クライアントの provider 参照
 - `createOidcProvider`: OIDC プロバイダを新規作成するか import するか
 
+通常運用の既定値は `environments.ts` に永続化する。CLI context は DNS 移行のような段階投入に限り、
+次の通常デプロイでは指定を外すこと。
+
 > **絶対に destroy しない**: `WhiskeyDns` / `WhiskeyGithubOidc`（deploy.sh も拒否）。
-> ゾーン/OIDC が消えると DNS 委任と CI 認証が即停止する。prd はスコープ外。
+> ゾーン/OIDC が消えると DNS 委任と CI 認証が即停止する。DNS とアプリスタックは
+> dev/prd とも運用スコープ内（GitHub OIDC は dev アカウントの singleton）。
+
+### DNS ゾーン所有の移行手順（apex を prd へ）
+
+prd apex ゾーンは 2026-07-26 にデプロイ済み。以下の順序を崩さないこと。
+
+1. prd の `--dns` をデプロイし、apex ゾーンと委任ロールを作る。
+   **完了済み**: `whiskeybar.site` / `Z06424363NJD2XHZPOF0J`。
+   この時点ではレジストラ（お名前.com）の NS はまだ切り替えない。
+2. dev の `WhiskeyApp-Dev` が `WhiskeyDns` の HostedZone export を import しているため、
+   ゾーン置換より先に import を外す。
+   `bash scripts/deploy.sh dev --cert --base -c enableCustomDomain=false` を実行する。
+   この間 `dev.whiskeybar.site` / `api.dev.whiskeybar.site` は**停止する**。
+3. `bash scripts/deploy.sh dev --dns` を実行し、旧 apex ゾーンを子ゾーン
+   `dev.whiskeybar.site` に置換する。旧 apex ゾーンは `RemovalPolicy.RETAIN` により
+   dev アカウントに孤児として残り、レジストラがまだ指しているため権威であり続ける。
+4. **旧 apex ゾーン `Z08969091QY06OFQT6YRF` に手動で `dev.whiskeybar.site` の NS
+   レコードを追加**し、手順3で作られた子ゾーンの NS 4本を指す。これにより旧 apex が
+   権威のまま dev の解決先だけが子ゾーンへ移り、次の ACM 検証が公開 DNS から見える。
+   **この手順を飛ばすと ACM 検証が永久に完了せず、CloudFormation がタイムアウトする。**
+5. `bash scripts/deploy.sh dev --cert --base` を実行する。context フラグなしなので
+   カスタムドメインが再有効化され、証明書と A レコードが子ゾーンに作り直される。
+   完了後、dev が復旧する。
+6. 旧 apex ゾーンに他のレコードがあれば prd apex へ移送し、
+   **お名前.com の NS を prd apex の4本へ切り替える**。
+7. TTL 経過を**最低48時間**確認してから、旧 apex ゾーン
+   `Z08969091QY06OFQT6YRF` を手動削除する。
+
+### 既知の危険
+
+- dev HostedZone の名前変更は**置換**になる。`WhiskeyDns:ExportsOutputRefHostedZoneDB99F866...`
+  を `WhiskeyApp-Dev` が import しているため、import を外さずに
+  `bash scripts/deploy.sh dev --dns` を実行すると「使用中 export の値変更」で失敗する。
+- `WhiskeyCertificate-Dev` の `Certificate` と `WhiskeyApp-Dev` の `ApiCertificate` は
+  `DomainValidationOptions` の変更で**置換**される。委任が公開 DNS に出る前に進めると
+  ACM 検証待ちのままハングする。
+- 旧 apex ゾーンは `RETAIN` で残り、削除するまで課金される。レジストラ切り替え後、
+  最低48時間の TTL 経過を確認してから手順7で削除する。
 
 ## 📊 出力値の確認
 

@@ -2,9 +2,9 @@ import * as cdk from 'aws-cdk-lib';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import { Construct } from 'constructs';
+import { contextBoolean } from './context';
 
 export const DNS_ACCOUNT = '031921999648';
-export const ROOT_DOMAIN = 'whiskeybar.site';
 
 export interface DnsStackProps extends cdk.StackProps {
   zoneName: string;
@@ -13,20 +13,6 @@ export interface DnsStackProps extends cdk.StackProps {
     account: string;
     zoneName: string;
   };
-}
-
-function contextBoolean(scope: Construct, key: string, fallback: boolean): boolean {
-  const value = scope.node.tryGetContext(key);
-  if (value === undefined) {
-    return fallback;
-  }
-  if (value === true || value === 'true') {
-    return true;
-  }
-  if (value === false || value === 'false') {
-    return false;
-  }
-  throw new Error(`Context ${key} must be true or false.`);
 }
 
 export class DnsStack extends cdk.Stack {
@@ -48,6 +34,14 @@ export class DnsStack extends cdk.Stack {
         roleName: 'WhiskeyDnsDelegationRole',
         assumedBy: new iam.CompositePrincipal(...delegationPrincipals),
       });
+      // Accepted risk: with the pinned CDK version, grantDelegation grants UPSERT/DELETE
+      // of NS records across this entire apex zone; it does not apply Route 53's
+      // ChangeResourceRecordSetsNormalizedRecordNames condition key. AccountPrincipal
+      // trusts the whole dev account, so any dev principal allowed to sts:AssumeRole
+      // can change NS records for any name below whiskeybar.site. A future migration can
+      // use the custom resource Lambda's role ARN (ArnPrincipal) and a name condition.
+      // Narrowing the principal before its first deployment creates a chicken-and-egg
+      // dependency, so this task intentionally leaves assumedBy unchanged.
       hostedZone.grantDelegation(delegationRole);
 
       new cdk.CfnOutput(this, 'DelegationRoleArn', {

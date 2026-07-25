@@ -17,6 +17,7 @@ show_usage() {
   echo
   echo "Options:"
   echo "  --diff --diff-only --no-confirm --destroy"
+  echo "  -c KEY=VALUE, --context KEY=VALUE (repeatable; env cannot be overridden)"
   exit 1
 }
 
@@ -43,6 +44,7 @@ SELECT_NOTIFICATIONS=false
 SELECT_OBSERVABILITY=false
 SELECT_FRONTEND=false
 TARGET_COUNT=0
+CDK_CONTEXT=(-c "env=$ENVIRONMENT")
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -57,6 +59,22 @@ while [[ $# -gt 0 ]]; do
     --diff-only) SHOW_DIFF=true; DIFF_ONLY=true ;;
     --no-confirm) NO_CONFIRM=true ;;
     --destroy) DESTROY=true ;;
+    -c|--context)
+      if [[ $# -lt 2 ]]; then
+        echo -e "${RED}Error: $1 requires KEY=VALUE.${NC}"
+        exit 2
+      fi
+      if [[ "$2" != *=* ]]; then
+        echo -e "${RED}Error: context must use KEY=VALUE: $2${NC}"
+        exit 2
+      fi
+      if [[ "$2" == env=* ]]; then
+        echo -e "${RED}Error: context 'env' cannot be overridden; use the first argument.${NC}"
+        exit 2
+      fi
+      CDK_CONTEXT+=(-c "$2")
+      shift
+      ;;
     -h|--help) show_usage ;;
     *) echo -e "${RED}Unknown option: $1${NC}"; show_usage ;;
   esac
@@ -82,6 +100,7 @@ fi
 
 cd "$(dirname "$0")/.."
 PROFILE=$ENVIRONMENT
+CDK_CONTEXT+=(--profile "$PROFILE")
 
 command -v aws >/dev/null || { echo -e "${RED}Error: AWS CLI is not installed.${NC}"; exit 1; }
 command -v npm >/dev/null || { echo -e "${RED}Error: npm is not installed.${NC}"; exit 1; }
@@ -153,8 +172,6 @@ if [[ "$SELECT_NOTIFICATIONS" == true ]]; then
 fi
 [[ "$SELECT_BASE" == true ]] && STACKS+=("WhiskeyApp-$ENV_NAME")
 [[ "$SELECT_OBSERVABILITY" == true ]] && STACKS+=("WhiskeyObservability-$ENV_NAME")
-
-CDK_CONTEXT=(-c "env=$ENVIRONMENT" --profile "$PROFILE")
 
 if [[ "$SHOW_DIFF" == true ]]; then
   if [[ ${#STACKS[@]} -gt 0 ]]; then

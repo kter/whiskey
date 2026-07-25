@@ -6,6 +6,7 @@ export interface EnvironmentConfig {
     account: string;
     zoneName: string;
   };
+  delegationTargetAccounts?: string[];
   domain?: string;
   apiDomain?: string;
   certificateArn?: string;
@@ -55,6 +56,7 @@ export const environments: Record<string, EnvironmentConfig> = {
     region: 'ap-northeast-1',
     account: '401731371959',
     hostedZoneName: 'whiskeybar.site',
+    delegationTargetAccounts: ['031921999648'],
     domain: 'whiskeybar.site',
     apiDomain: 'api.whiskeybar.site',
     enableCustomDomain: true,
