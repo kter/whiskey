@@ -126,7 +126,10 @@ prd apex ゾーンは 2026-07-26 にデプロイ済み。以下の順序を崩�
    この時点ではレジストラ（お名前.com）の NS はまだ切り替えない。
 2. dev の `WhiskeyApp-Dev` が `WhiskeyDns` の HostedZone export を import しているため、
    ゾーン置換より先に import を外す。
-   `bash scripts/deploy.sh dev --cert --base -c enableCustomDomain=false` を実行する。
+   `bash scripts/deploy.sh dev --base -c enableCustomDomain=false` を実行する。
+   `enableCustomDomain=false` では `WhiskeyCertificate-Dev` が**アプリから消える**ため、
+   ここで `--cert` を指定するとスタック不在で失敗する。`--base` のみを指定すること。
+   既存の `WhiskeyCertificate-Dev` は CloudFormation 上に孤児として残り、手順5で更新される。
    この間 `dev.whiskeybar.site` / `api.dev.whiskeybar.site` は**停止する**。
 3. `bash scripts/deploy.sh dev --dns` を実行し、旧 apex ゾーンを子ゾーン
    `dev.whiskeybar.site` に置換する。旧 apex ゾーンは `RemovalPolicy.RETAIN` により
