@@ -1,299 +1,148 @@
-import { ref, computed, watch, nextTick } from 'vue'
-import type { Ref } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
+import { useApi } from '~/composables/useApi'
 
 export interface WhiskeySuggestion {
   id: string
+  name: string
   name_ja: string
   name_en: string
-  distillery_ja: string
-  distillery_en: string
+  distillery: string
   region: string
   type: string
   description: string
 }
 
-export interface SearchResponse {
-  query: string
-  suggestions: WhiskeySuggestion[]
-  total: number
-  error?: string
-}
-
 export interface SearchFilters {
   name: string
-  distillery: string
-  region: string
-  type: string
 }
 
-export interface AdvancedSearchResponse {
-  filters: SearchFilters
-  results: WhiskeySuggestion[]
-  total: number
-  error?: string
+interface SearchApiResponse {
+  whiskeys: Array<Partial<WhiskeySuggestion> & { id: string }>
+  count: number
+  next_token: string | null
 }
+
+const toSuggestion = (whiskey: Partial<WhiskeySuggestion> & { id: string }): WhiskeySuggestion => ({
+  id: whiskey.id,
+  name: whiskey.name || whiskey.name_ja || whiskey.name_en || '',
+  name_ja: whiskey.name_ja || '',
+  name_en: whiskey.name_en || whiskey.name || '',
+  distillery: whiskey.distillery || '',
+  region: whiskey.region || '',
+  type: whiskey.type || '',
+  description: whiskey.description || '',
+})
 
 export const useWhiskeySearch = () => {
-  const config = useRuntimeConfig()
-  
-  // 検索状態
+  const api = useApi()
   const searchQuery = ref('')
   const searchResults = ref<WhiskeySuggestion[]>([])
   const isSearching = ref(false)
   const searchError = ref('')
   const showSuggestions = ref(false)
-  
-  // 高度な検索フィルター
-  const searchFilters = ref<SearchFilters>({
-    name: '',
-    distillery: '',
-    region: '',
-    type: ''
-  })
-  
-  // 詳細検索結果
+  const searchFilters = ref<SearchFilters>({ name: '' })
   const advancedResults = ref<WhiskeySuggestion[]>([])
+  const advancedNextToken = ref<string | null>(null)
   const isAdvancedSearching = ref(false)
   const advancedSearchError = ref('')
-  
-  // デバウンス用タイマー
-  let searchTimeout: NodeJS.Timeout | null = null
-  
-  // 計算されたプロパティ
-  const hasResults = computed(() => searchResults.value.length > 0)
-  const hasAdvancedResults = computed(() => advancedResults.value.length > 0)
-  const isAnySearchActive = computed(() => isSearching.value || isAdvancedSearching.value)
-  
-  // インクリメンタル検索
-  const performIncrementalSearch = async (query: string, limit: number = 10) => {
-    if (!query || query.length < 1) {
+  let searchTimeout: ReturnType<typeof setTimeout> | null = null
+
+  const performIncrementalSearch = async (query: string, limit = 10) => {
+    if (!query.trim()) {
       searchResults.value = []
       showSuggestions.value = false
       return
     }
-    
+    isSearching.value = true
+    searchError.value = ''
     try {
-      isSearching.value = true
-      searchError.value = ''
-      
-      const response = await fetch(`${config.public.apiBaseUrl}/api/whiskeys/search/suggest?q=${encodeURIComponent(query)}&limit=${limit}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        }
+      const data = await api.request<SearchApiResponse>('/api/whiskeys/search', {
+        auth: 'none',
+        query: { q: query.trim(), limit },
       })
-      
-      if (!response.ok) {
-        throw new Error(`検索エラー: ${response.status}`)
-      }
-      
-      const data = await response.json()
-      
-      if (data.error) {
-        throw new Error(data.error)
-      }
-      
-      // APIレスポンス形式に対応：data.whiskeys から WhiskeySuggestion形式に変換
-      const suggestions: WhiskeySuggestion[] = (data.whiskeys || []).map((whiskey: any) => ({
-        id: whiskey.id,
-        name_ja: whiskey.name,
-        name_en: whiskey.name,
-        distillery_ja: whiskey.distillery,
-        distillery_en: whiskey.distillery,
-        region: whiskey.region || '',
-        type: whiskey.type || '',
-        description: whiskey.description || ''
-      }))
-      
-      searchResults.value = suggestions
+      searchResults.value = (data.whiskeys || []).map(toSuggestion)
       showSuggestions.value = true
-      
-    } catch (error: any) {
-      searchError.value = error.message || '検索中にエラーが発生しました'
+    } catch (error) {
+      searchError.value = error instanceof Error ? error.message : '検索中にエラーが発生しました'
       searchResults.value = []
       showSuggestions.value = false
     } finally {
       isSearching.value = false
     }
   }
-  
-  // デバウンス付き検索
-  const debouncedSearch = (query: string, delay: number = 300) => {
-    if (searchTimeout) {
-      clearTimeout(searchTimeout)
-    }
-    
-    searchTimeout = setTimeout(() => {
-      performIncrementalSearch(query)
-    }, delay)
+
+  const debouncedSearch = (query: string, delay = 300) => {
+    if (searchTimeout) clearTimeout(searchTimeout)
+    searchTimeout = setTimeout(() => void performIncrementalSearch(query), delay)
   }
-  
-  // 検索クエリの監視（リアルタイム検索）
-  watch(searchQuery, (newQuery) => {
-    if (newQuery.length >= 1) {
-      debouncedSearch(newQuery)
-    } else {
+
+  watch(searchQuery, query => {
+    if (query.trim()) debouncedSearch(query)
+    else {
       searchResults.value = []
       showSuggestions.value = false
     }
   })
-  
-  // 詳細検索
-  const performAdvancedSearch = async (filters: Partial<SearchFilters>, limit: number = 20) => {
+
+  onUnmounted(() => {
+    if (searchTimeout) clearTimeout(searchTimeout)
+  })
+
+  const performAdvancedSearch = async (filters: Partial<SearchFilters>, limit = 20, append = false) => {
+    isAdvancedSearching.value = true
+    advancedSearchError.value = ''
     try {
-      isAdvancedSearching.value = true
-      advancedSearchError.value = ''
-      
-      // 検索条件を統合してクエリを作成
-      const searchTerms = []
-      if (filters.name) searchTerms.push(filters.name)
-      if (filters.distillery) searchTerms.push(filters.distillery)
-      if (filters.region) searchTerms.push(filters.region)
-      if (filters.type) searchTerms.push(filters.type)
-      
-      // 全て空の場合は全件取得
-      const query = searchTerms.length > 0 ? searchTerms.join(' ') : ''
-      
-      const params = new URLSearchParams()
-      params.append('q', query)
-      
-      const response = await fetch(`${config.public.apiBaseUrl}/api/whiskeys/search?${params.toString()}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        }
+      const token = append ? advancedNextToken.value : null
+      const data = await api.request<SearchApiResponse>('/api/whiskeys/search', {
+        auth: 'none',
+        query: { q: filters.name?.trim() || '', limit, next_token: token },
       })
-      
-      if (!response.ok) {
-        throw new Error(`詳細検索エラー: ${response.status}`)
-      }
-      
-      const data = await response.json()
-      
-      if (data.error) {
-        throw new Error(data.error)
-      }
-      
-      // APIレスポンス形式に対応：data.whiskeys から WhiskeySuggestion形式に変換
-      const results: WhiskeySuggestion[] = (data.whiskeys || []).map((whiskey: any) => ({
-        id: whiskey.id,
-        name_ja: whiskey.name,
-        name_en: whiskey.name,
-        distillery_ja: whiskey.distillery,
-        distillery_en: whiskey.distillery,
-        region: whiskey.region || '',
-        type: whiskey.type || '',
-        description: whiskey.description || ''
-      }))
-      
-      advancedResults.value = results
-      
+      const items = (data.whiskeys || []).map(toSuggestion)
+      advancedResults.value = append ? [...advancedResults.value, ...items] : items
+      advancedNextToken.value = data.next_token || null
       return data
-      
-    } catch (error: any) {
-      advancedSearchError.value = error.message || '詳細検索中にエラーが発生しました'
-      advancedResults.value = []
+    } catch (error) {
+      advancedSearchError.value = error instanceof Error ? error.message : '検索中にエラーが発生しました'
+      if (!append) advancedResults.value = []
       throw error
     } finally {
       isAdvancedSearching.value = false
     }
   }
-  
-  // 検索結果をクリア
+
+  const loadMoreAdvancedResults = (limit = 20) => performAdvancedSearch(searchFilters.value, limit, true)
+
   const clearSearch = () => {
     searchQuery.value = ''
     searchResults.value = []
-    showSuggestions.value = false
     searchError.value = ''
-    
-    if (searchTimeout) {
-      clearTimeout(searchTimeout)
-      searchTimeout = null
-    }
+    showSuggestions.value = false
+    if (searchTimeout) clearTimeout(searchTimeout)
+    searchTimeout = null
   }
-  
-  // 詳細検索結果をクリア
+
   const clearAdvancedSearch = () => {
-    searchFilters.value = {
-      name: '',
-      distillery: '',
-      region: '',
-      type: ''
-    }
+    searchFilters.value = { name: '' }
     advancedResults.value = []
+    advancedNextToken.value = null
     advancedSearchError.value = ''
   }
-  
-  // 全検索状態をクリア
-  const clearAllSearch = () => {
-    clearSearch()
-    clearAdvancedSearch()
-  }
-  
-  // 検索候補を選択
+
   const selectSuggestion = (suggestion: WhiskeySuggestion) => {
-    searchQuery.value = suggestion.name_ja || suggestion.name_en
+    const name = suggestion.name_ja || suggestion.name_en || suggestion.name
+    searchQuery.value = name
     showSuggestions.value = false
-    
-    return {
-      name: suggestion.name_ja || suggestion.name_en,
-      distillery: suggestion.distillery_ja || suggestion.distillery_en
-    }
+    return { id: suggestion.id, name, distillery: suggestion.distillery }
   }
-  
-  // フォーカス管理（モバイル対応）
-  const hideSuggestions = () => {
-    // 少し遅延を設けてクリックイベントを処理できるようにする
-    setTimeout(() => {
-      showSuggestions.value = false
-    }, 150)
-  }
-  
+
+  const hideSuggestions = () => setTimeout(() => { showSuggestions.value = false }, 150)
   const showSuggestionsIfHasResults = () => {
-    if (searchResults.value.length > 0) {
-      showSuggestions.value = true
-    }
+    if (searchResults.value.length) showSuggestions.value = true
   }
-  
-  // 検索結果のフォーマット関数
-  const formatSuggestionDisplay = (suggestion: WhiskeySuggestion) => {
-    const name = suggestion.name_ja || suggestion.name_en
-    const distillery = suggestion.distillery_ja || suggestion.distillery_en
-    
-    if (distillery && distillery !== name) {
-      return `${name} (${distillery})`
-    }
-    return name
-  }
-  
-  const formatSuggestionSecondaryText = (suggestion: WhiskeySuggestion) => {
-    const parts = []
-    
-    if (suggestion.region) {
-      parts.push(suggestion.region)
-    }
-    
-    if (suggestion.type) {
-      parts.push(suggestion.type)
-    }
-    
-    return parts.join(' • ')
-  }
-  
-  // モバイル用ユーティリティ
-  const isMobile = computed(() => {
-    if (process.client) {
-      return window.innerWidth < 768
-    }
-    return false
-  })
-  
-  const suggestionLimit = computed(() => {
-    return isMobile.value ? 5 : 10
-  })
-  
+  const formatSuggestionDisplay = (suggestion: WhiskeySuggestion) => suggestion.name_ja || suggestion.name_en || suggestion.name
+  const formatSuggestionSecondaryText = (suggestion: WhiskeySuggestion) => [suggestion.region, suggestion.type].filter(Boolean).join(' • ')
+
   return {
-    // リアクティブな状態
     searchQuery,
     searchResults,
     isSearching,
@@ -301,33 +150,25 @@ export const useWhiskeySearch = () => {
     showSuggestions,
     searchFilters,
     advancedResults,
+    advancedNextToken,
     isAdvancedSearching,
     advancedSearchError,
-    
-    // 計算されたプロパティ
-    hasResults,
-    hasAdvancedResults,
-    isAnySearchActive,
-    isMobile,
-    suggestionLimit,
-    
-    // 検索機能
+    hasResults: computed(() => searchResults.value.length > 0),
+    hasAdvancedResults: computed(() => advancedResults.value.length > 0),
+    isAnySearchActive: computed(() => isSearching.value || isAdvancedSearching.value),
+    isMobile: computed(() => typeof window !== 'undefined' && window.innerWidth < 768),
+    suggestionLimit: computed(() => typeof window !== 'undefined' && window.innerWidth < 768 ? 5 : 10),
     performIncrementalSearch,
     debouncedSearch,
     performAdvancedSearch,
-    
-    // 状態管理
+    loadMoreAdvancedResults,
     clearSearch,
     clearAdvancedSearch,
-    clearAllSearch,
+    clearAllSearch: () => { clearSearch(); clearAdvancedSearch() },
     selectSuggestion,
-    
-    // UI制御
     hideSuggestions,
     showSuggestionsIfHasResults,
-    
-    // フォーマット関数
     formatSuggestionDisplay,
-    formatSuggestionSecondaryText
+    formatSuggestionSecondaryText,
   }
 }

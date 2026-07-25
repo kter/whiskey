@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useAuth, type UserProfile } from '~/composables/useAuth'
+import { useAuth } from '~/composables/useAuth'
 
 const { user, profile, profileLoading, updateUserProfile, getDisplayName } = useAuth()
 
@@ -127,8 +127,8 @@ onMounted(() => {
         </div>
 
         <button
-          @click="startEditing"
           class="inline-flex items-center px-4 py-2 border border-amber-700 text-sm font-medium rounded-md text-amber-100 bg-amber-800 hover:bg-amber-700 transition-colors"
+          @click="startEditing"
         >
           プロフィールを編集
         </button>
@@ -138,7 +138,7 @@ onMounted(() => {
       <div v-else>
         <h2 class="text-xl font-medium text-amber-200 mb-4">プロフィール編集</h2>
 
-        <form @submit.prevent="saveProfile" class="space-y-6">
+        <form class="space-y-6" @submit.prevent="saveProfile">
           <!-- ニックネーム -->
           <div>
             <label for="nickname" class="block text-sm font-medium text-amber-200 mb-1">
@@ -189,9 +189,9 @@ onMounted(() => {
           <div class="flex justify-end space-x-3">
             <button
               type="button"
-              @click="cancelEditing"
               :disabled="saving"
               class="inline-flex justify-center py-2 px-4 border border-stone-600 shadow-sm text-sm font-medium rounded-md text-amber-200 bg-stone-700 hover:bg-stone-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 transition-colors disabled:opacity-50"
+              @click="cancelEditing"
             >
               キャンセル
             </button>

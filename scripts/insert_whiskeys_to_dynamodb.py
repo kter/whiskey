@@ -6,52 +6,80 @@
 - 日本語専用スキーマ対応
 """
 
+import argparse
 import json
-import sys
 import os
-from datetime import datetime
+import sys
+from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Dict, List, Set, Optional
+from typing import Any, Dict, List, Set
 
-# プロジェクトルートをパスに追加
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'lambda', 'whiskeys-search', 'python'))
+import boto3
 
-from whiskey_search_service import WhiskeySearchService
+
+DEV_ACCOUNT_ID = "031921999648"
+
+
+def create_dynamodb_resource(target: str):
+    """Create a verified DynamoDB resource for an explicit target."""
+    if target == "local":
+        session = boto3.Session(
+            aws_access_key_id="local",
+            aws_secret_access_key="local",
+            region_name="ap-northeast-1",
+        )
+        return session.resource(
+            "dynamodb",
+            endpoint_url=os.environ.get("AWS_ENDPOINT_URL_DYNAMODB", "http://localhost:8000"),
+        )
+
+    profile = os.environ.get("AWS_PROFILE", "dev")
+    session = boto3.Session(profile_name=profile, region_name="ap-northeast-1")
+    identity = session.client("sts").get_caller_identity()
+    if identity.get("Account") != DEV_ACCOUNT_ID:
+        raise ValueError(
+            f"dev target requires AWS account {DEV_ACCOUNT_ID}; got {identity.get('Account')}"
+        )
+    print(f"AWS account verified: {identity['Account']}")
+    print(f"AWS ARN: {identity['Arn']}")
+    return session.resource("dynamodb")
+
+
+def bulk_write_whiskeys(table: Any, items: list[dict[str, Any]]) -> int:
+    """Write items using the script-owned retrying DynamoDB batch writer."""
+    with table.batch_writer() as writer:
+        for item in items:
+            writer.put_item(Item=item)
+    return len(items)
+
+
+def increment_whiskey_revision(app_state_table: Any) -> None:
+    """Mark the ranking input as changed after a successful data load."""
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    app_state_table.update_item(
+        Key={"pk": "whiskey-change-counter"},
+        UpdateExpression="SET updated_at = :updated_at ADD #count :one",
+        ExpressionAttributeNames={"#count": "count"},
+        ExpressionAttributeValues={":one": 1, ":updated_at": now},
+    )
+    app_state_table.update_item(
+        Key={"pk": "ranking-cache/meta"},
+        UpdateExpression="SET dirty_since = if_not_exists(dirty_since, :updated_at)",
+        ExpressionAttributeValues={":updated_at": now},
+    )
 
 
 class WhiskeyDatabaseInserter:
-    def __init__(self):
-        # 環境変数とAWSプロファイルの検証
-        environment = os.getenv('ENVIRONMENT')
-        aws_profile = os.getenv('AWS_PROFILE')
-        
-        if not environment:
-            raise ValueError("ENVIRONMENT環境変数が設定されていません。ENVIRONMENT=dev または ENVIRONMENT=prd を設定してください。")
-        
-        # 環境に応じたプロファイルを自動設定
-        if not aws_profile:
-            if environment == 'prd':
-                os.environ['AWS_PROFILE'] = 'prd'
-                print(f"AWS_PROFILE を自動設定: prd")
-            elif environment == 'dev':
-                os.environ['AWS_PROFILE'] = 'dev'
-                print(f"AWS_PROFILE を自動設定: dev")
-            else:
-                raise ValueError(f"不明な環境: {environment}")
-        
-        # プロファイルが設定されたセッションを作成
-        try:
-            import boto3
-            session = boto3.Session(profile_name=os.environ['AWS_PROFILE'])
-            # 認証情報の確認
-            sts = session.client('sts')
-            identity = sts.get_caller_identity()
-            print(f"AWS アカウント: {identity['Account']}")
-            print(f"AWS ARN: {identity['Arn']}")
-        except Exception as e:
-            raise ValueError(f"AWS認証エラー: {e}")
-        
-        self.db_service = WhiskeySearchService()
+    def __init__(self, target: str, dynamodb: Any | None = None):
+        self.target = target
+        self.dynamodb = dynamodb or create_dynamodb_resource(target)
+        suffix = "local" if target == "local" else "dev"
+        self.whiskey_table = self.dynamodb.Table(
+            os.environ.get("WHISKEY_SEARCH_TABLE", f"WhiskeySearch-{suffix}")
+        )
+        self.app_state_table = self.dynamodb.Table(
+            os.environ.get("APP_STATE_TABLE", f"AppState-{suffix}")
+        )
         self.processed_count = 0
         self.inserted_count = 0
         self.duplicate_count = 0
@@ -266,7 +294,9 @@ class WhiskeyDatabaseInserter:
         
         # DynamoDB投入
         print(f"DynamoDB投入開始: {len(db_items)}件")
-        success_count = self.db_service.bulk_insert_whiskeys(db_items)
+        success_count = bulk_write_whiskeys(self.whiskey_table, db_items)
+        if success_count:
+            increment_whiskey_revision(self.app_state_table)
         
         self.inserted_count = success_count
         print(f"DynamoDB投入完了: {success_count}/{len(db_items)}件")
@@ -323,60 +353,31 @@ class WhiskeyDatabaseInserter:
                 'inserted_count': self.inserted_count
             }
 
-    def get_database_statistics(self) -> Dict:
-        """DynamoDB統計情報取得"""
-        try:
-            stats = self.db_service.get_whiskey_statistics()
-            print("=== DynamoDB統計 ===")
-            print(f"総データ数: {stats.get('total_count', 0)}")
-            print(f"高信頼度数: {stats.get('high_confidence_count', 0)}")
-            print("信頼度分布:", stats.get('confidence_distribution', {}))
-            print("ソース分布:", stats.get('source_distribution', {}))
-            return stats
-        except Exception as e:
-            print(f"統計取得エラー: {e}")
-            return {}
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Insert extracted whiskeys into DynamoDB")
+    parser.add_argument("input_file")
+    parser.add_argument("--target", choices=("local", "dev"), required=True)
+    return parser.parse_args(argv)
 
 
-def main():
+def main(argv: list[str] | None = None) -> int:
     """メイン実行関数"""
-    if len(sys.argv) < 2:
-        print("使用方法: python insert_whiskeys_to_dynamodb.py <extraction_results_file>")
-        print("オプション:")
-        print("  --stats : DynamoDB統計情報のみ表示")
-        print("  --clear : 全データ削除（注意）")
-        sys.exit(1)
-    
-    inserter = WhiskeyDatabaseInserter()
-    
-    # オプション処理
-    if "--stats" in sys.argv:
-        inserter.get_database_statistics()
-        return
-    
-    if "--clear" in sys.argv:
-        print("WARNING: 全ウイスキーデータを削除します")
-        success = inserter.db_service.delete_all_whiskeys()
-        print(f"削除結果: {'成功' if success else '失敗'}")
-        return
-    
-    input_file = sys.argv[1]
-    
-    if not os.path.exists(input_file):
-        print(f"ERROR: ファイルが見つかりません: {input_file}")
-        sys.exit(1)
-    
-    # メイン処理実行
-    result = inserter.process_file(input_file)
-    
-    if result['success']:
-        print("SUCCESS: DynamoDB投入が正常に完了しました")
-        # 最終統計表示
-        inserter.get_database_statistics()
-    else:
-        print("ERROR: 処理に失敗しました")
-        sys.exit(1)
+    args = parse_args(argv)
+    if not os.path.exists(args.input_file):
+        print(f"ERROR: ファイルが見つかりません: {args.input_file}", file=sys.stderr)
+        return 1
+    try:
+        inserter = WhiskeyDatabaseInserter(args.target)
+        result = inserter.process_file(args.input_file)
+    except Exception as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    if not result["success"]:
+        print("ERROR: 処理に失敗しました", file=sys.stderr)
+        return 1
+    print("SUCCESS: DynamoDB投入が正常に完了しました")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

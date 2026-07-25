@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
+import { ref } from 'vue'
 import { useWhiskeySearch, type WhiskeySuggestion } from '~/composables/useWhiskeySearch'
 
 const props = defineProps<{
@@ -11,7 +11,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
-  'select': [selection: { name: string; distillery: string }]
+  'select': [selection: { id: string; name: string; distillery: string }]
 }>()
 
 const {
@@ -128,7 +128,7 @@ onUnmounted(() => {
         ref="inputRef"
         v-model="searchQuery"
         type="text"
-        :placeholder="placeholder || 'ウイスキー名や蒸留所名で検索...'"
+        :placeholder="placeholder || 'ウイスキー名で検索...'"
         :disabled="disabled"
         class="w-full px-4 py-3 pr-12 text-amber-100 bg-stone-700 border border-amber-700 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 placeholder-amber-400 transition-colors"
         :class="{
@@ -205,10 +205,10 @@ onUnmounted(() => {
               
               <!-- 蒸留所名（別途表示する場合） -->
               <div 
-                v-if="showDistillery && suggestion.distillery_ja && suggestion.distillery_ja !== suggestion.name_ja"
+                v-if="showDistillery && suggestion.distillery && suggestion.distillery !== suggestion.name_ja"
                 class="text-sm text-amber-400 mt-1"
               >
-                蒸留所: {{ suggestion.distillery_ja }}
+                蒸留所: {{ suggestion.distillery }}
               </div>
               
               <!-- 説明（短縮版） -->

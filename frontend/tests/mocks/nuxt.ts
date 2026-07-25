@@ -10,7 +10,10 @@ export const useRuntimeConfig = () => ({
     userPoolId: 'ap-northeast-1_test',
     userPoolClientId: 'test-client-id',
     region: 'ap-northeast-1',
-    environment: 'test'
+    environment: 'test',
+    mockAuth: '0',
+    googleAuthEnabled: '0',
+    cognitoDomain: ''
   }
 })
 
@@ -33,7 +36,4 @@ export const useRoute = () => ({
 export const navigateTo = vi.fn()
 
 // Mock Nuxt's auto-imports
-global.useRuntimeConfig = useRuntimeConfig
-global.useRouter = useRouter  
-global.useRoute = useRoute
-global.navigateTo = navigateTo
+Object.assign(globalThis, { useRuntimeConfig, useRouter, useRoute, navigateTo })

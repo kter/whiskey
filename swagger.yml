@@ -1,441 +1,385 @@
-openapi: 3.0.0
+openapi: 3.0.3
 info:
   title: Whiskey Log API
-  version: 2.0.0
-  description: ウイスキー記録アプリのAPI仕様（サーバーレスアーキテクチャ版）
+  version: 2.2.0
 servers:
   - url: https://api.dev.whiskeybar.site
-    description: Development server
   - url: https://api.whiskeybar.site
-    description: Production server
-security:
-  - bearerAuth: []
 paths:
   /api/whiskeys:
     get:
-      summary: ウイスキー一覧を取得
       security: []
-      tags:
-        - Whiskeys
+      summary: List whiskeys
       responses:
         '200':
-          description: ウイスキー一覧
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Whiskey'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+          description: Whiskey list
   /api/whiskeys/search:
     get:
-      summary: ウイスキーを検索（多言語対応）
       security: []
-      tags:
-        - Whiskeys
+      summary: Search whiskeys
       parameters:
         - name: q
           in: query
-          description: 検索クエリ（英語・日本語対応）
-          schema:
-            type: string
+          schema: {type: string}
       responses:
-        '200':
-          description: 検索結果
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  whiskeys:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/WhiskeySearchResult'
-                  count:
-                    type: integer
-                  query:
-                    type: string
-                  distillery:
-                    type: string
-                    description: 蒸留所フィルター（削除済み、常に空文字）
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+        '200': {description: Search results}
   /api/whiskeys/suggest:
     get:
-      summary: ウイスキー名のサジェスト検索
       security: []
-      tags:
-        - Whiskeys
+      summary: Suggest whiskey names
       parameters:
         - name: q
           in: query
           required: true
-          schema:
-            type: string
+          schema: {type: string}
       responses:
-        '200':
-          description: サジェスト結果
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  whiskeys:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/WhiskeySearchResult'
-                  count:
-                    type: integer
-                  query:
-                    type: string
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+        '200': {description: Suggestions}
   /api/whiskeys/search/suggest:
     get:
-      summary: ウイスキー名のサジェスト検索（フロントエンド互換用）
       security: []
-      tags:
-        - Whiskeys
+      summary: Suggest whiskey names (compatibility route)
       parameters:
         - name: q
           in: query
           required: true
-          schema:
-            type: string
+          schema: {type: string}
       responses:
-        '200':
-          description: サジェスト結果
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  whiskeys:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/WhiskeySearchResult'
-                  count:
-                    type: integer
-                  query:
-                    type: string
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+        '200': {description: Suggestions}
   /api/whiskeys/ranking:
     get:
-      summary: 評価が高いウイスキーのランキング取得
       security: []
-      tags:
-        - Whiskeys
+      summary: Get whiskey rankings
       responses:
-        '200':
-          description: ランキング一覧（上位20件）
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/RankingItem'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+        '200': {description: Rankings}
   /api/reviews:
     get:
-      summary: レビューを取得（認証ユーザーまたはパブリック）
       security:
         - bearerAuth: []
-        - []
-      tags:
-        - Reviews
+      summary: List the authenticated user's reviews
       parameters:
-        - name: public
-          in: query
-          description: パブリックレビューを取得する場合はtrue
-          schema:
-            type: boolean
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/NextToken'
       responses:
         '200':
-          description: レビュー一覧
+          description: User review page
+          headers:
+            Cache-Control:
+              schema: {type: string, example: 'private, no-store'}
           content:
             application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Review'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+              schema: {$ref: '#/components/schemas/ReviewPage'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
     post:
-      summary: 新しいレビューを作成
-      tags:
-        - Reviews
+      security:
+        - bearerAuth: []
+      summary: Create a review
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/ReviewInput'
+            schema: {$ref: '#/components/schemas/ReviewCreateInput'}
       responses:
         '201':
-          description: 作成成功
+          description: Review created
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/Review'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-  /api/reviews/{id}:
-    put:
-      summary: レビューを更新
-      tags:
-        - Reviews
+              schema: {$ref: '#/components/schemas/Review'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '429': {description: Daily review limit exceeded}
+  /api/reviews/public:
+    get:
+      security: []
+      summary: List public reviews
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/NextToken'
+      responses:
+        '200':
+          description: Public review page
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PublicReviewPage'}
+  /api/reviews/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+    get:
+      security:
+        - bearerAuth: []
+      summary: Get an owned review
+      responses:
+        '200':
+          description: Review
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Review'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    put:
+      security:
+        - bearerAuth: []
+      summary: Update an owned review
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/ReviewInput'
+            schema: {$ref: '#/components/schemas/ReviewUpdateInput'}
       responses:
         '200':
-          description: 更新成功
+          description: Review updated
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/Review'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-  /api/reviews/public:
+              schema: {$ref: '#/components/schemas/Review'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    delete:
+      security:
+        - bearerAuth: []
+      summary: Delete an owned review
+      responses:
+        '204': {description: Review deleted}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/drink-logs/upload-url:
+    post:
+      security: [{bearerAuth: []}]
+      summary: Create a temporary image upload URL
+      responses:
+        '501': {$ref: '#/components/responses/NotImplemented'}
+  /api/drink-logs/analyze:
+    post:
+      security: [{bearerAuth: []}]
+      summary: Analyze a temporary drink image
+      responses:
+        '501': {$ref: '#/components/responses/NotImplemented'}
+  /api/drink-logs/places:
+    post:
+      security: [{bearerAuth: []}]
+      summary: Find nearby Places candidates from body coordinates
+      description: GPS coordinates are accepted only in the request body and are never persisted.
+      responses:
+        '501': {$ref: '#/components/responses/NotImplemented'}
+  /api/drink-logs/places/resolve:
+    post:
+      security: [{bearerAuth: []}]
+      summary: Resolve the optional Place ID of an owned drink log
+      description: Google-provided display names are returned for display only and are never persisted.
+      responses:
+        '501': {$ref: '#/components/responses/NotImplemented'}
+  /api/drink-logs:
+    post:
+      security: [{bearerAuth: []}]
+      summary: Create a drink log
+      responses:
+        '501': {$ref: '#/components/responses/NotImplemented'}
     get:
-      summary: パブリックレビューを取得（後方互換性用）
-      security: []
-      tags:
-        - Reviews
+      security: [{bearerAuth: []}]
+      summary: List the authenticated user's drink-log timeline
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/NextToken'
+        - {name: brand, in: query, schema: {type: string}}
+        - {name: store, in: query, schema: {type: string}}
+        - {name: place_id, in: query, schema: {type: string}}
       responses:
-        '200':
-          description: パブリックレビュー一覧
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Review'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+        '501': {$ref: '#/components/responses/NotImplemented'}
+  /api/drink-logs/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+    get:
+      security: [{bearerAuth: []}]
+      summary: Get an owned drink log
+      responses:
+        '501': {$ref: '#/components/responses/NotImplemented'}
+    put:
+      security: [{bearerAuth: []}]
+      summary: Update an owned drink log
+      responses:
+        '501': {$ref: '#/components/responses/NotImplemented'}
+    delete:
+      security: [{bearerAuth: []}]
+      summary: Delete an owned drink log through the recoverable deletion flow
+      responses:
+        '501': {$ref: '#/components/responses/NotImplemented'}
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: AWS Cognito JWT token
+      description: AWS Cognito ID token; access tokens are not accepted
+  parameters:
+    Limit:
+      name: limit
+      in: query
+      schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+    NextToken:
+      name: next_token
+      in: query
+      schema: {type: string}
   responses:
     BadRequest:
-      description: リクエストが不正です
+      description: Invalid request
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
+          schema: {$ref: '#/components/schemas/Error'}
     Unauthorized:
-      description: 認証が必要です
+      description: A valid Cognito ID token is required
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-    Forbidden:
-      description: アクセス権限がありません
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
+          schema: {$ref: '#/components/schemas/Error'}
     NotFound:
-      description: リソースが見つかりません
+      description: Review not found
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-    InternalServerError:
-      description: サーバー内部エラー
+          schema: {$ref: '#/components/schemas/Error'}
+    NotImplemented:
+      description: Phase 4 route stub; Tasks 07 and 08 install the implementation
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
+          schema: {$ref: '#/components/schemas/Error'}
   schemas:
     Error:
       type: object
-      required:
-        - error
-        - message
+      required: [error]
       properties:
-        error:
-          type: string
-        message:
-          type: string
-        details:
+        error: {type: string}
+        request_id: {type: string}
+        fields:
           type: object
-    Whiskey:
-      type: object
-      properties:
-        id:
-          type: string
-        name:
-          type: string
-        distillery:
-          type: string
-        region:
-          type: string
-        type:
-          type: string
-        created_at:
-          type: string
-          format: date-time
-    WhiskeySearchResult:
-      type: object
-      properties:
-        id:
-          type: string
-        name:
-          type: string
-          description: 表示用名前（日本語優先）
-        name_en:
-          type: string
-          description: 英語名
-        name_ja:
-          type: string
-          description: 日本語名
-        distillery:
-          type: string
-          description: 蒸留所名（日本語優先）
-        region:
-          type: string
-        type:
-          type: string
-        confidence:
-          type: number
-          format: float
-          minimum: 0
-          maximum: 1
-        source:
-          type: string
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
+          additionalProperties: {type: string}
     Review:
       type: object
+      required: [id, whiskey_id, rating, date, is_public, created_at, updated_at]
       properties:
-        id:
-          type: string
-        whiskey_id:
-          type: string
-        whiskey_name:
-          type: string
-        user_id:
-          type: string
-        user_name:
-          type: string
-        notes:
-          type: string
-          maxLength: 2000
-        rating:
-          type: number
-          format: float
-          minimum: 1
-          maximum: 5
-          description: 評価（1-5）
-        serving_style:
-          type: string
-          enum: [neat, rocks, water, highball, other]
-          description: 飲み方
-        date:
-          type: string
-          format: date
-        image_url:
-          type: string
-          format: uri
-        is_public:
-          type: boolean
-          default: false
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-    ReviewInput:
+        id: {type: string}
+        whiskey_id: {type: string}
+        whiskey_name: {type: string}
+        whiskey_distillery: {type: string}
+        user_id: {type: string, description: Returned only on authenticated owner routes}
+        rating: {$ref: '#/components/schemas/Rating'}
+        notes: {type: string, maxLength: 2000}
+        serving_style: {$ref: '#/components/schemas/ServingStyle'}
+        date: {type: string, format: date}
+        is_public: {type: boolean, default: false}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    ReviewPage:
       type: object
+      required: [results, reviews, count]
+      properties:
+        results:
+          type: array
+          items: {$ref: '#/components/schemas/Review'}
+        reviews:
+          type: array
+          items: {$ref: '#/components/schemas/Review'}
+        count: {type: integer, minimum: 0}
+        next_token: {type: string, nullable: true}
+    PublicReview:
+      type: object
+      description: Public projection; owner and internal index identifiers are omitted
+      required: [id, whiskey_id, rating, date, is_public, created_at, updated_at]
+      properties:
+        id: {type: string}
+        whiskey_id: {type: string}
+        whiskey_name: {type: string}
+        whiskey_distillery: {type: string}
+        rating: {$ref: '#/components/schemas/Rating'}
+        notes: {type: string, maxLength: 2000}
+        serving_style: {$ref: '#/components/schemas/ServingStyle'}
+        date: {type: string, format: date}
+        is_public: {type: boolean}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    PublicReviewPage:
+      type: object
+      required: [results, reviews, count]
+      properties:
+        results:
+          type: array
+          items: {$ref: '#/components/schemas/PublicReview'}
+        reviews:
+          type: array
+          items: {$ref: '#/components/schemas/PublicReview'}
+        count: {type: integer, minimum: 0}
+        next_token: {type: string, nullable: true}
+    Rating:
+      type: number
+      minimum: 1
+      maximum: 5
+    ServingStyle:
+      type: string
+      enum: [NEAT, ROCKS, WATER, SODA, COCKTAIL]
+    ReviewCreateInput:
+      type: object
+      additionalProperties: false
       required: [whiskey_id, rating, date]
       properties:
-        whiskey_id:
-          type: string
-          description: ウイスキーID
-        notes:
-          type: string
-          maxLength: 2000
-        rating:
-          type: number
-          format: float
-          minimum: 1
-          maximum: 5
-          description: 評価（1-5）
-        serving_style:
-          type: string
-          enum: [neat, rocks, water, highball, other]
-          description: 飲み方
-        date:
-          type: string
-          format: date
-        image_url:
-          type: string
-          format: uri
-        is_public:
-          type: boolean
-          default: false
-    RankingItem:
+        whiskey_id: {type: string, minLength: 1}
+        rating: {$ref: '#/components/schemas/Rating'}
+        notes: {type: string, maxLength: 2000}
+        serving_style: {$ref: '#/components/schemas/ServingStyle'}
+        date: {type: string, format: date}
+        is_public: {type: boolean, default: false}
+    ReviewUpdateInput:
       type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        rating: {$ref: '#/components/schemas/Rating'}
+        notes: {type: string, maxLength: 2000}
+        serving_style: {$ref: '#/components/schemas/ServingStyle'}
+        date: {type: string, format: date}
+        is_public: {type: boolean}
+    DrinkLog:
+      type: object
+      description: GPS coordinates and Google-provided display names are never stored.
       required:
         - id
-        - name
-        - average_rating
-        - review_count
+        - user_id
+        - status
+        - datetime
+        - s3_image_key
+        - quota_allocated
+        - brand_text
+        - brand_source
+        - serving_style
+        - store
+        - created_at
+        - updated_at
       properties:
-        id:
-          type: string
-        name:
-          type: string
-        distillery:
-          type: string
-        region:
-          type: string
-        average_rating:
-          type: number
-          format: float
-          minimum: 0
-          maximum: 5
-        review_count:
-          type: integer
-          minimum: 0
-tags:
-  - name: Whiskeys
-    description: ウイスキー関連のエンドポイント
-  - name: Reviews
-    description: レビュー関連のエンドポイント
+        id: {type: string}
+        user_id: {type: string}
+        status: {type: string, enum: [pending, complete, deleting]}
+        datetime: {type: string, format: date-time, description: Normalized RFC3339 UTC}
+        s3_image_key: {type: string, pattern: '^logs/'}
+        tmp_s3_key: {type: string, pattern: '^tmp/'}
+        quota_allocated: {type: boolean}
+        whiskey_id: {type: string}
+        brand_text: {type: string}
+        brand_source: {type: string, enum: [ai, manual, matched]}
+        serving_style: {$ref: '#/components/schemas/ServingStyle'}
+        store:
+          type: object
+          required: [name]
+          properties:
+            name: {type: string, description: User-entered and allowed to be empty}
+            place_id: {type: string}
+        notes: {type: string}
+        rating: {$ref: '#/components/schemas/Rating'}
+        ai:
+          type: object
+          required: [model_id, confidence]
+          properties:
+            model_id: {type: string}
+            confidence: {type: number, minimum: 0, maximum: 1}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}

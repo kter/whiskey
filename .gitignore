@@ -11,6 +11,8 @@ node_modules
 
 # Logs
 logs
+!frontend/pages/logs/
+!frontend/pages/logs/**
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -73,8 +75,9 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+# NOTE: Python ビルド成果物用。非アンカーの lib/ は infra/lib/ (CDKソース) を誤って除外するため / でアンカー
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -140,6 +143,7 @@ data/
 temp/
 tmp/
 *.json
+!scripts/local/seed_data/*.json
 *.zip
 debug_response*.txt
 
@@ -149,4 +153,14 @@ debug_response*.txt
 *.[Bb]ak
 *.orig
 *.old
-*.[Oo][Ll][Dd] 
+*.[Oo][Ll][Dd]
+
+# macOS AppleDouble (リポジトリ汚染の再発防止)
+._*
+
+# ローカルツール設定 / エージェント実行ログ
+.codex/
+.agent-runs/
+
+# CDK
+infra/cdk.out/
