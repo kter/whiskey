@@ -75,8 +75,8 @@ if [[ "$DESTROY" == true && "$SELECT_FRONTEND" == true ]]; then
   echo -e "${RED}Error: --frontend cannot be combined with --destroy.${NC}"
   exit 2
 fi
-if [[ "$ENVIRONMENT" == "prd" && ("$SELECT_DNS" == true || "$SELECT_OIDC" == true) ]]; then
-  echo -e "${RED}Error: DNS and GitHub OIDC are dev-account singleton stacks.${NC}"
+if [[ "$ENVIRONMENT" == "prd" && "$SELECT_OIDC" == true ]]; then
+  echo -e "${RED}Error: GitHub OIDC is a dev-account singleton stack.${NC}"
   exit 2
 fi
 

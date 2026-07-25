@@ -1,6 +1,11 @@
 export interface EnvironmentConfig {
   region: string;
   account: string;
+  hostedZoneName: string;
+  parentZone?: {
+    account: string;
+    zoneName: string;
+  };
   domain?: string;
   apiDomain?: string;
   certificateArn?: string;
@@ -24,6 +29,11 @@ export const environments: Record<string, EnvironmentConfig> = {
   dev: {
     region: 'ap-northeast-1',
     account: '031921999648',
+    hostedZoneName: 'dev.whiskeybar.site',
+    parentZone: {
+      account: '401731371959',
+      zoneName: 'whiskeybar.site',
+    },
     domain: 'dev.whiskeybar.site',
     apiDomain: 'api.dev.whiskeybar.site',
     enableCustomDomain: true,
@@ -43,18 +53,20 @@ export const environments: Record<string, EnvironmentConfig> = {
   },
   prd: {
     region: 'ap-northeast-1',
-    // The production account is intentionally unset until it is finalized.
-    account: '',
+    account: '401731371959',
+    hostedZoneName: 'whiskeybar.site',
     domain: 'whiskeybar.site',
     apiDomain: 'api.whiskeybar.site',
-    enableCustomDomain: false,
+    enableCustomDomain: true,
     enableGoogleAuth: false,
     createOidcProvider: false,
     cognitoDomainPrefix: 'whiskey-users-prd',
     gatewayErrorOrigin: 'https://whiskeybar.site',
     retainResources: true,
     allowedOrigins: ['https://whiskeybar.site'],
-    // Recommended after the production account's Lambda concurrency quota is raised:
+    // 2026-07-26: このアカウントの Lambda 同時実行上限も 10（絶対最低値）で、
+    // 予約並列度を設定すると未予約枠が 10 を割り拒否されるため付与しない。
+    // 同時実行クォータ引き上げ後に再付与推奨:
     // lambdaReservedConcurrency: { aggregator: 1, analyze: 2, places: 3 },
   },
 };

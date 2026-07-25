@@ -29,7 +29,7 @@ if (!envConfig) {
   throw new Error(`Invalid environment: ${environment}. Must be 'dev' or 'prd'.`);
 }
 
-const account = envConfig.account || undefined;
+const account = envConfig.account;
 const environmentName = environment.charAt(0).toUpperCase() + environment.slice(1);
 const enableCustomDomain = Boolean(account)
   && contextBoolean(app, 'enableCustomDomain', envConfig.enableCustomDomain);
@@ -37,16 +37,18 @@ const enableGoogleAuth = contextBoolean(app, 'enableGoogleAuth', envConfig.enabl
 const createOidcProvider = contextBoolean(app, 'createOidcProvider', envConfig.createOidcProvider);
 const tags = { Project: 'WhiskeyApp', Environment: environment };
 
-let dnsStack: DnsStack | undefined;
+const dnsStack = new DnsStack(app, 'WhiskeyDns', {
+  env: { account, region: envConfig.region },
+  crossRegionReferences: true,
+  terminationProtection: true,
+  zoneName: envConfig.hostedZoneName,
+  delegationTargetAccounts: environment === 'prd' ? [DNS_ACCOUNT] : undefined,
+  parentZone: envConfig.parentZone,
+  tags,
+});
+
 let oidcStack: GithubOidcStack | undefined;
 if (environment === 'dev') {
-  dnsStack = new DnsStack(app, 'WhiskeyDns', {
-    env: { account: DNS_ACCOUNT, region: 'ap-northeast-1' },
-    crossRegionReferences: true,
-    terminationProtection: true,
-    tags: { Project: 'WhiskeyApp', Environment: 'shared' },
-  });
-
   oidcStack = new GithubOidcStack(app, 'WhiskeyGithubOidc', {
     env: { account: DNS_ACCOUNT, region: 'ap-northeast-1' },
     crossRegionReferences: true,
@@ -59,7 +61,7 @@ if (environment === 'dev') {
 }
 
 let certificateStack: CertificateStack | undefined;
-if (enableCustomDomain && dnsStack && envConfig.domain) {
+if (enableCustomDomain && envConfig.domain) {
   certificateStack = new CertificateStack(app, `WhiskeyCertificate-${environmentName}`, {
     env: { account, region: 'us-east-1' },
     crossRegionReferences: true,
@@ -67,7 +69,7 @@ if (enableCustomDomain && dnsStack && envConfig.domain) {
     hostedZone: dnsStack.hostedZone,
     tags,
   });
-  certificateStack.addDependency(oidcStack ?? dnsStack);
+  certificateStack.addDependency(dnsStack);
 }
 
 const appStack = new WhiskeyInfraStack(app, `WhiskeyApp-${environmentName}`, {
@@ -76,7 +78,7 @@ const appStack = new WhiskeyInfraStack(app, `WhiskeyApp-${environmentName}`, {
   environment,
   enableCustomDomain,
   enableGoogleAuth,
-  hostedZone: enableCustomDomain ? dnsStack?.hostedZone : undefined,
+  hostedZone: enableCustomDomain ? dnsStack.hostedZone : undefined,
   cloudFrontCertificateArn: certificateStack?.certificate.certificateArn,
   tags,
 });
