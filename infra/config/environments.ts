@@ -60,7 +60,11 @@ export const environments: Record<string, EnvironmentConfig> = {
     domain: 'whiskeybar.site',
     apiDomain: 'api.whiskeybar.site',
     enableCustomDomain: true,
-    enableGoogleAuth: false,
+    // 2026-07-26 有効化。GCP プロジェクト whiskey-app-prd の OAuth クライアントを使う。
+    // 前提: SSM /whiskey/prd/google-client-id と Secrets Manager whiskey-app-secrets-prd
+    // （キーは GOOGLE_CLIENT_SECRET）。Google 側の承認済みリダイレクト URI は
+    // https://whiskey-users-prd.auth.ap-northeast-1.amazoncognito.com/oauth2/idpresponse
+    enableGoogleAuth: true,
     createOidcProvider: false,
     cognitoDomainPrefix: 'whiskey-users-prd',
     gatewayErrorOrigin: 'https://whiskeybar.site',

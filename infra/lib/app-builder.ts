@@ -116,6 +116,9 @@ export function buildApp(app: cdk.App): AppStacks {
       notificationTopicArn: tokyoNotifications.topic.topicArn,
       imagesBucketName: appStack.imagesBucketName,
       reconcilerFunctionName: appStack.drinkLogReconcilerFunctionName,
+      restApiName: appStack.restApiName,
+      lambdaFunctionNames: appStack.lambdaFunctionNames,
+      tableNames: appStack.tableNames,
       tags,
     },
   );

@@ -815,7 +815,7 @@ describe('split stacks', () => {
       hostedZoneName: 'whiskeybar.site',
       delegationTargetAccounts: [DEV_ACCOUNT],
       enableCustomDomain: true,
-      enableGoogleAuth: false,
+      enableGoogleAuth: true,
     }));
     expect(environments.prd.parentZone).toBeUndefined();
     expect(environments.prd.lambdaReservedConcurrency).toBeUndefined();
@@ -963,18 +963,30 @@ describe('split stacks', () => {
     expect(dependencies).toContain(topicPolicyLogicalId);
   });
 
-  test('observability stack contains only Tokyo alarms with filtered S3 and reconciler metrics', () => {
+  test('observability stack creates availability alarms and sends every alarm to Tokyo SNS', () => {
     const app = new cdk.App();
+    const lambdaFunctionNames = [
+      'whiskey-list-dev',
+      'drink-log-reconciler-dev',
+    ];
+    const tableNames = [
+      'WhiskeySearch-dev',
+      'DrinkLogs-dev',
+    ];
     const stack = new ObservabilityStack(app, 'Observability', {
       env: { account: DEV_ACCOUNT, region: 'ap-northeast-1' },
       environment: 'dev',
       notificationTopicArn: `arn:aws:sns:ap-northeast-1:${DEV_ACCOUNT}:alerts`,
       imagesBucketName: `whiskey-images-dev-${DEV_ACCOUNT}`,
       reconcilerFunctionName: 'drink-log-reconciler-dev',
+      restApiName: 'whiskey-api-dev',
+      lambdaFunctionNames,
+      tableNames,
     });
     const synthesized = Template.fromStack(stack).toJSON() as Synthesized & { templateFile?: string };
     const { templateFile: _ignored, ...json } = synthesized;
-    expect(resourcesOf(json, 'AWS::CloudWatch::Alarm')).toHaveLength(3);
+    expect(resourcesOf(json, 'AWS::CloudWatch::Alarm'))
+      .toHaveLength(3 + 1 + lambdaFunctionNames.length + 1 + tableNames.length);
     expect(resourcesOf(json, 'AWS::Route53::HostedZone')).toHaveLength(0);
     expect(resourcesOf(json, 'AWS::Lambda::Function')).toHaveLength(0);
     const alarms = resourcesOf(json, 'AWS::CloudWatch::Alarm').map(([, alarm]) => alarm.Properties!);
@@ -1004,6 +1016,57 @@ describe('split stacks', () => {
         Dimensions: [{ Name: 'FunctionName', Value: 'drink-log-reconciler-dev' }],
       }),
     ]));
+    expect(alarms).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        AlarmName: 'whiskey-dev-tmp-post-requests-high',
+        Threshold: 300,
+      }),
+      expect.objectContaining({
+        AlarmName: 'whiskey-dev-logs-get-requests-high',
+        Threshold: 2000,
+      }),
+      expect.objectContaining({
+        AlarmName: 'whiskey-dev-drink-log-reconciler-errors',
+        Threshold: 1,
+      }),
+      expect.objectContaining({
+        AlarmName: 'whiskey-dev-api-5xx-high',
+        MetricName: '5XXError',
+        Namespace: 'AWS/ApiGateway',
+        Threshold: 5,
+        Dimensions: [{ Name: 'ApiName', Value: 'whiskey-api-dev' }],
+      }),
+      expect.objectContaining({
+        AlarmName: 'whiskey-dev-lambda-throttles',
+        MetricName: 'Throttles',
+        Namespace: 'AWS/Lambda',
+        Threshold: 1,
+      }),
+    ]));
+
+    const lambdaErrorsAlarms = alarms.filter((alarm) =>
+      alarm.AlarmName.startsWith('whiskey-dev-lambda-errors-'));
+    expect(lambdaErrorsAlarms).toHaveLength(lambdaFunctionNames.length);
+    expect(lambdaErrorsAlarms.map((alarm) => alarm.Dimensions[0].Value).sort())
+      .toEqual([...lambdaFunctionNames].sort());
+    expect(lambdaErrorsAlarms.every((alarm) =>
+      alarm.MetricName === 'Errors' && alarm.Threshold === 3)).toBe(true);
+
+    const lambdaThrottlesAlarms = alarms.filter((alarm) =>
+      alarm.AlarmName === 'whiskey-dev-lambda-throttles');
+    expect(lambdaThrottlesAlarms).toHaveLength(1);
+    expect(lambdaThrottlesAlarms[0].Dimensions).toBeUndefined();
+
+    const dynamodbThrottlesAlarms = alarms.filter((alarm) =>
+      alarm.AlarmName.startsWith('whiskey-dev-dynamodb-throttles-'));
+    expect(dynamodbThrottlesAlarms).toHaveLength(tableNames.length);
+    expect(dynamodbThrottlesAlarms.map((alarm) => alarm.Dimensions[0].Value).sort())
+      .toEqual([...tableNames].sort());
+    expect(dynamodbThrottlesAlarms.every((alarm) =>
+      alarm.MetricName === 'ThrottledRequests' &&
+      alarm.Namespace === 'AWS/DynamoDB' &&
+      alarm.Threshold === 1)).toBe(true);
+
     for (const alarm of alarms) {
       expect(alarm.AlarmActions).toEqual([
         `arn:aws:sns:ap-northeast-1:${DEV_ACCOUNT}:alerts`,
@@ -1058,7 +1121,14 @@ function synthesizeApplication(environment: 'dev' | 'prd') {
   const stacks = buildApp(app);
   const assembly = app.synth();
   const dns = assembly.getStackArtifact(stacks.dnsStack.artifactId).template as Synthesized;
-  return { assembly, dns };
+  const observability = assembly
+    .getStackArtifact(stacks.observabilityStack.artifactId).template as Synthesized;
+  return {
+    assembly,
+    dns,
+    observability,
+    observabilityStackName: stacks.observabilityStack.stackName,
+  };
 }
 
 describe('application builder environment wiring', () => {
@@ -1078,6 +1148,43 @@ describe('application builder environment wiring', () => {
     const artifacts = Object.keys(prd.assembly.manifest.artifacts ?? {});
     expect(artifacts).toContain('WhiskeyCertificate-Prd');
     expect(artifacts).toContain('WhiskeyApp-Prd');
+    expect(prd.observabilityStackName).toBe('WhiskeyObservability-Prd');
+
+    const alarms = resourcesOf(prd.observability, 'AWS::CloudWatch::Alarm')
+      .map(([, alarm]) => alarm.Properties!);
+    const api5xxAlarm = alarms.filter((alarm) =>
+      alarm.AlarmName === 'whiskey-prd-api-5xx-high');
+    expect(api5xxAlarm).toHaveLength(1);
+    expect(api5xxAlarm[0].Dimensions)
+      .toEqual([{ Name: 'ApiName', Value: 'whiskey-api-prd' }]);
+
+    const expectedFunctionNames = [
+      'whiskey-list-prd',
+      'whiskey-search-prd',
+      'reviews-prd',
+      'ranking-aggregator-prd',
+      'drink-logs-prd',
+      'drink-log-analyze-prd',
+      'drink-log-places-prd',
+      'drink-log-reconciler-prd',
+    ];
+    const lambdaErrorsAlarms = alarms.filter((alarm) =>
+      alarm.AlarmName.startsWith('whiskey-prd-lambda-errors-'));
+    expect(lambdaErrorsAlarms).toHaveLength(expectedFunctionNames.length);
+    expect(lambdaErrorsAlarms.map((alarm) => alarm.Dimensions[0].Value).sort())
+      .toEqual(expectedFunctionNames.sort());
+
+    const expectedTableNames = [
+      'Reviews-prd',
+      'WhiskeySearch-prd',
+      'AppState-prd',
+      'DrinkLogs-prd',
+    ];
+    const dynamodbThrottlesAlarms = alarms.filter((alarm) =>
+      alarm.AlarmName.startsWith('whiskey-prd-dynamodb-throttles-'));
+    expect(dynamodbThrottlesAlarms).toHaveLength(expectedTableNames.length);
+    expect(dynamodbThrottlesAlarms.map((alarm) => alarm.Dimensions[0].Value).sort())
+      .toEqual(expectedTableNames.sort());
   });
 
   test('dev wires the child zone to the production delegation role only', () => {

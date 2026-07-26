@@ -53,6 +53,9 @@ function parseExtraOrigins(value: unknown): string[] {
 export class WhiskeyInfraStack extends cdk.Stack {
   public readonly imagesBucketName: string;
   public readonly drinkLogReconcilerFunctionName: string;
+  public readonly restApiName: string;
+  public readonly lambdaFunctionNames: string[];
+  public readonly tableNames: string[];
 
   constructor(scope: Construct, id: string, props: WhiskeyInfraStackProps) {
     super(scope, id, props);
@@ -71,6 +74,25 @@ export class WhiskeyInfraStack extends cdk.Stack {
       ...envConfig.allowedOrigins,
       ...parseExtraOrigins(this.node.tryGetContext('extraAllowedOrigins')),
     ]));
+    const tableNames = {
+      reviews: `Reviews-${environment}`,
+      whiskeySearch: `WhiskeySearch-${environment}`,
+      appState: `AppState-${environment}`,
+      drinkLogs: `DrinkLogs-${environment}`,
+    };
+    const lambdaFunctionNames = {
+      whiskeyList: `whiskey-list-${environment}`,
+      whiskeySearch: `whiskey-search-${environment}`,
+      reviews: `reviews-${environment}`,
+      rankingAggregator: `ranking-aggregator-${environment}`,
+      drinkLogs: `drink-logs-${environment}`,
+      drinkLogAnalyze: `drink-log-analyze-${environment}`,
+      drinkLogPlaces: `drink-log-places-${environment}`,
+      drinkLogReconciler: `drink-log-reconciler-${environment}`,
+    };
+    this.tableNames = Object.values(tableNames);
+    this.lambdaFunctionNames = Object.values(lambdaFunctionNames);
+    this.restApiName = `whiskey-api-${environment}`;
 
     if (enableCustomDomain && (!envConfig.domain || !envConfig.apiDomain || !props.hostedZone || !props.cloudFrontCertificateArn)) {
       throw new Error('Custom domains require domain configuration, a hosted zone, and a CloudFront certificate.');
@@ -154,7 +176,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
     });
 
     const reviewsTable = new dynamodb.Table(this, 'ReviewsTable', {
-      tableName: `Reviews-${environment}`,
+      tableName: tableNames.reviews,
       partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       removalPolicy,
@@ -171,7 +193,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
     });
 
     const whiskeySearchTable = new dynamodb.Table(this, 'WhiskeySearchTable', {
-      tableName: `WhiskeySearch-${environment}`,
+      tableName: tableNames.whiskeySearch,
       partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       removalPolicy,
@@ -181,14 +203,14 @@ export class WhiskeyInfraStack extends cdk.Stack {
       partitionKey: { name: 'normalized_name', type: dynamodb.AttributeType.STRING },
     });
     const appStateTable = new dynamodb.Table(this, 'AppStateTable', {
-      tableName: `AppState-${environment}`,
+      tableName: tableNames.appState,
       partitionKey: { name: 'pk', type: dynamodb.AttributeType.STRING },
       timeToLiveAttribute: 'ttl',
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       removalPolicy,
     });
     const drinkLogsTable = new dynamodb.Table(this, 'DrinkLogsTable', {
-      tableName: `DrinkLogs-${environment}`,
+      tableName: tableNames.drinkLogs,
       partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       removalPolicy,
@@ -534,7 +556,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
     };
 
     const whiskeyListLambda = new lambda.Function(this, 'WhiskeyListFunction', {
-      functionName: `whiskey-list-${environment}`,
+      functionName: lambdaFunctionNames.whiskeyList,
       runtime: lambda.Runtime.PYTHON_3_11,
       architecture: lambda.Architecture.X86_64,
       handler: 'index.lambda_handler',
@@ -555,7 +577,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
     });
 
     const whiskeySearchLambda = new lambda.Function(this, 'WhiskeySearchFunction', {
-      functionName: `whiskey-search-${environment}`,
+      functionName: lambdaFunctionNames.whiskeySearch,
       runtime: lambda.Runtime.PYTHON_3_11,
       architecture: lambda.Architecture.X86_64,
       handler: 'index.lambda_handler',
@@ -579,7 +601,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
     });
 
     const reviewsLambda = new lambda.Function(this, 'ReviewsFunction', {
-      functionName: `reviews-${environment}`,
+      functionName: lambdaFunctionNames.reviews,
       runtime: lambda.Runtime.PYTHON_3_11,
       architecture: lambda.Architecture.X86_64,
       handler: 'index.lambda_handler',
@@ -603,7 +625,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
     });
 
     const rankingAggregatorLambda = new lambda.Function(this, 'RankingAggregatorFunction', {
-      functionName: `ranking-aggregator-${environment}`,
+      functionName: lambdaFunctionNames.rankingAggregator,
       runtime: lambda.Runtime.PYTHON_3_11,
       architecture: lambda.Architecture.X86_64,
       handler: 'index.lambda_handler',
@@ -624,7 +646,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
     });
 
     const drinkLogsLambda = new lambda.Function(this, 'DrinkLogsFunction', {
-      functionName: `drink-logs-${environment}`,
+      functionName: lambdaFunctionNames.drinkLogs,
       runtime: lambda.Runtime.PYTHON_3_11,
       architecture: lambda.Architecture.X86_64,
       handler: 'index.lambda_handler',
@@ -650,7 +672,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
     });
 
     const drinkLogAnalyzeLambda = new lambda.Function(this, 'DrinkLogAnalyzeFunction', {
-      functionName: `drink-log-analyze-${environment}`,
+      functionName: lambdaFunctionNames.drinkLogAnalyze,
       runtime: lambda.Runtime.PYTHON_3_11,
       architecture: lambda.Architecture.X86_64,
       handler: 'index.lambda_handler',
@@ -675,7 +697,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
     });
 
     const drinkLogPlacesLambda = new lambda.Function(this, 'DrinkLogPlacesFunction', {
-      functionName: `drink-log-places-${environment}`,
+      functionName: lambdaFunctionNames.drinkLogPlaces,
       runtime: lambda.Runtime.PYTHON_3_11,
       architecture: lambda.Architecture.X86_64,
       handler: 'places.lambda_handler',
@@ -696,7 +718,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
     });
 
     const drinkLogReconcilerLambda = new lambda.Function(this, 'DrinkLogReconcilerFunction', {
-      functionName: `drink-log-reconciler-${environment}`,
+      functionName: lambdaFunctionNames.drinkLogReconciler,
       runtime: lambda.Runtime.PYTHON_3_11,
       architecture: lambda.Architecture.X86_64,
       handler: 'reconciler.lambda_handler',
@@ -816,7 +838,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
     }
 
     const api = new apigateway.RestApi(this, 'WhiskeyApi', {
-      restApiName: `whiskey-api-${environment}`,
+      restApiName: this.restApiName,
       description: `Whiskey API for ${environment} environment`,
       endpointTypes: [apigateway.EndpointType.REGIONAL],
       cloudWatchRole: true,
