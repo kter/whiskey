@@ -157,6 +157,49 @@ prd apex ゾーンは 2026-07-26 にデプロイ済み。以下の順序を崩�
 - 旧 apex ゾーンは `RETAIN` で残り、削除するまで課金される。レジストラ切り替え後、
   最低48時間の TTL 経過を確認してから手順7で削除する。
 
+#### クロスリージョン export writer の詰まり（2026-07-26 に dev・prd の双方で発生）
+
+`crossRegionReferences: true` のスタック間参照は SSM パラメータ `/cdk/exports/<消費側スタック名>/<export名>`
+を介して実現される。**消費側スタックを削除しても、このパラメータと参照情報が残る**ことがあり、
+以後の更新が次のエラーで失敗し続ける。
+
+```
+Received response status [FAILED] from custom resource.
+Message returned: Error: Some exports have changed!
+/cdk/exports/<消費側スタック名>/<export名>
+```
+
+厄介なのは、**SSM パラメータを手動削除してもタグを消しても解消しない**点。writer は
+CloudFormation 側に保持された旧 export 集合と比較するため、更新の経路では抜けられない。
+`continue-update-rollback` も同じ理由で失敗し、`--resources-to-skip <writerの論理ID>` を
+渡さないとロールバックすら完了しない。
+
+有効な回避策は「writer に旧 export 集合を比較させない」ことの一手に尽きる。
+
+1. **消費側スタックを構成から外す**（dev で採用）
+   `-c enableCustomDomain=false` を付けると `WhiskeyCertificate-<Env>` がアプリから消え、
+   `WhiskeyDns` の writer ごと削除されるため置換が通る。
+   ただし**その状態のままでは誰も SSM パラメータを書かない**ので、証明書スタックを戻す前に
+   フラグなしで `--dns` を打ち直して writer を復活させること。順序を誤ると
+   `Parameters: [ssm:/cdk/exports/...] cannot be found` で証明書スタックが起動しない。
+2. **writer 側スタックごと削除して新規 CREATE にする**（prd で採用）
+   新規作成には比較対象の旧 export 集合が存在しないため、確実に通る。
+   残留 SSM パラメータも併せて削除しておくこと。
+
+#### AWS リソースを直接削除する前の確認（2026-07-26 に事故）
+
+ACM 証明書の `InUseBy` は **CloudFront / API Gateway 等のサービス関連付けしか反映しない**。
+CloudFormation スタックの所有権は判定できないため、`InUseBy: []` を「未使用」の根拠にしてはならない。
+実際、`InUseBy: []` の証明書が `WhiskeyCertificate-Prd` の管理下にあり、削除してスタックを壊した。
+
+CLI でリソースを直接削除する前に、必ず次を確認する。
+
+- そのリソース ARN を管理する CloudFormation スタックが存在しないこと
+- スタック一覧を引くときは `--stack-status-filter` を `CREATE_COMPLETE` / `UPDATE_COMPLETE`
+  だけに絞らないこと。`UPDATE_ROLLBACK_FAILED` や `ROLLBACK_COMPLETE` のスタックが視界から漏れる
+- 同名ドメインの証明書が複数枚ある場合は、CloudFront の
+  `DistributionConfig.ViewerCertificate.ACMCertificateArn` を直接読んで現用を特定すること
+
 ## 📊 出力値の確認
 
 ```bash
