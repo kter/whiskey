@@ -202,7 +202,6 @@ const openLightbox = (src: string, alt: string) => {
           type="file"
           accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
           multiple
-          capture="environment"
           :disabled="isProcessing || isSaving"
           class="mt-3 block w-full text-sm text-stone-300 file:mr-4 file:rounded-md file:border-0 file:bg-amber-800 file:px-4 file:py-2 file:text-amber-100 hover:file:bg-amber-700 disabled:opacity-50"
           @change="handleFileSelection"
