@@ -67,11 +67,12 @@ npx cdk bootstrap
 Usage: ./scripts/deploy.sh <dev|prd> <target> [target ...] [options]
 targets: --dns --oidc --cert --base --notifications --observability --frontend
 options: --diff --diff-only --no-confirm --destroy
+         -c KEY=VALUE, --context KEY=VALUE（複数回指定可、env は上書き不可）
 ```
 
 | target | スタック / 動作 |
 |--------|----------------|
-| `--dns` | `WhiskeyDns`（登録ドメインの HostedZone、RETAIN + termination protection） |
+| `--dns` | `WhiskeyDns`（環境ごとの HostedZone。prd = apex `whiskeybar.site` + dev への委任ロール `WhiskeyDnsDelegationRole`、dev = 子ゾーン `dev.whiskeybar.site` + apex への NS 委任。RETAIN + termination protection） |
 | `--oidc` | `WhiskeyGithubOidc`（GitHub Actions ロール、保護スタック） |
 | `--cert` | `WhiskeyCertificate-<Env>`（us-east-1 証明書） |
 | `--base` | `WhiskeyApp-<Env>`（テーブル・Lambda・API GW・Cognito・S3・CloudFront） |
@@ -98,15 +99,106 @@ AWS_PROFILE=dev bash scripts/deploy.sh dev --base --observability --no-confirm
 AWS_PROFILE=dev bash scripts/deploy.sh dev --frontend          # フロントだけ更新
 ```
 
-### 段階投入フラグ（`infra/config/environments.ts` に永続化）
-CLI の `-c` ではなく **設定値**で管理し、通過時にコミットする（揮発性 CLI フラグだと
-次の通常デプロイで剥がれる）。
-- `enableCustomDomain`: カスタムドメイン + 証明書（DNS 完了後に true）
-- `enableGoogleAuth`: Google IdP + クライアントの provider 参照（OAuth クライアント作成後に true）
+### 段階投入フラグ
+
+`-c KEY=VALUE` / `--context KEY=VALUE` は複数回指定でき、次の context フラグについて
+`infra/config/environments.ts` の既定値を CLI から一時的に上書きする。環境は第1引数が正典なので、
+`-c env=...` は拒否される。
+
+- `enableCustomDomain`: カスタムドメイン + 証明書
+- `enableZoneDelegation`: dev 子ゾーンの apex への NS 委任（既定値 `true`）
+- `enableGoogleAuth`: Google IdP + クライアントの provider 参照
 - `createOidcProvider`: OIDC プロバイダを新規作成するか import するか
 
+通常運用の既定値は `environments.ts` に永続化する。CLI context は DNS 移行のような段階投入に限り、
+次の通常デプロイでは指定を外すこと。
+
 > **絶対に destroy しない**: `WhiskeyDns` / `WhiskeyGithubOidc`（deploy.sh も拒否）。
-> ゾーン/OIDC が消えると DNS 委任と CI 認証が即停止する。prd はスコープ外。
+> ゾーン/OIDC が消えると DNS 委任と CI 認証が即停止する。DNS とアプリスタックは
+> dev/prd とも運用スコープ内（GitHub OIDC は dev アカウントの singleton）。
+
+### DNS ゾーン所有の移行手順（apex を prd へ）
+
+prd apex ゾーンは 2026-07-26 にデプロイ済み。以下の順序を崩さないこと。
+
+1. prd の `--dns` をデプロイし、apex ゾーンと委任ロールを作る。
+   **完了済み**: `whiskeybar.site` / `Z06424363NJD2XHZPOF0J`。
+   この時点ではレジストラ（お名前.com）の NS はまだ切り替えない。
+2. dev の `WhiskeyApp-Dev` が `WhiskeyDns` の HostedZone export を import しているため、
+   ゾーン置換より先に import を外す。
+   `bash scripts/deploy.sh dev --base -c enableCustomDomain=false` を実行する。
+   `enableCustomDomain=false` では `WhiskeyCertificate-Dev` が**アプリから消える**ため、
+   ここで `--cert` を指定するとスタック不在で失敗する。`--base` のみを指定すること。
+   既存の `WhiskeyCertificate-Dev` は CloudFormation 上に孤児として残り、手順5で更新される。
+   この間 `dev.whiskeybar.site` / `api.dev.whiskeybar.site` は**停止する**。
+3. `bash scripts/deploy.sh dev --dns` を実行し、旧 apex ゾーンを子ゾーン
+   `dev.whiskeybar.site` に置換する。旧 apex ゾーンは `RemovalPolicy.RETAIN` により
+   dev アカウントに孤児として残り、レジストラがまだ指しているため権威であり続ける。
+4. **旧 apex ゾーン `Z08969091QY06OFQT6YRF` に手動で `dev.whiskeybar.site` の NS
+   レコードを追加**し、手順3で作られた子ゾーンの NS 4本を指す。これにより旧 apex が
+   権威のまま dev の解決先だけが子ゾーンへ移り、次の ACM 検証が公開 DNS から見える。
+   **この手順を飛ばすと ACM 検証が永久に完了せず、CloudFormation がタイムアウトする。**
+5. `bash scripts/deploy.sh dev --cert --base` を実行する。context フラグなしなので
+   カスタムドメインが再有効化され、証明書と A レコードが子ゾーンに作り直される。
+   完了後、dev が復旧する。
+6. 旧 apex ゾーンに他のレコードがあれば prd apex へ移送し、
+   **お名前.com の NS を prd apex の4本へ切り替える**。
+7. TTL 経過を**最低48時間**確認してから、旧 apex ゾーン
+   `Z08969091QY06OFQT6YRF` を手動削除する。
+
+### 既知の危険
+
+- dev HostedZone の名前変更は**置換**になる。`WhiskeyDns:ExportsOutputRefHostedZoneDB99F866...`
+  を `WhiskeyApp-Dev` が import しているため、import を外さずに
+  `bash scripts/deploy.sh dev --dns` を実行すると「使用中 export の値変更」で失敗する。
+- `WhiskeyCertificate-Dev` の `Certificate` と `WhiskeyApp-Dev` の `ApiCertificate` は
+  `DomainValidationOptions` の変更で**置換**される。委任が公開 DNS に出る前に進めると
+  ACM 検証待ちのままハングする。
+- 旧 apex ゾーンは `RETAIN` で残り、削除するまで課金される。レジストラ切り替え後、
+  最低48時間の TTL 経過を確認してから手順7で削除する。
+
+#### クロスリージョン export writer の詰まり（2026-07-26 に dev・prd の双方で発生）
+
+`crossRegionReferences: true` のスタック間参照は SSM パラメータ `/cdk/exports/<消費側スタック名>/<export名>`
+を介して実現される。**消費側スタックを削除しても、このパラメータと参照情報が残る**ことがあり、
+以後の更新が次のエラーで失敗し続ける。
+
+```
+Received response status [FAILED] from custom resource.
+Message returned: Error: Some exports have changed!
+/cdk/exports/<消費側スタック名>/<export名>
+```
+
+厄介なのは、**SSM パラメータを手動削除してもタグを消しても解消しない**点。writer は
+CloudFormation 側に保持された旧 export 集合と比較するため、更新の経路では抜けられない。
+`continue-update-rollback` も同じ理由で失敗し、`--resources-to-skip <writerの論理ID>` を
+渡さないとロールバックすら完了しない。
+
+有効な回避策は「writer に旧 export 集合を比較させない」ことの一手に尽きる。
+
+1. **消費側スタックを構成から外す**（dev で採用）
+   `-c enableCustomDomain=false` を付けると `WhiskeyCertificate-<Env>` がアプリから消え、
+   `WhiskeyDns` の writer ごと削除されるため置換が通る。
+   ただし**その状態のままでは誰も SSM パラメータを書かない**ので、証明書スタックを戻す前に
+   フラグなしで `--dns` を打ち直して writer を復活させること。順序を誤ると
+   `Parameters: [ssm:/cdk/exports/...] cannot be found` で証明書スタックが起動しない。
+2. **writer 側スタックごと削除して新規 CREATE にする**（prd で採用）
+   新規作成には比較対象の旧 export 集合が存在しないため、確実に通る。
+   残留 SSM パラメータも併せて削除しておくこと。
+
+#### AWS リソースを直接削除する前の確認（2026-07-26 に事故）
+
+ACM 証明書の `InUseBy` は **CloudFront / API Gateway 等のサービス関連付けしか反映しない**。
+CloudFormation スタックの所有権は判定できないため、`InUseBy: []` を「未使用」の根拠にしてはならない。
+実際、`InUseBy: []` の証明書が `WhiskeyCertificate-Prd` の管理下にあり、削除してスタックを壊した。
+
+CLI でリソースを直接削除する前に、必ず次を確認する。
+
+- そのリソース ARN を管理する CloudFormation スタックが存在しないこと
+- スタック一覧を引くときは `--stack-status-filter` を `CREATE_COMPLETE` / `UPDATE_COMPLETE`
+  だけに絞らないこと。`UPDATE_ROLLBACK_FAILED` や `ROLLBACK_COMPLETE` のスタックが視界から漏れる
+- 同名ドメインの証明書が複数枚ある場合は、CloudFront の
+  `DistributionConfig.ViewerCertificate.ACMCertificateArn` を直接読んで現用を特定すること
 
 ## 📊 出力値の確認
 

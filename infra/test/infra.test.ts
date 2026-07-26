@@ -4,6 +4,7 @@ import * as cdk from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import { environments } from '../config/environments';
+import { buildApp } from '../lib/app-builder';
 import { CertificateStack } from '../lib/certificate-stack';
 import { DNS_ACCOUNT, DnsStack } from '../lib/dns-stack';
 import { GithubOidcStack } from '../lib/github-oidc-stack';
@@ -26,7 +27,7 @@ type Synthesized = {
 };
 
 const DEV_ACCOUNT = '031921999648';
-const TEST_PRD_ACCOUNT = '111111111111';
+const PRD_ACCOUNT = '401731371959';
 
 function createAppStack(
   environment: 'dev' | 'prd',
@@ -35,7 +36,7 @@ function createAppStack(
   const app = new cdk.App({
     context: options.extraOrigins ? { extraAllowedOrigins: options.extraOrigins } : undefined,
   });
-  const account = environment === 'dev' ? DEV_ACCOUNT : TEST_PRD_ACCOUNT;
+  const account = environment === 'dev' ? DEV_ACCOUNT : PRD_ACCOUNT;
   let hostedZone: route53.IHostedZone | undefined;
   if (options.customDomain) {
     const producer = new cdk.Stack(app, `ZoneProducer-${environment}`, {
@@ -802,22 +803,77 @@ describe('scheduled ranking aggregation', () => {
 });
 
 describe('split stacks', () => {
-  test('DNS owns the root zone, retains it, and rejects the wrong account', () => {
+  test('environment DNS ownership and production feature flags are configured explicitly', () => {
+    expect(environments.dev.hostedZoneName).toBe('dev.whiskeybar.site');
+    expect(environments.dev.parentZone).toEqual({
+      account: PRD_ACCOUNT,
+      zoneName: 'whiskeybar.site',
+    });
+    expect(environments.dev.parentZone?.account).toBe(environments.prd.account);
+    expect(environments.prd).toEqual(expect.objectContaining({
+      account: PRD_ACCOUNT,
+      hostedZoneName: 'whiskeybar.site',
+      delegationTargetAccounts: [DEV_ACCOUNT],
+      enableCustomDomain: true,
+      enableGoogleAuth: false,
+    }));
+    expect(environments.prd.parentZone).toBeUndefined();
+    expect(environments.prd.lambdaReservedConcurrency).toBeUndefined();
+  });
+
+  test('prd DNS owns and retains the apex zone with a dev delegation role', () => {
     const app = new cdk.App();
     const dns = new DnsStack(app, 'Dns', {
-      env: { account: DNS_ACCOUNT, region: 'ap-northeast-1' },
+      env: { account: PRD_ACCOUNT, region: 'ap-northeast-1' },
       terminationProtection: true,
+      zoneName: 'whiskeybar.site',
+      delegationTargetAccounts: [DNS_ACCOUNT],
     });
     const json = Template.fromStack(dns).toJSON() as Synthesized;
     const zone = resourcesOf(json, 'AWS::Route53::HostedZone')[0][1];
     expect(zone.Properties?.Name).toBe('whiskeybar.site.');
     expect(zone.DeletionPolicy).toBe('Retain');
+    const roles = resourcesOf(json, 'AWS::IAM::Role');
+    expect(roles).toHaveLength(1);
+    expect(roles[0][1].Properties?.RoleName).toBe('WhiskeyDnsDelegationRole');
+    expect(JSON.stringify(roles[0][1].Properties?.AssumeRolePolicyDocument)).toContain(DNS_ACCOUNT);
     expect(Object.keys(json.Outputs ?? {})).toEqual(expect.arrayContaining([
-      'HostedZoneId', 'NameServer1', 'NameServer2', 'NameServer3', 'NameServer4',
+      'HostedZoneId', 'NameServer1', 'NameServer2', 'NameServer3', 'NameServer4', 'DelegationRoleArn',
     ]));
-    expect(() => new DnsStack(new cdk.App(), 'WrongDns', {
-      env: { account: TEST_PRD_ACCOUNT, region: 'ap-northeast-1' },
-    })).toThrow(DNS_ACCOUNT);
+  });
+
+  test('dev DNS owns the child zone and delegates it through the prd role', () => {
+    const app = new cdk.App();
+    const dns = new DnsStack(app, 'Dns', {
+      env: { account: DNS_ACCOUNT, region: 'ap-northeast-1' },
+      zoneName: 'dev.whiskeybar.site',
+      parentZone: {
+        account: PRD_ACCOUNT,
+        zoneName: 'whiskeybar.site',
+      },
+    });
+    const json = Template.fromStack(dns).toJSON() as Synthesized;
+    const zone = resourcesOf(json, 'AWS::Route53::HostedZone')[0][1];
+    expect(zone.Properties?.Name).toBe('dev.whiskeybar.site.');
+    const delegation = resourcesOf(json, 'Custom::CrossAccountZoneDelegation');
+    expect(delegation).toHaveLength(1);
+    expect(delegation[0][1].Properties?.ParentZoneName).toBe('whiskeybar.site');
+    expect(JSON.stringify(delegation[0][1].Properties)).toContain(PRD_ACCOUNT);
+  });
+
+  test('dev DNS can disable parent-zone delegation through context', () => {
+    const app = new cdk.App({
+      context: { enableZoneDelegation: 'false' },
+    });
+    const dns = new DnsStack(app, 'Dns', {
+      env: { account: DNS_ACCOUNT, region: 'ap-northeast-1' },
+      zoneName: 'dev.whiskeybar.site',
+      parentZone: {
+        account: PRD_ACCOUNT,
+        zoneName: 'whiskeybar.site',
+      },
+    });
+    Template.fromStack(dns).resourceCountIs('Custom::CrossAccountZoneDelegation', 0);
   });
 
   test('certificate consumes an injected hosted zone without lookup', () => {
@@ -957,14 +1013,19 @@ describe('split stacks', () => {
 
   test('entrypoint and deployment guard preserve Notifications then App then Observability', () => {
     const binSource = fs.readFileSync(path.join(__dirname, '..', 'bin', 'infra.ts'), 'utf8');
+    const builderSource = fs.readFileSync(path.join(__dirname, '..', 'lib', 'app-builder.ts'), 'utf8');
     const deploySource = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'deploy.sh'), 'utf8');
     const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
-    expect(binSource).toContain('appStack.addDependency(tokyoNotifications)');
-    expect(binSource).toContain('observabilityStack.addDependency(appStack)');
-    expect(binSource).toContain('observabilityStack.addDependency(tokyoNotifications)');
-    expect(binSource).toContain('crossRegionReferences: true');
+    expect(binSource).toContain('buildApp(new cdk.App())');
+    expect(builderSource).toContain('appStack.addDependency(tokyoNotifications)');
+    expect(builderSource).toContain('observabilityStack.addDependency(appStack)');
+    expect(builderSource).toContain('observabilityStack.addDependency(tokyoNotifications)');
+    expect(builderSource).toContain('crossRegionReferences: true');
     expect(deploySource).toContain('[[ "$SELECT_OBSERVABILITY" == true ]] && STACKS+=("WhiskeyObservability-$ENV_NAME")');
     expect(deploySource).toContain('|| "$SELECT_OBSERVABILITY" == true');
+    expect(deploySource).toContain('[[ "$SELECT_DNS" == true ]] && STACKS+=(WhiskeyDns)');
+    expect(deploySource).toContain('if [[ "$ENVIRONMENT" == "prd" && "$SELECT_OIDC" == true ]]');
+    expect(deploySource).not.toContain('"$ENVIRONMENT" == "prd" && ("$SELECT_DNS"');
     expect(packageJson.scripts['deploy:observability:dev']).toContain('--observability');
     expect(packageJson.scripts['diff:observability:dev']).toContain('--observability --diff-only');
   });
@@ -975,7 +1036,59 @@ describe('split stacks', () => {
     expect(() => createAppStack('dev', { customDomain, googleAuth })).not.toThrow();
   });
 
-  test('prd without feature flags synthesizes without lookups', () => {
+  test('prd with custom domain disabled synthesizes without lookups', () => {
     expect(() => createAppStack('prd')).not.toThrow();
+  });
+
+  test('prd custom domain configures the CloudFront and API Gateway aliases', () => {
+    const { template } = createAppStack('prd', { customDomain: true });
+    template.hasResourceProperties('AWS::CloudFront::Distribution', {
+      DistributionConfig: Match.objectLike({
+        Aliases: ['whiskeybar.site'],
+      }),
+    });
+    template.hasResourceProperties('AWS::ApiGateway::DomainName', {
+      DomainName: 'api.whiskeybar.site',
+    });
+  });
+});
+
+function synthesizeApplication(environment: 'dev' | 'prd') {
+  const app = new cdk.App({ context: { env: environment } });
+  const stacks = buildApp(app);
+  const assembly = app.synth();
+  const dns = assembly.getStackArtifact(stacks.dnsStack.artifactId).template as Synthesized;
+  return { assembly, dns };
+}
+
+describe('application builder environment wiring', () => {
+  const prd = synthesizeApplication('prd');
+  const dev = synthesizeApplication('dev');
+
+  test('prd wires the apex zone, dev trust, and production application stacks', () => {
+    const delegationRoles = resourcesOf(prd.dns, 'AWS::IAM::Role')
+      .filter(([, role]) => role.Properties?.RoleName === 'WhiskeyDnsDelegationRole');
+    expect(delegationRoles).toHaveLength(1);
+    expect(JSON.stringify(delegationRoles[0][1].Properties?.AssumeRolePolicyDocument))
+      .toContain(DEV_ACCOUNT);
+    expect(resourcesOf(prd.dns, 'Custom::CrossAccountZoneDelegation')).toHaveLength(0);
+    expect(resourcesOf(prd.dns, 'AWS::Route53::HostedZone')[0][1].Properties?.Name)
+      .toBe('whiskeybar.site.');
+
+    const artifacts = Object.keys(prd.assembly.manifest.artifacts ?? {});
+    expect(artifacts).toContain('WhiskeyCertificate-Prd');
+    expect(artifacts).toContain('WhiskeyApp-Prd');
+  });
+
+  test('dev wires the child zone to the production delegation role only', () => {
+    const delegation = resourcesOf(dev.dns, 'Custom::CrossAccountZoneDelegation');
+    expect(delegation).toHaveLength(1);
+    expect(delegation[0][1].Properties?.AssumeRoleArn)
+      .toBe(`arn:aws:iam::${PRD_ACCOUNT}:role/WhiskeyDnsDelegationRole`);
+    const delegationRoles = resourcesOf(dev.dns, 'AWS::IAM::Role')
+      .filter(([, role]) => role.Properties?.RoleName === 'WhiskeyDnsDelegationRole');
+    expect(delegationRoles).toHaveLength(0);
+    expect(resourcesOf(dev.dns, 'AWS::Route53::HostedZone')[0][1].Properties?.Name)
+      .toBe('dev.whiskeybar.site.');
   });
 });
