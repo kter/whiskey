@@ -1,20 +1,34 @@
 #!/usr/bin/env python3
 """
 高信頼度ウイスキーデータをDynamoDBに投入
-- confidence ≥ 0.9のみ
-- 重複排除機能
-- 日本語専用スキーマ対応
+- 決定論的なcatalog_keyによる再投入
+- 入力内および既存テーブルの重複検出
+- 検索API互換フィールドを維持
 """
+
+from __future__ import annotations
 
 import argparse
 import json
 import os
 import sys
-from datetime import datetime
+from collections import defaultdict
+from datetime import datetime, timezone
 from decimal import Decimal
+from pathlib import Path
 from typing import Any, Dict, List, Set
 
 import boto3
+
+
+ROOT = Path(__file__).resolve().parents[1]
+COMMON_PYTHON = ROOT / "lambda" / "common" / "python"
+if str(COMMON_PYTHON) not in sys.path:
+    sys.path.insert(0, str(COMMON_PYTHON))
+
+from whiskey_common.normalize import normalize_text  # noqa: E402
+
+from catalog.catalog import IDENTITY_FIELDS, catalog_key  # noqa: E402
 
 
 DEV_ACCOUNT_ID = "031921999648"
@@ -47,7 +61,7 @@ def create_dynamodb_resource(target: str):
 
 def bulk_write_whiskeys(table: Any, items: list[dict[str, Any]]) -> int:
     """Write items using the script-owned retrying DynamoDB batch writer."""
-    with table.batch_writer() as writer:
+    with table.batch_writer(overwrite_by_pkeys=["id"]) as writer:
         for item in items:
             writer.put_item(Item=item)
     return len(items)
@@ -67,20 +81,7 @@ class WhiskeyDatabaseInserter:
         
     def normalize_text(self, text: str) -> str:
         """テキストを検索用に正規化（DynamoDBサービスと同一）"""
-        if not text:
-            return ''
-        
-        # 小文字に変換、スペースを除去
-        normalized = text.lower().replace(' ', '').replace('　', '')
-        
-        # カタカナをひらがなに変換
-        katakana_to_hiragana = str.maketrans(
-            'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン',
-            'あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをん'
-        )
-        normalized = normalized.translate(katakana_to_hiragana)
-        
-        return normalized
+        return normalize_text(text)
 
     def load_extraction_results(self, file_path: str) -> List[Dict]:
         """Bedrock抽出結果を読み込み"""
@@ -96,15 +97,9 @@ class WhiskeyDatabaseInserter:
             for item in data['results']:
                 extracted_whiskeys = item.get('extracted_whiskeys', [])
                 for whiskey in extracted_whiskeys:
-                    # whiskeyオブジェクトのコピーを作成して、rakuten_product_nameを追加
-                    whiskey_data = {
-                        'name': whiskey.get('name', ''),
-                        'distillery': whiskey.get('distillery', ''),
-                        'confidence': whiskey.get('confidence', 0.0),
-                        'rakuten_product_name': item.get('product_name', ''),
-                        'type': whiskey.get('type', ''),
-                        'region': whiskey.get('region', '')
-                    }
+                    # Structured fields emitted by A2 are preserved as-is.
+                    whiskey_data = dict(whiskey)
+                    whiskey_data['rakuten_product_name'] = item.get('product_name', '')
                     results.append(whiskey_data)
             return results
         elif 'extraction_results' in data:
@@ -202,14 +197,17 @@ class WhiskeyDatabaseInserter:
                 if not distillery:
                     distillery = "Unknown"
                     
-                cleaned_whiskey = {
-                    'name': name,
-                    'distillery': distillery,
-                    'confidence': confidence,
-                    'rakuten_product_name': whiskey.get('rakuten_product_name', ''),
-                    'type': whiskey.get('type', ''),
-                    'region': whiskey.get('region', '')
-                }
+                cleaned_whiskey = dict(whiskey)
+                cleaned_whiskey.update(
+                    {
+                        'name': name,
+                        'distillery': distillery,
+                        'confidence': confidence,
+                        'rakuten_product_name': whiskey.get('rakuten_product_name', ''),
+                        'type': whiskey.get('type', ''),
+                        'region': whiskey.get('region', ''),
+                    }
+                )
                 
                 clean_whiskeys.append(cleaned_whiskey)
                 
@@ -223,11 +221,8 @@ class WhiskeyDatabaseInserter:
 
     def convert_to_db_format(self, whiskey_data: Dict) -> Dict:
         """DynamoDB投入用フォーマットに変換"""
-        import uuid
-        
-        entry_id = str(uuid.uuid4())
-        now = datetime.now().isoformat()
-        
+        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
         # None値のチェックを追加
         name = whiskey_data.get('name', '')
         if name is None:
@@ -238,12 +233,36 @@ class WhiskeyDatabaseInserter:
         if distillery is None:
             distillery = ''
         distillery = distillery.strip()
-        
+
+        name_ja = str(whiskey_data.get('name_ja') or name).strip()
+        name_en = str(whiskey_data.get('name_en') or name).strip()
+        canonical_name_ja = str(whiskey_data.get('canonical_name_ja') or name_ja).strip()
+        canonical_name_en = str(whiskey_data.get('canonical_name_en') or name_en).strip()
+        searchable_names = "|".join(dict.fromkeys(value for value in (name_ja, name_en) if value))
+        identity = {
+            "brand_key": whiskey_data.get("brand_key") or "unclassified",
+            "expression_code": whiskey_data.get("expression_code") or name,
+            "age": whiskey_data.get("age"),
+            "edition": whiskey_data.get("edition"),
+            "cask": whiskey_data.get("cask"),
+            "vintage": whiskey_data.get("vintage"),
+            "bottler": whiskey_data.get("bottler"),
+        }
+        entry_id = catalog_key(identity)
+
         item = {
             'id': entry_id,
+            'catalog_key': entry_id,
+            'catalog_schema_version': 2,
+            'brand_key': identity['brand_key'],
+            'expression_code': identity['expression_code'],
             'name': name,
+            'name_ja': name_ja,
+            'name_en': name_en,
+            'canonical_name_ja': canonical_name_ja,
+            'canonical_name_en': canonical_name_en,
             'distillery': distillery,
-            'normalized_name': self.normalize_text(name),
+            'normalized_name': self.normalize_text(searchable_names),
             'normalized_distillery': self.normalize_text(distillery),
             'confidence': Decimal(str(whiskey_data.get('confidence', 0.0))),
             'source': 'rakuten_bedrock',
@@ -254,8 +273,62 @@ class WhiskeyDatabaseInserter:
             'created_at': now,
             'updated_at': now
         }
-        
+
+        for field in IDENTITY_FIELDS[2:]:
+            if identity[field] is not None:
+                item[field] = identity[field]
+        for field in (
+            'brand_ja',
+            'brand_en',
+            'brand_aliases',
+            'distillery_ja',
+            'distillery_en',
+            'country',
+            'abv',
+        ):
+            if whiskey_data.get(field) is not None:
+                item[field] = whiskey_data[field]
         return item
+
+    def report_existing_duplicates(self) -> dict[str, list[list[dict[str, Any]]]]:
+        """Scan the target table and report duplicate identities without modifying data."""
+        records: list[dict[str, Any]] = []
+        scan_kwargs: dict[str, Any] = {}
+        while True:
+            response = self.whiskey_table.scan(**scan_kwargs)
+            records.extend(response.get("Items", []))
+            last_key = response.get("LastEvaluatedKey")
+            if not last_key:
+                break
+            scan_kwargs["ExclusiveStartKey"] = last_key
+
+        reports: dict[str, list[list[dict[str, Any]]]] = {}
+        for field in ("catalog_key", "normalized_name"):
+            groups: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
+            for record in records:
+                value = record.get(field)
+                if field == "normalized_name" and not value:
+                    names = dict.fromkeys(
+                        str(record.get(name_field) or "").strip()
+                        for name_field in ("name", "name_ja", "name_en")
+                    )
+                    value = self.normalize_text("|".join(name for name in names if name))
+                if value:
+                    groups[str(value)].append(record)
+            duplicates = [group for group in groups.values() if len(group) > 1]
+            reports[field] = duplicates
+            print(f"{field} duplicate groups: {len(duplicates)}")
+            for group in duplicates:
+                summary = [
+                    {
+                        "id": record.get("id"),
+                        "name": record.get("name"),
+                        field: record.get(field),
+                    }
+                    for record in group
+                ]
+                print(json.dumps(summary, ensure_ascii=False, default=str))
+        return reports
 
     def insert_to_dynamodb(self, whiskey_list: List[Dict]) -> bool:
         """DynamoDBへの一括投入"""
@@ -334,19 +407,31 @@ class WhiskeyDatabaseInserter:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Insert extracted whiskeys into DynamoDB")
-    parser.add_argument("input_file")
+    parser.add_argument("input_file", nargs="?")
     parser.add_argument("--target", choices=("local", "dev"), required=True)
-    return parser.parse_args(argv)
+    parser.add_argument(
+        "--report-duplicates",
+        action="store_true",
+        help="scan and report existing duplicate catalog keys and normalized names",
+    )
+    args = parser.parse_args(argv)
+    if not args.input_file and not args.report_duplicates:
+        parser.error("input_file is required unless --report-duplicates is specified")
+    return args
 
 
 def main(argv: list[str] | None = None) -> int:
     """メイン実行関数"""
     args = parse_args(argv)
-    if not os.path.exists(args.input_file):
+    if args.input_file and not os.path.exists(args.input_file):
         print(f"ERROR: ファイルが見つかりません: {args.input_file}", file=sys.stderr)
         return 1
     try:
         inserter = WhiskeyDatabaseInserter(args.target)
+        if args.report_duplicates:
+            inserter.report_existing_duplicates()
+        if not args.input_file:
+            return 0
         result = inserter.process_file(args.input_file)
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
