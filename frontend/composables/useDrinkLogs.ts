@@ -7,6 +7,9 @@ export interface DrinkLogCandidate {
   name_en?: string
   confidence: number
   whiskey_id?: string
+  match_source?: string
+  ai_name_ja?: string
+  ai_name_en?: string
 }
 
 export interface DrinkLogAnalysis {

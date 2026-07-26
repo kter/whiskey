@@ -5,15 +5,16 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Mapping
 
 import boto3
-from boto3.dynamodb.conditions import Key
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
@@ -43,7 +44,10 @@ SERVING_STYLE_ALIASES = {"HIGHBALL": "SODA", "SODA": "SODA"}
 UUID_TEXT = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}"
 UPLOAD_KEY_RE = re.compile(rf"^tmp/([^/]+)/({UUID_TEXT})\.(jpg|jpeg|png|webp)$")
 MAX_CANDIDATES = 5
-MAX_WHISKEY_SCAN_PAGES = 3
+MASTER_SNAPSHOT_TTL_SECONDS = 300
+MASTER_SNAPSHOT_MAX_PAGES = 20
+MASTER_SNAPSHOT_MAX_ITEMS = 5000
+FUZZY_SHORTLIST_SIZE = 10
 ANALYSIS_TTL_SECONDS = 30 * 60
 HANDLER_BUDGET_MS = 20_000
 INVOKE_SAFETY_MS = 4_000
@@ -51,10 +55,15 @@ MIN_INVOKE_BUDGET_MS = 2_000
 PROMPT = (
     "Analyze this drink photo. Return only strict JSON with exactly these keys: "
     '{"brand_candidates":[{"name_ja":"","name_en":"","confidence":0.0}],'
-    '"serving_style":"NEAT|ROCKS|WATER|SODA|COCKTAIL","glass_type":""}. '
+    '"serving_style":"NEAT|ROCKS|WATER|SODA|COCKTAIL","glass_type":"","label_text":""}. '
     "Return at most 5 candidates. Confidence must be between 0 and 1. "
+    "Set label_text to the text printed on the label exactly as shown. Do not transliterate, "
+    "translate, or infer it; use an empty string if it is unreadable. "
     "Use SODA for highballs. Do not include markdown or commentary."
 )
+
+_MASTER_CACHE_LOCK = threading.Lock()
+_MASTER_CACHE: dict[str, Any] | None = None
 
 
 class ValidationError(ValueError):
@@ -250,6 +259,7 @@ def _validate_model_output(payload: Any) -> dict[str, Any] | None:
         "brand_candidates",
         "serving_style",
         "glass_type",
+        "label_text",
     }:
         return None
     raw_candidates = payload.get("brand_candidates")
@@ -283,10 +293,14 @@ def _validate_model_output(payload: Any) -> dict[str, Any] | None:
     glass_type = payload.get("glass_type")
     if not isinstance(glass_type, str) or len(glass_type) > 200:
         return None
+    label_text = payload.get("label_text")
+    if not isinstance(label_text, str):
+        return None
     return {
         "brand_candidates": candidates,
         "serving_style": serving_style,
         "glass_type": glass_type,
+        "label_text": label_text[:200],
     }
 
 
@@ -329,6 +343,7 @@ def _invoke_model(model_id: str, image: bytes, context: Any, started: float) -> 
             ],
             "serving_style": "NEAT",
             "glass_type": "tumbler",
+            "label_text": "",
         }
     client = _bedrock_client(max(0.1, remaining_ms / 1000))
     try:
@@ -366,69 +381,429 @@ def _whiskey_id(item: Mapping[str, Any]) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
-def _match_whiskey(table: Any, candidate: Mapping[str, Any]) -> str | None:
-    normalized_names = list(dict.fromkeys(normalize_text(name) for name in _candidate_names(candidate)))
-    normalized_names = [name for name in normalized_names if name]
-    for normalized in normalized_names:
-        response = table.query(
-            IndexName="NameIndex",
-            KeyConditionExpression=Key("normalized_name").eq(normalized),
-            Limit=1,
-        )
-        items = response.get("Items", [])
-        if items:
-            matched = _whiskey_id(items[0])
-            if matched:
-                return matched
+_YEAR_NOISE_RE = re.compile(
+    r"aged\d+(?:years?old|years?|yearold|yo)|\d+(?:years?old|years?|yearold|yo|年)"
+)
+_MEASURE_NOISE_RE = re.compile(r"\d+(?:\.\d+)?(?:ml|cl|l|%|度)")
+_GENERAL_NOISE = (
+    "しんぐるもると",
+    "ぶれんでっど",
+    "ういすきー",
+    "うぃすきー",
+    "singlemalt",
+    "blended",
+    "whiskey",
+    "whisky",
+    "scotch",
+    "blend",
+    "純米",
+    "原酒",
+    "新酒",
+    "古酒",
+    "蒸溜所",
+    "蒸留所",
+)
+_CORE_SEPARATOR_RE = re.compile(r"[^0-9a-z\u3040-\u309f\u30fc\u3400-\u9fff]+")
+_CJK_RE = re.compile(r"[\u3040-\u309f\u30fc\u3400-\u9fff]")
+# Japanese labels separate words with \u3001and \u30fb rather than spaces. Without these
+# the separator strip glues neighbours together ("\u30b5\u30f3\u30c8\u30ea\u30fc\u3001\u5c71\u5d0e" -> "\u3055\u3093\u3068\u308a\u30fc\u5c71\u5d0e")
+# and manufactures substrings that were never printed side by side.
+_LABEL_TOKEN_RE = re.compile(r"[\s\u3001\u3002\uff0c\uff0e\u30fb\uff0f/|\\]+")
 
+
+def _brand_core(value: str) -> str:
+    """Return a normalized brand-only comparison string.
+
+    A value made up entirely of generic words collapses to an empty string
+    rather than falling back to the original text. Keeping the fallback let a
+    master row named only "ブレンデッドウイスキー" match a bare "ウイスキー"
+    token on the label, which is printed on practically every bottle.
+    """
+    normalized = normalize_text(value)
+    if not normalized:
+        return ""
+    core = _YEAR_NOISE_RE.sub("", normalized)
+    core = _MEASURE_NOISE_RE.sub("", core)
+    for noise in _GENERAL_NOISE:
+        core = core.replace(noise, "")
+    return _CORE_SEPARATOR_RE.sub("", core)
+
+
+def _usable_match_core(value: str, *, allow_cjk_pair: bool = True) -> bool:
+    """Reject comparison fragments too short to identify a brand.
+
+    Latin fragments need three characters, but Japanese brand names are
+    routinely two characters (山崎, 白州, 余市) and carry as much signal as a
+    longer romanized spelling, so direct candidate comparisons may allow a CJK
+    pair. Label-text callers disable that relaxation.
+    """
+    if len(value) >= 3:
+        return True
+    return (
+        allow_cjk_pair
+        and len(value) == 2
+        and all(_CJK_RE.fullmatch(character) for character in value)
+    )
+
+
+def _snapshot_record(item: Mapping[str, Any]) -> dict[str, Any]:
+    record = dict(item)
+    names = [
+        value
+        for value in (item.get("name_ja"), item.get("name_en"), item.get("name"))
+        if isinstance(value, str) and value
+    ]
+    normalized_names = tuple(
+        dict.fromkeys(normalized for name in names if (normalized := normalize_text(name)))
+    )
+    brand_cores = tuple(
+        dict.fromkeys(core for name in names if (core := _brand_core(name)))
+    )
+    record["_normalized_names"] = normalized_names
+    record["_brand_cores"] = brand_cores
+    return record
+
+
+def _reset_master_cache() -> None:
+    """Clear the module-level master snapshot cache for tests."""
+    global _MASTER_CACHE
+    with _MASTER_CACHE_LOCK:
+        _MASTER_CACHE = None
+
+
+def _build_master_snapshot(table: Any, table_name: str, logger: Any = None) -> dict[str, Any]:
+    items: list[dict[str, Any]] = []
     last_key = None
-    for _ in range(MAX_WHISKEY_SCAN_PAGES):
+    page_count = 0
+    complete = True
+    incomplete_reason = None
+    while page_count < MASTER_SNAPSHOT_MAX_PAGES:
         kwargs: dict[str, Any] = {
             "ProjectionExpression": "id, #name, name_ja, name_en, normalized_name",
             "ExpressionAttributeNames": {"#name": "name"},
         }
         if last_key:
             kwargs["ExclusiveStartKey"] = last_key
-        response = table.scan(**kwargs)
-        for item in response.get("Items", []):
-            item_names = [
-                item.get("normalized_name"),
-                item.get("name"),
-                item.get("name_ja"),
-                item.get("name_en"),
-            ]
-            for item_name in item_names:
-                if not isinstance(item_name, str):
-                    continue
-                normalized_item = normalize_text(item_name)
-                if not normalized_item:
-                    continue
-                if any(name in normalized_item or normalized_item in name for name in normalized_names):
-                    matched = _whiskey_id(item)
-                    if matched:
-                        return matched
+        try:
+            response = table.scan(**kwargs)
+        except (BotoCoreError, ClientError) as exc:
+            complete = False
+            incomplete_reason = "scan_error"
+            if logger is not None:
+                logger.warning(
+                    "Master snapshot scan failed",
+                    error_type=type(exc).__name__,
+                )
+            break
+        page_count += 1
+        page_items = response.get("Items", [])
+        if not isinstance(page_items, list):
+            page_items = []
+        remaining = MASTER_SNAPSHOT_MAX_ITEMS - len(items)
+        items.extend(_snapshot_record(item) for item in page_items[:remaining])
         last_key = response.get("LastEvaluatedKey")
+        if len(page_items) > remaining or (
+            len(items) >= MASTER_SNAPSHOT_MAX_ITEMS and last_key
+        ):
+            complete = False
+            incomplete_reason = "max_items"
+            break
         if not last_key:
             break
-    return None
+    else:
+        complete = not bool(last_key)
+        if not complete:
+            incomplete_reason = "max_pages"
+
+    snapshot = {
+        "table_name": table_name,
+        "expires_at": time.monotonic() + MASTER_SNAPSHOT_TTL_SECONDS,
+        "items": tuple(items),
+        "complete": complete,
+        "incomplete_reason": incomplete_reason,
+        "page_count": page_count,
+    }
+    if not complete and incomplete_reason != "scan_error" and logger is not None:
+        logger.warning(
+            "Master snapshot incomplete",
+            master_snapshot_size=len(items),
+            page_count=page_count,
+            incomplete_reason=incomplete_reason,
+        )
+    return snapshot
 
 
-def _build_candidates(table: Any, analysis: Mapping[str, Any]) -> list[dict[str, Any]]:
-    results: list[dict[str, Any]] = []
-    for candidate in analysis.get("brand_candidates", []):
-        name_ja = candidate["name_ja"]
-        name_en = candidate["name_en"]
-        result: dict[str, Any] = {
-            "brand_text": name_ja or name_en,
-            "name_ja": name_ja,
-            "name_en": name_en,
-            "confidence": candidate["confidence"],
+def _get_master_snapshot(table: Any, table_name: str, logger: Any = None) -> dict[str, Any]:
+    global _MASTER_CACHE
+    now = time.monotonic()
+    cached = _MASTER_CACHE
+    if (
+        cached is not None
+        and cached["table_name"] == table_name
+        and cached["expires_at"] > now
+    ):
+        return cached
+    with _MASTER_CACHE_LOCK:
+        cached = _MASTER_CACHE
+        now = time.monotonic()
+        if (
+            cached is not None
+            and cached["table_name"] == table_name
+            and cached["expires_at"] > now
+        ):
+            return cached
+        snapshot = _build_master_snapshot(table, table_name, logger)
+        if snapshot.get("incomplete_reason") != "scan_error":
+            _MASTER_CACHE = snapshot
+        return snapshot
+
+
+def _unique_records(records: list[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
+    unique: dict[str, Mapping[str, Any]] = {}
+    for record in records:
+        record_id = _whiskey_id(record)
+        if record_id:
+            unique[record_id] = record
+    return list(unique.values())
+
+
+def _match_whiskey(
+    snapshot: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+    label_text: str = "",
+) -> dict[str, Any]:
+    if not snapshot.get("complete"):
+        return {"source": "ai", "item": None, "ambiguous_items": []}
+
+    normalized_names = tuple(
+        dict.fromkeys(
+            normalized
+            for name in _candidate_names(candidate)
+            if (normalized := normalize_text(name))
+        )
+    )
+    exact_matches = _unique_records(
+        [
+            item
+            for item in snapshot.get("items", ())
+            if set(normalized_names).intersection(item.get("_normalized_names", ()))
+        ]
+    )
+    if len(exact_matches) == 1:
+        return {
+            "source": "master:exact",
+            "item": exact_matches[0],
+            "ambiguous_items": [],
         }
-        matched = _match_whiskey(table, candidate)
-        if matched:
-            result["whiskey_id"] = matched
-        results.append(result)
-    return results
+    if len(exact_matches) > 1:
+        return {
+            "source": "ambiguous",
+            "item": None,
+            "ambiguous_items": exact_matches,
+        }
+
+    candidate_cores = tuple(
+        dict.fromkeys(
+            core
+            for name in _candidate_names(candidate)
+            if (core := _brand_core(name))
+        )
+    )
+    label_cores = tuple(
+        dict.fromkeys(
+            core
+            for token in _LABEL_TOKEN_RE.split(label_text)
+            if token and (core := _brand_core(token))
+        )
+    )
+
+    def is_substring_match(
+        item: Mapping[str, Any], cores: tuple[str, ...], *, allow_cjk_pair: bool
+    ) -> bool:
+        master_cores = item.get("_brand_cores", ())
+        return any(
+            _usable_match_core(core, allow_cjk_pair=allow_cjk_pair)
+            and _usable_match_core(master_core, allow_cjk_pair=allow_cjk_pair)
+            and (core in master_core or master_core in core)
+            for core in cores
+            for master_core in master_cores
+        )
+
+    # The candidate names and the label text are separate evidence classes and
+    # must not be pooled. Label tokens are noisy — "SINGLE" and "MALT" off a
+    # Caol Ila bottle also hit 竹鶴ピュアモルト and フォアローゼズ — so pooling
+    # them let weak evidence dilute an otherwise unique name match into
+    # "ambiguous". The label is only consulted when the names match nothing.
+    substring_matches = _unique_records(
+        [
+            item
+            for item in snapshot.get("items", ())
+            if is_substring_match(item, candidate_cores, allow_cjk_pair=True)
+        ]
+    )
+    if not substring_matches:
+        substring_matches = _unique_records(
+            [
+                item
+                for item in snapshot.get("items", ())
+                if is_substring_match(item, label_cores, allow_cjk_pair=False)
+            ]
+        )
+    if len(substring_matches) == 1:
+        return {
+            "source": "master:substring",
+            "item": substring_matches[0],
+            "ambiguous_items": [],
+        }
+    if len(substring_matches) > 1:
+        return {
+            "source": "ambiguous",
+            "item": None,
+            "ambiguous_items": substring_matches,
+        }
+    return {"source": "ai", "item": None, "ambiguous_items": []}
+
+
+def _resolved_candidate(
+    candidate: Mapping[str, Any],
+    match: Mapping[str, Any],
+) -> dict[str, Any]:
+    name_ja = candidate["name_ja"]
+    name_en = candidate["name_en"]
+    matched = match.get("item")
+    if isinstance(matched, Mapping):
+        canonical_names = [
+            value
+            for value in (
+                matched.get("name_ja"),
+                matched.get("name"),
+                matched.get("name_en"),
+            )
+            if isinstance(value, str) and value and len(value) <= 200
+        ]
+        master_name_ja = matched.get("name_ja")
+        if not isinstance(master_name_ja, str):
+            master_name_ja = ""
+        elif len(master_name_ja) > 200:
+            master_name_ja = name_ja
+        master_name_en = matched.get("name_en")
+        if not isinstance(master_name_en, str):
+            master_name_en = ""
+        elif len(master_name_en) > 200:
+            master_name_en = name_en
+        return {
+            "brand_text": next(iter(canonical_names), name_ja or name_en),
+            "name_ja": master_name_ja,
+            "name_en": master_name_en,
+            "confidence": candidate["confidence"],
+            "whiskey_id": _whiskey_id(matched),
+            "match_source": match["source"],
+            "ai_name_ja": name_ja,
+            "ai_name_en": name_en,
+        }
+    return {
+        "brand_text": name_ja or name_en,
+        "name_ja": name_ja,
+        "name_en": name_en,
+        "confidence": candidate["confidence"],
+        "match_source": match["source"],
+        "ai_name_ja": name_ja,
+        "ai_name_en": name_en,
+    }
+
+
+def _resolve_candidates(
+    snapshot: Mapping[str, Any],
+    analysis: Mapping[str, Any],
+    label_text: str,
+) -> tuple[list[dict[str, Any]], list[Mapping[str, Any]], list[Mapping[str, Any]]]:
+    results: list[dict[str, Any]] = []
+    unresolved: list[Mapping[str, Any]] = []
+    ambiguous_items: list[Mapping[str, Any]] = []
+    for candidate in analysis.get("brand_candidates", []):
+        match = _match_whiskey(snapshot, candidate, label_text)
+        results.append(_resolved_candidate(candidate, match))
+        if match["source"] in {"ambiguous", "ai"}:
+            unresolved.append(candidate)
+            ambiguous_items.extend(match["ambiguous_items"])
+    return results, unresolved, _unique_records(ambiguous_items)
+
+
+def _build_candidates(
+    snapshot: Mapping[str, Any],
+    analysis: Mapping[str, Any],
+    label_text: str = "",
+) -> list[dict[str, Any]]:
+    return _resolve_candidates(snapshot, analysis, label_text)[0]
+
+
+def _build_fuzzy_shortlist(
+    snapshot: Mapping[str, Any],
+    candidates: list[Mapping[str, Any]],
+    label_text: str,
+    ambiguous_items: list[Mapping[str, Any]] | None = None,
+    max_comparison_cores: int = 10,
+) -> list[dict[str, Any]]:
+    """Build Phase 3 input; these scores are never used to auto-confirm a match."""
+    if not snapshot.get("complete") or not candidates:
+        return []
+    if max_comparison_cores <= 0:
+        return []
+    candidate_cores = list(
+        dict.fromkeys(
+            core
+            for candidate in candidates
+            for name in _candidate_names(candidate)
+            if (core := _brand_core(name))
+        )
+    )[:max_comparison_cores]
+    label_cores = list(
+        dict.fromkeys(
+            core
+            for token in _LABEL_TOKEN_RE.split(label_text)
+            if token and (core := _brand_core(token))
+        )
+    )[:max_comparison_cores]
+    comparison_cores = candidate_cores + label_cores
+    if not comparison_cores:
+        return []
+
+    scored: list[tuple[float, str, Mapping[str, Any]]] = []
+    for item in snapshot.get("items", ()):
+        item_id = _whiskey_id(item)
+        master_cores = item.get("_brand_cores", ())
+        if not item_id or not master_cores:
+            continue
+        score = max(
+            SequenceMatcher(None, query_core, master_core).ratio()
+            for query_core in comparison_cores
+            for master_core in master_cores
+        )
+        scored.append((score, item_id, item))
+    scored.sort(key=lambda entry: (-entry[0], entry[1]))
+
+    forced_ids = {
+        item_id
+        for item in (ambiguous_items or [])
+        if (item_id := _whiskey_id(item))
+    }
+    selected = [entry for entry in scored if entry[1] in forced_ids]
+    selected.extend(
+        entry
+        for entry in scored
+        if entry[1] not in forced_ids
+    )
+    forced_entry_count = sum(entry[1] in forced_ids for entry in scored)
+    selected = selected[: max(FUZZY_SHORTLIST_SIZE, forced_entry_count)]
+    return [
+        {
+            "id": item_id,
+            "name_ja": item.get("name_ja", ""),
+            "name_en": item.get("name_en", ""),
+            "score": score,
+        }
+        for score, item_id, item in selected
+    ]
 
 
 def analyze_upload(
@@ -443,6 +818,7 @@ def analyze_upload(
     model_id: str,
     context: Any,
     started: float,
+    logger: Any = None,
 ) -> dict[str, Any]:
     upload_uuid = _upload_identity(s3_key, user_id)
     head = s3.head_object(Bucket=bucket_name, Key=s3_key)
@@ -484,9 +860,50 @@ def analyze_upload(
         if analysis is None or analysis:
             break
     if not analysis:
-        analysis = {"brand_candidates": [], "serving_style": "NEAT", "glass_type": ""}
+        analysis = {
+            "brand_candidates": [],
+            "serving_style": "NEAT",
+            "glass_type": "",
+            "label_text": "",
+        }
 
-    candidates = _build_candidates(dynamodb.Table(whiskey_table_name), analysis)
+    snapshot = _get_master_snapshot(
+        dynamodb.Table(whiskey_table_name),
+        whiskey_table_name,
+        logger,
+    )
+    label_text = analysis["label_text"]
+    candidates, unresolved, ambiguous_items = _resolve_candidates(
+        snapshot,
+        analysis,
+        label_text,
+    )
+    if _remaining_budget_ms(context, started) < MIN_INVOKE_BUDGET_MS:
+        shortlist = []
+    else:
+        shortlist = _build_fuzzy_shortlist(
+            snapshot,
+            unresolved,
+            label_text,
+            ambiguous_items,
+        )
+    if logger is not None:
+        logger.info(
+            "Brand candidates resolved",
+            candidate_count=len(candidates),
+            matched_count=sum("whiskey_id" in candidate for candidate in candidates),
+            match_sources=[candidate["match_source"] for candidate in candidates],
+            top_match_source=candidates[0]["match_source"] if candidates else None,
+            model_id=model_id,
+            label_text_length=len(label_text),
+            master_snapshot_complete=snapshot["complete"],
+            master_snapshot_size=len(snapshot["items"]),
+            shortlist_size=len(shortlist),
+            ambiguous_count=sum(
+                candidate["match_source"] == "ambiguous"
+                for candidate in candidates
+            ),
+        )
     expires_at = int((_utc_now() + timedelta(seconds=ANALYSIS_TTL_SECONDS)).timestamp())
     analysis_id = f"ai-result:{user_id}:{upload_uuid}"
     item: dict[str, Any] = {
@@ -552,6 +969,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             model_id=model_id,
             context=context,
             started=started,
+            logger=logger,
         )
         return create_response(200, result, event=event, private=True)
     except ValidationError as exc:

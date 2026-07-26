@@ -230,6 +230,24 @@ describe('logs/new form behavior', () => {
     expect(wrapper.get('input[id^="brand-text-"]').attributes('required')).toBeDefined()
   })
 
+  it('shows master, ambiguous, and AI candidate matching labels', () => {
+    const wrapper = renderLogPage({
+      candidates: [
+        { brand_text: 'カリラ 12年', confidence: 0.9, match_source: 'master:substring' },
+        { brand_text: '山崎', confidence: 0.8, match_source: 'ambiguous' },
+        { brand_text: '未照合', confidence: 0.7 },
+      ],
+    })
+
+    const options = wrapper.findAll('option')
+    expect(options[1].text()).toContain('照合済み')
+    expect(options[1].text()).not.toContain('AI推定・未照合')
+    expect(options[2].text()).toContain('候補が複数・未確定')
+    expect(options[2].text()).not.toContain('照合済み')
+    expect(options[3].text()).toContain('AI推定・未照合')
+    expect(options[3].text()).not.toContain('照合済み')
+  })
+
   it('opens the selected confirmation-card preview in the lightbox', async () => {
     const wrapper = renderLogPage()
 
