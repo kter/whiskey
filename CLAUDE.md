@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Application Overview
 
-This is a whiskey tasting review application built with a cost-optimized serverless architecture:
+This is a photo-first whiskey drink-log application built with a cost-optimized serverless architecture:
 - **Frontend**: Nuxt.js 3 SPA (TypeScript, Tailwind CSS)
 - **Backend**: Serverless Lambda functions with DynamoDB
 - **Infrastructure**: AWS CDK (Lambda, API Gateway, S3, CloudFront, Cognito)
@@ -55,7 +55,7 @@ python -m pytest tests
 
 # Local full stack（詳細は docs/LOCAL_DEV.md）
 docker compose up -d   # DynamoDB Local(:8001) + MinIO(:9000/9001)
-make local-init        # テーブル作成 + シード + ランキング集計
+make local-init        # テーブル作成 + 銘柄シード
 make api               # FastAPI アダプタ(:8000)
 # フロントは frontend/ で npm run dev（localhost:3000 を使う）
 ```
@@ -101,8 +101,6 @@ curl "https://api.dev.whiskeybar.site/api/whiskeys/search/?q=%E3%83%9C%E3%82%A6%
 - **VPC なし**: 未使用の VPC は削除済み。Lambda は常に VPC 外で実行（NAT Gateway/ALB/EC2/ECS/RDS は不使用）
 - **Lambda**: Serverless compute platform for API（実行時のみ課金）
   - `whiskey-list-dev` / `whiskey-search-dev`: 一覧・多言語検索（手動フィルタ）
-  - `reviews-dev`: レビュー CRUD・公開一覧
-  - `ranking-aggregator-dev`: ランキング事前集計（EventBridge 15分毎）
   - `drink-logs-dev`: 飲酒ログ CRUD・presigned URL・画像サニタイズ
   - `drink-log-analyze-dev`: Bedrock で銘柄/飲み方判別（Converse）
   - `drink-log-places-dev`: Google Places 検索・表示時解決
@@ -112,9 +110,8 @@ curl "https://api.dev.whiskeybar.site/api/whiskeys/search/?q=%E3%83%9C%E3%82%A6%
 - **CloudFront**: CDN for global content delivery（転送量従量）
 - **DynamoDB**: NoSQL database - Pay per request（アクセス従量）
   - `WhiskeySearch-dev`: Optimized search with English/Japanese names
-  - `Reviews-dev`: User reviews
   - `DrinkLogs-dev`: 飲酒ログ（写真・銘柄・店・飲み方。GSI `UserDatetimeIndex`）
-  - `AppState-dev`: ランキングキャッシュ + 濫用/コスト防御カウンタ（PK `pk`、TTL 有効）
+  - `AppState-dev`: 濫用/コスト防御の原子カウンタ（PK `pk`、TTL 有効）
   - ~~`Users-dev`~~: 廃止（プロフィールは Cognito 属性の読み取り専用表示）
   - ~~`Whiskeys-dev`~~: 廃止（`WhiskeySearch-dev` に統合）
 - **Bedrock**: 画像から銘柄/飲み方を判別（`jp.amazon.nova-2-lite-v1:0` 既定 / `jp.anthropic.claude-haiku-4-5` フォールバック、APAC 域内固定プロファイル、Converse API）
@@ -163,7 +160,6 @@ curl "https://api.dev.whiskeybar.site/api/whiskeys/search/?q=%E3%83%9C%E3%82%A6%
 ### Lambda Functions
 - `lambda/whiskeys-search/index.py`: Multi-language search with manual filtering
 - `lambda/whiskeys-list/index.py`: Whiskey listing functionality
-- `lambda/reviews/index.py`: Review management
 
 ### Frontend Structure
 - `frontend/nuxt.config.ts`: Nuxt configuration
@@ -229,9 +225,6 @@ The application uses AWS Cognito for authentication:
 
 ### Data Endpoints
 - `GET /api/whiskeys/` - List whiskeys
-- `GET /api/whiskeys/ranking/` - Whiskey rankings
-- `POST /api/reviews/` - Create review
-- `GET /api/reviews/` - List user reviews
 
 ### Search Examples
 ```bash
@@ -251,9 +244,8 @@ curl "https://api.dev.whiskeybar.site/api/whiskeys/search/?q="
 ```bash
 ENVIRONMENT=dev                                    # Environment name
 WHISKEY_SEARCH_TABLE=WhiskeySearch-dev            # Search-optimized table
-REVIEWS_TABLE=Reviews-dev                         # Reviews table
 DRINKLOGS_TABLE=DrinkLogs-dev                      # Drink logs table
-APP_STATE_TABLE=AppState-dev                       # Ranking cache + abuse/cost counters
+APP_STATE_TABLE=AppState-dev                       # Abuse/cost counters
 IMAGES_BUCKET=whiskey-images-dev-<account>         # Drink log images bucket
 BEDROCK_MODEL_ID=jp.amazon.nova-2-lite-v1:0        # Analyze model (allowlist gated)
 ```

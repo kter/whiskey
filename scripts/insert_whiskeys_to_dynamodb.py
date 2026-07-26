@@ -10,7 +10,7 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Set
 
@@ -53,22 +53,6 @@ def bulk_write_whiskeys(table: Any, items: list[dict[str, Any]]) -> int:
     return len(items)
 
 
-def increment_whiskey_revision(app_state_table: Any) -> None:
-    """Mark the ranking input as changed after a successful data load."""
-    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    app_state_table.update_item(
-        Key={"pk": "whiskey-change-counter"},
-        UpdateExpression="SET updated_at = :updated_at ADD #count :one",
-        ExpressionAttributeNames={"#count": "count"},
-        ExpressionAttributeValues={":one": 1, ":updated_at": now},
-    )
-    app_state_table.update_item(
-        Key={"pk": "ranking-cache/meta"},
-        UpdateExpression="SET dirty_since = if_not_exists(dirty_since, :updated_at)",
-        ExpressionAttributeValues={":updated_at": now},
-    )
-
-
 class WhiskeyDatabaseInserter:
     def __init__(self, target: str, dynamodb: Any | None = None):
         self.target = target
@@ -76,9 +60,6 @@ class WhiskeyDatabaseInserter:
         suffix = "local" if target == "local" else "dev"
         self.whiskey_table = self.dynamodb.Table(
             os.environ.get("WHISKEY_SEARCH_TABLE", f"WhiskeySearch-{suffix}")
-        )
-        self.app_state_table = self.dynamodb.Table(
-            os.environ.get("APP_STATE_TABLE", f"AppState-{suffix}")
         )
         self.processed_count = 0
         self.inserted_count = 0
@@ -295,9 +276,7 @@ class WhiskeyDatabaseInserter:
         # DynamoDB投入
         print(f"DynamoDB投入開始: {len(db_items)}件")
         success_count = bulk_write_whiskeys(self.whiskey_table, db_items)
-        if success_count:
-            increment_whiskey_revision(self.app_state_table)
-        
+
         self.inserted_count = success_count
         print(f"DynamoDB投入完了: {success_count}/{len(db_items)}件")
         

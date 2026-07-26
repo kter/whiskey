@@ -17,7 +17,6 @@ const loadMore = () => nextToken.value && fetchWhiskeyList({ limit: 12, next_tok
       <article v-for="whiskey in whiskeys" :key="whiskey.id" class="bg-stone-800 border border-amber-700 p-6 rounded-lg shadow-lg hover:border-amber-500">
         <h2 class="text-xl font-semibold text-amber-200 mb-2">{{ whiskey.name }}</h2>
         <p class="text-amber-100">{{ whiskey.distillery }}</p>
-        <NuxtLink :to="{ path: '/reviews/new', query: { whiskey_id: whiskey.id, whiskey_name: whiskey.name, distillery: whiskey.distillery } }" class="mt-4 inline-flex text-sm text-amber-400 hover:text-amber-300">この銘柄をレビュー</NuxtLink>
       </article>
     </div>
     <div v-if="nextToken" class="mt-8 text-center"><button :disabled="loading" class="px-5 py-2 rounded-md text-amber-100 bg-amber-800 disabled:opacity-50" @click="loadMore">{{ loading ? '読み込み中...' : 'さらに読み込む' }}</button></div>

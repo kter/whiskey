@@ -2,43 +2,32 @@ from pathlib import Path
 
 import yaml
 
-from tests.lambda_module_loader import load_lambda_module
-
-
 ROOT = Path(__file__).resolve().parents[2]
-reviews = load_lambda_module("reviews_openapi_contract", "lambda/reviews/index.py")
 
 
-def _schema(document, name):
-    return document["components"]["schemas"][name]
-
-
-def test_openapi_review_inputs_match_lambda_contract():
+def test_openapi_excludes_removed_review_and_ranking_contracts():
     document = yaml.safe_load((ROOT / "swagger.yml").read_text())
-    create = _schema(document, "ReviewCreateInput")
-    update = _schema(document, "ReviewUpdateInput")
-    serving_style = _schema(document, "ServingStyle")
-
-    assert set(serving_style["enum"]) == reviews.SERVING_STYLES
-    assert set(create["required"]) == {"whiskey_id", "rating", "date"}
-    assert set(create["properties"]) == reviews.CREATE_FIELDS
-    assert set(update["properties"]) == reviews.UPDATE_FIELDS
-    assert "whiskey_id" not in update["properties"]
-    assert "image_url" not in create["properties"]
-    assert create["additionalProperties"] is False
-    assert update["additionalProperties"] is False
+    assert all("/reviews" not in path and "/ranking" not in path for path in document["paths"])
+    assert all("Review" not in name for name in document["components"]["schemas"])
 
 
-def test_openapi_has_separate_public_and_owned_review_routes():
+def test_openapi_keeps_search_and_drink_log_routes():
     document = yaml.safe_load((ROOT / "swagger.yml").read_text())
-    assert set(document["paths"]["/api/reviews/{id}"]) >= {"get", "put", "delete", "parameters"}
-    assert document["paths"]["/api/reviews/public"]["get"]["security"] == []
-    private_get = document["paths"]["/api/reviews"]["get"]
-    assert private_get["security"] == [{"bearerAuth": []}]
-    assert {parameter["$ref"] for parameter in private_get["parameters"]} == {
-        "#/components/parameters/Limit",
-        "#/components/parameters/NextToken",
+    expected = {
+        "/api/whiskeys",
+        "/api/whiskeys/search",
+        "/api/whiskeys/suggest",
+        "/api/whiskeys/search/suggest",
+        "/api/drink-logs",
+        "/api/drink-logs/upload-url",
+        "/api/drink-logs/analyze",
+        "/api/drink-logs/places",
+        "/api/drink-logs/places/resolve",
+        "/api/drink-logs/{id}",
     }
+    assert expected <= set(document["paths"])
+    assert document["paths"]["/api/whiskeys/search"]["get"]["security"] == []
+    assert document["paths"]["/api/drink-logs"]["get"]["security"] == [{"bearerAuth": []}]
 
 
 def test_api_reference_uses_id_tokens_and_has_no_unimplemented_health_route():
@@ -46,4 +35,5 @@ def test_api_reference_uses_id_tokens_and_has_no_unimplemented_health_route():
     assert "ID token" in reference
     assert "access_token" not in reference
     assert "/health" not in reference
-    assert "?public=true" in reference and "not supported" in reference
+    assert "/api/reviews" not in reference
+    assert "/api/whiskeys/ranking" not in reference

@@ -18,7 +18,6 @@ export interface EnvironmentConfig {
   retainResources: boolean;
   allowedOrigins: string[];
   lambdaReservedConcurrency?: {
-    aggregator?: number;
     drinkLogs?: number;
     analyze?: number;
     places?: number;
@@ -73,6 +72,6 @@ export const environments: Record<string, EnvironmentConfig> = {
     // 2026-07-26: このアカウントの Lambda 同時実行上限も 10（絶対最低値）で、
     // 予約並列度を設定すると未予約枠が 10 を割り拒否されるため付与しない。
     // 同時実行クォータ引き上げ後に再付与推奨:
-    // lambdaReservedConcurrency: { aggregator: 1, analyze: 2, places: 3 },
+    // lambdaReservedConcurrency: { analyze: 2, places: 3 },
   },
 };

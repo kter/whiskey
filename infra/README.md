@@ -8,7 +8,7 @@ AWS CDK (TypeScript) を使用したウィスキーアプリケーションの�
 
 ### 🏗️ 構築されるリソース
 
-- **Lambda**: whiskeys-search/list、reviews、ranking-aggregator、drink-logs、drink-log-analyze、drink-log-places、drink-log-reconciler（VPC 外実行、VPC なし）
+- **Lambda**: whiskeys-search/list、drink-logs、drink-log-analyze、drink-log-places、drink-log-reconciler（VPC 外実行、VPC なし）
 - **Cognito**: ユーザープール + アプリクライアント（Google OAuth）
 - **S3**:
   - 飲酒ログ画像バケット（presigned URL、`tmp/` は2日ライフサイクル、CORS 設定済み）
@@ -16,9 +16,8 @@ AWS CDK (TypeScript) を使用したウィスキーアプリケーションの�
 - **CloudFront**: SPA 配信用 CDN（ResponseHeadersPolicy / HSTS）
 - **DynamoDB**:
   - `WhiskeySearch`（GSI: NameEnIndex/NameJaIndex）
-  - `Reviews`（GSI: UserDateIndex, PublicDateIndex）
   - `DrinkLogs`（GSI: UserDatetimeIndex）
-  - `AppState`（PK `pk`、TTL）
+  - `AppState`（濫用/コスト防御の原子カウンタ、PK `pk`、TTL）
 - **Bedrock**: 銘柄/飲み方判別（Nova Lite 既定、APAC 域内固定プロファイル）
 - **IAM**: 関数ごとの最小権限ロール、GitHub Actions 用 OIDC ロール（保護スタック）
 - **Secrets Manager**: アプリ機密（`whiskey-app-secrets`）+ Places キー（`whiskey-places-{env}`）
@@ -264,15 +263,14 @@ VPC はなし（Lambda は VPC 外で実行）。全てサーバーレス・従�
               ┌─────────────┴────────┐               │
         ┌─────▼─────┐        ┌───────▼──────┐   ┌────▼──────────────┐
         │ S3 WebApp │        │  S3 Images   │   │  Lambda 関数群      │
-        │ (静的SPA) │        │(tmp/2日, logs)│◄──┤ search/list/reviews│
-        └───────────┘        └──────────────┘   │ ranking-aggregator │
-                                                 │ drink-logs/analyze │
+        │ (静的SPA) │        │(tmp/2日, logs)│◄──┤ search/list        │
+        └───────────┘        └──────────────┘   │ drink-logs/analyze │
                                                  │ places/reconciler  │
                                                  └────┬──────┬────┬───┘
                           ┌───────────┬───────────────┘      │    │
                     ┌─────▼───┐ ┌─────▼────┐         ┌────────▼─┐ ┌▼──────────┐
                     │DynamoDB │ │ Cognito  │         │ Bedrock  │ │  Google   │
-                    │(4 tables)│ │(認証/OAuth)│        │(Nova Lite)│ │  Places   │
+                    │(3 tables)│ │(認証/OAuth)│        │(Nova Lite)│ │  Places   │
                     └─────────┘ └──────────┘         └──────────┘ └───────────┘
 ```
 

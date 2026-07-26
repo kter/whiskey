@@ -23,14 +23,8 @@ const handleSignOut = async () => {
               <span class="text-xl font-bold text-amber-200">Whiskey Log</span>
             </NuxtLink>
             <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
-              <NuxtLink to="/reviews" class="inline-flex items-center px-1 pt-1 text-amber-100 hover:text-amber-300 transition-colors">
-                レビュー一覧
-              </NuxtLink>
               <NuxtLink to="/search" class="inline-flex items-center px-1 pt-1 text-amber-100 hover:text-amber-300 transition-colors">
                 ウイスキー検索
-              </NuxtLink>
-              <NuxtLink to="/ranking" class="inline-flex items-center px-1 pt-1 text-amber-100 hover:text-amber-300 transition-colors">
-                ランキング
               </NuxtLink>
               <NuxtLink v-if="authReady && isAuthenticated" to="/logs" class="inline-flex items-center px-1 pt-1 text-amber-100 hover:text-amber-300 transition-colors">
                 記録
