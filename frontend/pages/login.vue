@@ -14,7 +14,7 @@ const handleSignIn = async () => {
   error.value = ''
   try {
     const result = await signIn(email.value, password.value)
-    if (result.isSignedIn) await navigateTo('/reviews')
+    if (result.isSignedIn) await navigateTo('/logs')
     else error.value = '追加の認証操作が必要です。もう一度お試しください。'
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '認証情報を確認できませんでした。'

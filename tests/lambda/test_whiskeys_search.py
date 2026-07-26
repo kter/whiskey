@@ -1,5 +1,4 @@
 import json
-from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -216,111 +215,6 @@ def test_public_scan_budget_returns_429(monkeypatch):
     monkeypatch.setattr(search, "get_dynamodb_resource", Mock())
     response = search.lambda_handler(event(query={"q": "test"}), SimpleNamespace(aws_request_id="aws-1"))
     assert response["statusCode"] == 429
-
-
-class RankingTable:
-    def __init__(self, items):
-        self.items = items
-
-    def get_item(self, *, Key, **kwargs):
-        item = self.items.get(Key["pk"])
-        return {"Item": item} if item else {}
-
-
-def ranking_resource(items):
-    table = RankingTable(items)
-    resource = Mock()
-    resource.Table.return_value = table
-    return resource
-
-
-def test_ranking_reads_only_current_generation_pages(monkeypatch):
-    meta = {
-        "pk": search.RANKING_META_KEY,
-        "generation_id": "g1",
-        "page_count": 1,
-        "total_items": 2,
-        "cache_page_size": 100,
-        "review_counter": 1,
-        "whiskey_counter": 1,
-    }
-    items = {
-        search.RANKING_META_KEY: meta,
-        search._ranking_page_key("g1", 0): {
-            "rankings": [{"id": "w2"}, {"id": "w1"}],
-        },
-    }
-    monkeypatch.setattr(search, "get_dynamodb_resource", lambda: ranking_resource(items))
-    response = search.lambda_handler(
-        event("/api/whiskeys/ranking", {"page": "1", "limit": "1"}),
-        SimpleNamespace(aws_request_id="rank-1"),
-    )
-    body = json.loads(response["body"])
-    assert body["rankings"] == [{"id": "w2"}]
-    assert body["pagination"]["has_next"] is True
-
-
-def test_ranking_without_parameters_returns_legacy_bare_array(monkeypatch):
-    items = {
-        search.RANKING_META_KEY: {
-            "generation_id": "g1",
-            "page_count": 1,
-            "page_sizes": [2],
-            "total_items": 2,
-            "cache_page_size": 100,
-        },
-        search._ranking_page_key("g1", 0): {
-            "rankings": [{"id": "w2"}, {"id": "w1"}],
-        },
-    }
-    monkeypatch.setattr(search, "get_dynamodb_resource", lambda: ranking_resource(items))
-
-    response = search.lambda_handler(
-        event("/api/whiskeys/ranking"),
-        SimpleNamespace(aws_request_id="rank-legacy"),
-    )
-
-    assert json.loads(response["body"]) == [{"id": "w2"}, {"id": "w1"}]
-
-
-@pytest.mark.parametrize(
-    "meta",
-    [
-        None,
-        {"generation_id": "g1", "invalidated_at": "2026-01-01T00:00:00Z"},
-        {
-            "generation_id": "g1",
-            "dirty_since": (
-                datetime.now(timezone.utc) - timedelta(minutes=46)
-            ).isoformat().replace("+00:00", "Z"),
-        },
-    ],
-)
-def test_ranking_fail_closed_when_missing_invalidated_or_too_stale(monkeypatch, meta):
-    items = {search.RANKING_META_KEY: meta} if meta else {}
-    monkeypatch.setattr(search, "get_dynamodb_resource", lambda: ranking_resource(items))
-    response = search.lambda_handler(
-        event("/api/whiskeys/ranking"),
-        SimpleNamespace(aws_request_id="rank-2"),
-    )
-    assert response["statusCode"] == 200
-    assert json.loads(response["body"]) == {"status": "aggregating"}
-
-
-def test_ranking_missing_generation_page_fails_closed(monkeypatch):
-    items = {
-        search.RANKING_META_KEY: {
-            "generation_id": "g1",
-            "total_items": 1,
-            "cache_page_size": 100,
-        }
-    }
-    monkeypatch.setattr(search, "get_dynamodb_resource", lambda: ranking_resource(items))
-    response = search.lambda_handler(
-        event("/api/whiskeys/ranking"),
-        SimpleNamespace(aws_request_id="rank-3"),
-    )
-    assert json.loads(response["body"]) == {"status": "aggregating"}
 
 
 def test_search_500_does_not_expose_exception(monkeypatch):

@@ -108,32 +108,15 @@ def to_dynamodb_item(source: dict[str, str], now: str) -> dict[str, Any]:
     }
 
 
-def increment_whiskey_revision(app_state_table: Any) -> None:
-    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    app_state_table.update_item(
-        Key={"pk": "whiskey-change-counter"},
-        UpdateExpression="SET updated_at = :updated_at ADD #count :one",
-        ExpressionAttributeNames={"#count": "count"},
-        ExpressionAttributeValues={":one": 1, ":updated_at": now},
-    )
-    app_state_table.update_item(
-        Key={"pk": "ranking-cache/meta"},
-        UpdateExpression="SET dirty_since = if_not_exists(dirty_since, :updated_at)",
-        ExpressionAttributeValues={":updated_at": now},
-    )
-
-
 def seed(target: str, profile: str | None, fixture_path: Path = FIXTURE_PATH) -> int:
     dynamodb = create_dynamodb_resource(target, profile)
     suffix = "local" if target == "local" else "dev"
     whiskey_table = dynamodb.Table(f"WhiskeySearch-{suffix}")
-    app_state_table = dynamodb.Table(f"AppState-{suffix}")
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     items = [to_dynamodb_item(item, now) for item in load_fixture(fixture_path)]
     with whiskey_table.batch_writer(overwrite_by_pkeys=["id"]) as writer:
         for item in items:
             writer.put_item(Item=item)
-    increment_whiskey_revision(app_state_table)
     return len(items)
 
 

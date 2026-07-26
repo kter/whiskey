@@ -12,9 +12,9 @@ logger_module = load_lambda_module(
 
 
 def test_structured_logger_includes_context():
-    logger = logger_module.LambdaLogger("reviews", correlation_id="request-1")
+    logger = logger_module.LambdaLogger("drink-logs", correlation_id="request-1")
     entry = logger._create_log_entry(logger_module.LogLevel.INFO, "handled", count=2)
-    assert entry["function"] == "reviews"
+    assert entry["function"] == "drink-logs"
     assert entry["correlation_id"] == "request-1"
     assert entry["details"]["count"] == 2
     assert entry["timestamp"].endswith("Z")

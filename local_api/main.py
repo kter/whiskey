@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import argparse
 import base64
 import importlib.util
 import os
@@ -32,7 +31,6 @@ def configure_local_environment() -> None:
         "ENVIRONMENT": "local",
         "WHISKEYS_TABLE": "WhiskeySearch-local",
         "WHISKEY_SEARCH_TABLE": "WhiskeySearch-local",
-        "REVIEWS_TABLE": "Reviews-local",
         "DRINKLOGS_TABLE": "DrinkLogs-local",
         "APP_STATE_TABLE": "AppState-local",
         "IMAGES_BUCKET": "whiskey-images-local",
@@ -102,10 +100,6 @@ WHISKEY_LIST = load_lambda_module(
 WHISKEY_SEARCH = load_lambda_module(
     "local_lambda_whiskeys_search",
     "lambda/whiskeys-search/index.py",
-)
-REVIEWS = load_lambda_module(
-    "local_lambda_reviews",
-    "lambda/reviews/index.py",
 )
 DRINK_LOGS = load_lambda_module(
     "local_lambda_drink_logs",
@@ -233,27 +227,8 @@ async def list_whiskeys(request: Request) -> Response:
 @app.get("/api/whiskeys/search")
 @app.get("/api/whiskeys/suggest")
 @app.get("/api/whiskeys/search/suggest")
-@app.get("/api/whiskeys/ranking")
 async def search_whiskeys(request: Request) -> Response:
     return await invoke(request, WHISKEY_SEARCH.lambda_handler)
-
-
-@app.get("/api/reviews")
-@app.post("/api/reviews")
-async def reviews_collection(request: Request) -> Response:
-    return await invoke(request, REVIEWS.lambda_handler)
-
-
-@app.get("/api/reviews/public")
-async def public_reviews(request: Request) -> Response:
-    return await invoke(request, REVIEWS.lambda_handler)
-
-
-@app.get("/api/reviews/{id}")
-@app.put("/api/reviews/{id}")
-@app.delete("/api/reviews/{id}")
-async def review_item(id: str, request: Request) -> Response:
-    return await invoke(request, REVIEWS.lambda_handler, {"id": id})
 
 
 @app.post("/api/drink-logs/upload-url")
@@ -279,27 +254,3 @@ async def drink_log_places(request: Request) -> Response:
 @app.delete("/api/drink-logs/{id}")
 async def drink_log_item(id: str, request: Request) -> Response:
     return await invoke(request, DRINK_LOGS.lambda_handler, {"id": id})
-
-
-def aggregate_local_rankings() -> dict[str, Any]:
-    """Cold-import and directly invoke the ranking aggregator."""
-    module = load_lambda_module(
-        "local_lambda_ranking_aggregator",
-        "lambda/ranking-aggregator/index.py",
-    )
-    return module.lambda_handler({"force": True}, LambdaContext(timeout_seconds=120))
-
-
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Local Lambda adapter utilities")
-    parser.add_argument("--aggregate", action="store_true", help="Generate the local ranking cache")
-    args = parser.parse_args(argv)
-    if not args.aggregate:
-        parser.error("specify --aggregate, or run the API with uvicorn")
-    result = aggregate_local_rankings()
-    print(result)
-    return 0 if result.get("status") in {"published", "skipped"} else 1
-
-
-if __name__ == "__main__":
-    sys.exit(main())

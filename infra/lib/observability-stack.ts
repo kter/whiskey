@@ -9,6 +9,14 @@ export interface ObservabilityStackProps extends cdk.StackProps {
   readonly notificationTopicArn: string;
   readonly imagesBucketName: string;
   readonly reconcilerFunctionName: string;
+  readonly restApiName: string;
+  /**
+   * Functions that get their own Errors alarm. Deliberately narrowed to the
+   * functions that spend money per invocation (Bedrock, Google Places), because
+   * CloudWatch bills per metric referenced by an alarm and the account only gets
+   * 10 alarm metrics free. Failures elsewhere surface through the API 5xx alarm.
+   */
+  readonly errorAlarmFunctionNames: string[];
 }
 
 export class ObservabilityStack extends cdk.Stack {
@@ -17,6 +25,18 @@ export class ObservabilityStack extends cdk.Stack {
 
     const topic = sns.Topic.fromTopicArn(this, 'TokyoNotificationsTopic', props.notificationTopicArn);
     const action = new cloudwatchActions.SnsAction(topic);
+    const fiveMinuteMetric = (
+      namespace: string,
+      metricName: string,
+      dimensionsMap?: Record<string, string>,
+    ): cloudwatch.Metric =>
+      new cloudwatch.Metric({
+        namespace,
+        metricName,
+        statistic: 'Sum',
+        period: cdk.Duration.minutes(5),
+        dimensionsMap,
+      });
     const hourlyMetric = (metricName: string, filterId: string): cloudwatch.Metric =>
       new cloudwatch.Metric({
         namespace: 'AWS/S3',
@@ -60,8 +80,58 @@ export class ObservabilityStack extends cdk.Stack {
       comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     });
+    const api5xxAlarm = new cloudwatch.Alarm(this, 'Api5xxAlarm', {
+      alarmName: `whiskey-${props.environment}-api-5xx-high`,
+      metric: fiveMinuteMetric('AWS/ApiGateway', '5XXError', {
+        ApiName: props.restApiName,
+      }),
+      threshold: 5,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
 
-    for (const alarm of [tmpPostRequestsAlarm, logsGetRequestsAlarm, reconcilerErrorsAlarm]) {
+    const environmentSuffix = `-${props.environment}`;
+    const shortName = (resourceName: string): string =>
+      resourceName.endsWith(environmentSuffix)
+        ? resourceName.slice(0, -environmentSuffix.length)
+        : resourceName;
+    // Logical IDs derive from the function name, not the array position: an
+    // index-based id shifts when the list changes, and CloudFormation then tries to
+    // create the moved alarm before deleting the old one holding the same name.
+    const pascalCase = (value: string): string =>
+      value.split('-').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join('');
+    const lambdaErrorsAlarms = props.errorAlarmFunctionNames.map((functionName) =>
+      new cloudwatch.Alarm(this, `LambdaErrorsAlarm${pascalCase(shortName(functionName))}`, {
+        alarmName: `whiskey-${props.environment}-lambda-errors-${shortName(functionName)}`,
+        metric: fiveMinuteMetric('AWS/Lambda', 'Errors', { FunctionName: functionName }),
+        threshold: 3,
+        evaluationPeriods: 1,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      }));
+    const lambdaThrottlesAlarm = new cloudwatch.Alarm(this, 'LambdaThrottlesAlarm', {
+      alarmName: `whiskey-${props.environment}-lambda-throttles`,
+      // Lambda publishes a dimensionless regional aggregate across all functions. This
+      // covers every consumer of the shared account concurrency pool, including new functions.
+      metric: fiveMinuteMetric('AWS/Lambda', 'Throttles'),
+      threshold: 1,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    // No per-table DynamoDB throttle alarms: every table is PAY_PER_REQUEST, so
+    // throttling is rare, and four more alarm metrics would push the account past
+    // the free tier. Throttles that do matter show up as API 5xx or Lambda errors.
+
+    for (const alarm of [
+      tmpPostRequestsAlarm,
+      logsGetRequestsAlarm,
+      reconcilerErrorsAlarm,
+      api5xxAlarm,
+      ...lambdaErrorsAlarms,
+      lambdaThrottlesAlarm,
+    ]) {
       alarm.addAlarmAction(action);
     }
   }

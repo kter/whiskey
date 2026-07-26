@@ -18,7 +18,6 @@ export interface EnvironmentConfig {
   retainResources: boolean;
   allowedOrigins: string[];
   lambdaReservedConcurrency?: {
-    aggregator?: number;
     drinkLogs?: number;
     analyze?: number;
     places?: number;
@@ -60,7 +59,11 @@ export const environments: Record<string, EnvironmentConfig> = {
     domain: 'whiskeybar.site',
     apiDomain: 'api.whiskeybar.site',
     enableCustomDomain: true,
-    enableGoogleAuth: false,
+    // 2026-07-26 有効化。GCP プロジェクト whiskey-app-prd の OAuth クライアントを使う。
+    // 前提: SSM /whiskey/prd/google-client-id と Secrets Manager whiskey-app-secrets-prd
+    // （キーは GOOGLE_CLIENT_SECRET）。Google 側の承認済みリダイレクト URI は
+    // https://whiskey-users-prd.auth.ap-northeast-1.amazoncognito.com/oauth2/idpresponse
+    enableGoogleAuth: true,
     createOidcProvider: false,
     cognitoDomainPrefix: 'whiskey-users-prd',
     gatewayErrorOrigin: 'https://whiskeybar.site',
@@ -69,6 +72,6 @@ export const environments: Record<string, EnvironmentConfig> = {
     // 2026-07-26: このアカウントの Lambda 同時実行上限も 10（絶対最低値）で、
     // 予約並列度を設定すると未予約枠が 10 を割り拒否されるため付与しない。
     // 同時実行クォータ引き上げ後に再付与推奨:
-    // lambdaReservedConcurrency: { aggregator: 1, analyze: 2, places: 3 },
+    // lambdaReservedConcurrency: { analyze: 2, places: 3 },
   },
 };

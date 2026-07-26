@@ -9,7 +9,7 @@ onMounted(async () => {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     await refreshAuthState()
     if (isAuthenticated.value) {
-      await navigateTo('/reviews')
+      await navigateTo('/logs')
       return
     }
     await new Promise(resolve => setTimeout(resolve, 500))

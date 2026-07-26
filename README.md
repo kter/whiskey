@@ -1,8 +1,8 @@
-# Whiskey Tasting App
+# Whiskey Log
 
-ウイスキーテイスティング記録アプリケーション。多言語検索・レビュー・ランキングに加え、
-**写真を撮るだけの飲酒ログ**（画像から銘柄と飲み方をAIが判別し、位置情報から店名候補を提案、
-タイムラインで振り返り）を備えた、費用最適化されたサーバーレス構成。
+**写真を撮るだけの飲酒ログ**に一本化したウイスキー記録アプリケーション。
+画像から銘柄と飲み方をAIが判別し、位置情報から店名候補を提案して、タイムラインで振り返れる。
+銘柄の英語・日本語検索も備えた、費用最適化されたサーバーレス構成。
 
 ## 🏗️ アーキテクチャ
 
@@ -30,8 +30,7 @@
 
 ### 主要機能
 - **多言語ウイスキー検索**: 楽天市場API + Amazon Bedrock Nova Lite で抽出したデータを英語/日本語で検索
-- **レビュー機能**: 評価・ノート・飲み方、公開/非公開トグル、ランキング（事前集計キャッシュ）
-- **フォトファースト飲酒ログ** 🆕: 写真アップロード → Bedrock で銘柄・飲み方を自動判別 →
+- **フォトファースト飲酒ログ**: 写真アップロード → Bedrock で銘柄・飲み方を自動判別 →
   GPS + Google Places で店名候補を提案 → タイムラインで閲覧・編集・削除
 - **認証**: AWS Cognito（メール/パスワード + Google OAuth）
 
@@ -58,9 +57,8 @@
 | テーブル | 用途 | 主なキー / GSI |
 |----------|------|----------------|
 | `WhiskeySearch-{env}` | ウイスキー検索データ（英語/日本語名） | PK `id` / `NameIndex` |
-| `Reviews-{env}` | ユーザーレビュー | PK `id` / `UserDateIndex`(user_id,date), `PublicDateIndex`(public_pk,date) |
-| `DrinkLogs-{env}` 🆕 | 飲酒ログ（写真・銘柄・店・飲み方） | PK `id` / `UserDatetimeIndex`(user_id,datetime) |
-| `AppState-{env}` 🆕 | ランキングキャッシュ・濫用/コスト防御カウンタ | PK `pk`（TTL 有効） |
+| `DrinkLogs-{env}` | 飲酒ログ（写真・銘柄・店・飲み方） | PK `id` / `UserDatetimeIndex`(user_id,datetime) |
+| `AppState-{env}` | 濫用/コスト防御の原子カウンタ | PK `pk`（TTL 有効） |
 
 > `Users` テーブルは廃止（プロフィールは Cognito 属性の読み取り専用表示）。
 > 蒸留所検索は削除済み（名前検索に特化、`DistilleryIndex` なし）。
@@ -68,11 +66,6 @@
 ### 主なアイテム形状（抜粋）
 
 ```jsonc
-// Reviews
-{ "id": "...", "whiskey_id": "...", "user_id": "...", "rating": 4.5,
-  "notes": "...", "serving_style": "NEAT", "date": "2026-07-01",
-  "is_public": false, "public_pk": "PUBLIC" /* is_public=true のときのみ */ }
-
 // DrinkLogs（GPS座標とGoogle表示名は保存しない）
 { "id": "...", "user_id": "...", "status": "complete", "datetime": "2026-07-01T12:00:00.000Z",
   "s3_image_key": "logs/{user}/{uuid}.jpg", "whiskey_id": "...", "brand_text": "タリスカー",
@@ -86,19 +79,17 @@
 |------|------|
 | `whiskey-search-{env}` | 多言語検索（手動フィルタ + ページネーション） |
 | `whiskey-list-{env}` | ウイスキー一覧 |
-| `reviews-{env}` | レビュー CRUD・公開一覧 |
-| `ranking-aggregator-{env}` | ランキング事前集計（EventBridge 15分毎） |
-| `drink-logs-{env}` 🆕 | 飲酒ログ CRUD・presigned URL・画像サニタイズ |
-| `drink-log-analyze-{env}` 🆕 | Bedrock で銘柄/飲み方判別（Converse） |
-| `drink-log-places-{env}` 🆕 | Google Places 検索・表示時解決 |
-| `drink-log-reconciler-{env}` 🆕 | 孤児画像・未収束レコードの日次収束 |
+| `drink-logs-{env}` | 飲酒ログ CRUD・presigned URL・画像サニタイズ |
+| `drink-log-analyze-{env}` | Bedrock で銘柄/飲み方判別（Converse） |
+| `drink-log-places-{env}` | Google Places 検索・表示時解決 |
+| `drink-log-reconciler-{env}` | 孤児画像・未収束レコードの日次収束 |
 
 ## 🔐 認証
 
 - **AWS Cognito + Amplify**（SRP / Google OAuth code flow、`USER_PASSWORD_AUTH` 無効、ユーザー存在秘匿）
 - **トークン**: API Gateway の Cognito オーソライザー検証に合わせ、フロントは **ID トークン**を送信
   （`aud` == クライアントID、`token_use == 'id'` を多層で検証）
-- 公開読み取り（検索/ランキング/公開レビュー）は認証不要、書き込み・個人データ系は要認証
+- 公開読み取り（銘柄一覧・検索）は認証不要、飲酒ログは要認証
 
 ## 🚀 デプロイ
 
@@ -134,7 +125,7 @@ Docker のローカルスタック（DynamoDB Local + MinIO）+ FastAPI アダ�
 
 ```bash
 docker compose up -d          # DynamoDB Local(:8001) + MinIO(:9000/9001)
-make local-init               # テーブル作成 + シード + ランキング集計
+make local-init               # テーブル作成 + 銘柄シード
 make api                      # FastAPI アダプタ(:8000、Lambda ハンドラを import)
 cd frontend && npm run dev     # Nuxt dev(:3000)  ※ localhost:3000 を使うこと
 ```
@@ -160,7 +151,7 @@ NUXT_PUBLIC_ENVIRONMENT=dev
 whiskey/
 ├── frontend/            # Nuxt.js SPA（pages/logs で飲酒ログ、composables で API クライアント）
 ├── lambda/              # Python Lambda 群
-│   ├── whiskeys-search/ whiskeys-list/ reviews/
+│   ├── whiskeys-search/ whiskeys-list/
 │   ├── drink-logs/      # CRUD + reconciler.py
 │   ├── drink-log-analyze/  # index.py(Bedrock) + places.py(Places)
 │   └── common/python/whiskey_common/  # 共有レイヤー（logger/responses/jwt_utils/images/clients）

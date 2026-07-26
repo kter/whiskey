@@ -22,14 +22,14 @@ describe('useApi', () => {
 
   it('normalizes execute-api bases and request paths', () => {
     expect(normalizeApiBaseUrl('https://example.test/dev///')).toBe('https://example.test/dev')
-    expect(normalizeApiPath('/api/reviews///')).toBe('/api/reviews')
+    expect(normalizeApiPath('/api/whiskeys///')).toBe('/api/whiskeys')
   })
 
   it('does not acquire a token in none mode', async () => {
     vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
-    await useApi().request('/api/reviews/public', { auth: 'none', query: { limit: 10 } })
+    await useApi().request('/api/whiskeys', { auth: 'none', query: { limit: 10 } })
 
-    expect(fetch).toHaveBeenCalledWith('https://example.test/dev/api/reviews/public?limit=10', expect.any(Object))
+    expect(fetch).toHaveBeenCalledWith('https://example.test/dev/api/whiskeys?limit=10', expect.any(Object))
     expect(getToken).not.toHaveBeenCalled()
     expect(getTokenSafely).not.toHaveBeenCalled()
   })

@@ -192,11 +192,6 @@ describe('stateful resource lifecycle and storage security', () => {
 
 describe('API Gateway authentication, CORS, and defenses', () => {
   const authenticated = [
-    'GET /api/reviews',
-    'POST /api/reviews',
-    'GET /api/reviews/{id}',
-    'PUT /api/reviews/{id}',
-    'DELETE /api/reviews/{id}',
     'POST /api/drink-logs/upload-url',
     'POST /api/drink-logs/analyze',
     'POST /api/drink-logs/places',
@@ -212,8 +207,6 @@ describe('API Gateway authentication, CORS, and defenses', () => {
     'GET /api/whiskeys/search',
     'GET /api/whiskeys/suggest',
     'GET /api/whiskeys/search/suggest',
-    'GET /api/whiskeys/ranking',
-    'GET /api/reviews/public',
   ];
 
   test('private routes use Cognito and public routes remain unauthenticated', () => {
@@ -284,7 +277,12 @@ describe('API Gateway authentication, CORS, and defenses', () => {
     expect(settings.every((setting) => setting.DataTraceEnabled === false)).toBe(true);
     expect(settings).toEqual(expect.arrayContaining([
       expect.objectContaining({ HttpMethod: 'GET', ThrottlingRateLimit: 5, ThrottlingBurstLimit: 10 }),
-      expect.objectContaining({ HttpMethod: 'POST', ThrottlingRateLimit: 1, ThrottlingBurstLimit: 5 }),
+      expect.objectContaining({
+        ResourcePath: '/~1api~1drink-logs',
+        HttpMethod: 'POST',
+        ThrottlingRateLimit: 2,
+        ThrottlingBurstLimit: 5,
+      }),
       expect.objectContaining({
         ResourcePath: '/~1api~1drink-logs~1analyze',
         HttpMethod: 'POST',
@@ -352,12 +350,10 @@ describe('Cognito', () => {
 });
 
 describe('least-privilege Lambda roles', () => {
-  test('roles have only their positive DynamoDB grants and constrained AppState prefixes', () => {
+  test('list and search roles have only their positive DynamoDB grants and constrained AppState prefixes', () => {
     const json = createAppStack('dev').json;
     const list = rolePolicy(json, 'whiskey-list-role-dev');
     const search = rolePolicy(json, 'whiskey-search-role-dev');
-    const reviews = rolePolicy(json, 'reviews-role-dev');
-    const aggregator = rolePolicy(json, 'ranking-aggregator-role-dev');
 
     const listAppState = list.find((statement) => actions(statement).includes('dynamodb:UpdateItem'))!;
     const appStateTableLogicalId = resourcesOf(json, 'AWS::DynamoDB::Table')
@@ -371,42 +367,22 @@ describe('least-privilege Lambda roles', () => {
     expect(list.some((statement) => actions(statement).some((action) =>
       ['dynamodb:PutItem', 'dynamodb:DeleteItem'].includes(action)))).toBe(false);
 
-    const rankingRead = search.find((statement) =>
-      actions(statement).includes('dynamodb:GetItem')
-      && statement.Condition?.['ForAllValues:StringLike']?.['dynamodb:LeadingKeys']?.includes('ranking-cache/*'));
-    expect(rankingRead).toBeDefined();
-    expect(search.some((statement) =>
-      actions(statement).some((action) => ['dynamodb:PutItem', 'dynamodb:DeleteItem'].includes(action))
-      || (actions(statement).includes('dynamodb:UpdateItem')
-        && statement.Condition?.['ForAllValues:StringLike']?.['dynamodb:LeadingKeys']?.includes('ranking-cache/*'))))
-      .toBe(false);
-
-    expect(reviews.some((statement) => actions(statement).includes('dynamodb:PutItem'))).toBe(true);
-    const reviewsAppStateUpdate = reviews.find((statement) =>
+    const searchAppState = search.find((statement) =>
       actions(statement).includes('dynamodb:UpdateItem')
-      && statement.Condition?.['ForAllValues:StringLike']?.['dynamodb:LeadingKeys']
-        ?.includes('review-rate#*'));
-    expect(reviewsAppStateUpdate?.Resource).toEqual({ 'Fn::GetAtt': [appStateTableLogicalId, 'Arn'] });
-    expect(reviewsAppStateUpdate?.Condition).toEqual({
-      'ForAllValues:StringLike': {
-        'dynamodb:LeadingKeys': ['review-rate#*', 'review-change-counter'],
-      },
+      && statement.Condition?.['ForAllValues:StringLike']?.['dynamodb:LeadingKeys']);
+    expect(searchAppState?.Condition).toEqual({
+      'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['scan-counter/*'] },
       Null: { 'dynamodb:LeadingKeys': 'false' },
     });
-    expect(JSON.stringify(resourcesOf(json, 'AWS::IAM::Policy'))).not.toContain('TransactWriteItems');
-    expect(JSON.stringify([...list, ...search, ...reviews])).not.toContain('cognito-idp:Admin');
+    expect(search.some((statement) =>
+      actions(statement).some((action) => ['dynamodb:PutItem', 'dynamodb:DeleteItem'].includes(action))
+      || (statement.Condition?.['ForAllValues:StringLike']?.['dynamodb:LeadingKeys'] || [])
+        .some((key: string) => !key.startsWith('scan-counter/'))))
+      .toBe(false);
 
-    const aggregatorScan = aggregator.find((statement) => actions(statement).includes('dynamodb:Scan'))!;
-    expect(aggregatorScan.Resource).toHaveLength(2);
-    const aggregatorCache = aggregator.find((statement) =>
-      actions(statement).includes('dynamodb:PutItem'))!;
-    expect(aggregatorCache.Condition['ForAllValues:StringLike']['dynamodb:LeadingKeys'])
-      .toEqual(['ranking-cache/*']);
-    const aggregatorCounters = aggregator.find((statement) =>
-      actions(statement).includes('dynamodb:GetItem')
-      && statement.Condition?.['ForAllValues:StringLike']?.['dynamodb:LeadingKeys']
-        ?.includes('whiskey-change-counter'))!;
-    expect(actions(aggregatorCounters)).toEqual(['dynamodb:GetItem']);
+    expect(JSON.stringify(resourcesOf(json, 'AWS::IAM::Policy'))).not.toContain('TransactWriteItems');
+    expect(JSON.stringify([...list, ...search])).not.toContain('cognito-idp:Admin');
+    expect(JSON.stringify(resourcesOf(json, 'AWS::IAM::Policy'))).not.toContain('Reviews-dev');
   });
 
   test('drink log roles isolate AppState keyspaces and share AI results only as designed', () => {
@@ -443,7 +419,6 @@ describe('least-privilege Lambda roles', () => {
     expect(appStatePatterns(policies.analyze, 'dynamodb:UpdateItem')).not.toContain('drinklog-quota#*');
     expect(appStatePatterns(policies.places, 'dynamodb:UpdateItem')).not.toContain('ai-result:*');
     expect(appStatePatterns(policies.reconciler, 'dynamodb:UpdateItem')).not.toContain('drinklog-counter#*');
-    expect(appStatePatterns(policies.logs, 'dynamodb:UpdateItem')).not.toContain('ranking-cache/*');
   });
 
   test('Places secret belongs only to Places and reconciler list access covers both image prefixes', () => {
@@ -499,7 +474,7 @@ describe('least-privilege Lambda roles', () => {
 });
 
 describe('tables, logs, and removed infrastructure', () => {
-  test('AppState and sparse public review index exist; retired resources do not', () => {
+  test('only WhiskeySearch, DrinkLogs, and AppState application tables remain', () => {
     const { template, json } = createAppStack('prd');
     template.hasResourceProperties('AWS::DynamoDB::Table', {
       TableName: 'AppState-prd',
@@ -508,11 +483,20 @@ describe('tables, logs, and removed infrastructure', () => {
       TimeToLiveSpecification: { AttributeName: 'ttl', Enabled: true },
     });
     const serialized = JSON.stringify(json);
-    expect(serialized).toContain('PublicDateIndex');
-    expect(serialized).toContain('UserDateIndex');
+    const tableNames = resourcesOf(json, 'AWS::DynamoDB::Table')
+      .map(([, table]) => table.Properties?.TableName)
+      .filter((name): name is string => typeof name === 'string');
+    expect(tableNames).toEqual(expect.arrayContaining([
+      'WhiskeySearch-prd',
+      'DrinkLogs-prd',
+      'AppState-prd',
+    ]));
+    expect(tableNames).not.toContain('Reviews-prd');
     expect(serialized).not.toContain('WhiskeyIndex');
     expect(serialized).not.toContain('DistilleryIndex');
     expect(serialized).not.toContain('Users-');
+    expect(serialized).not.toContain('reviews-prd');
+    expect(serialized).not.toContain('ranking-aggregator-prd');
     template.resourceCountIs('AWS::EC2::VPC', 0);
     template.resourceCountIs('AWS::Route53::HostedZone', 0);
   });
@@ -538,13 +522,16 @@ describe('tables, logs, and removed infrastructure', () => {
   test('every function uses its dedicated /whiskey/{env}/ log group', () => {
     const { template } = createAppStack('dev');
     for (const name of [
-      'whiskeys-list', 'whiskeys-search', 'reviews', 'ranking-aggregator',
+      'whiskeys-list', 'whiskeys-search',
       'drink-logs', 'drink-log-analyze', 'drink-log-places', 'drink-log-reconciler',
     ]) {
       template.hasResourceProperties('AWS::Logs::LogGroup', {
         LogGroupName: `/whiskey/dev/${name}`,
       });
     }
+    const serialized = JSON.stringify(template.toJSON());
+    expect(serialized).not.toContain('/whiskey/dev/reviews');
+    expect(serialized).not.toContain('/whiskey/dev/ranking-aggregator');
   });
 });
 
@@ -553,18 +540,14 @@ describe('Lambda bundling and shared layer', () => {
     const { json } = createAppStack('dev');
     const applicationFunctions = resourcesOf(json, 'AWS::Lambda::Function')
       .filter(([, resource]) => typeof resource.Properties?.FunctionName === 'string'
-        && ['whiskey-list-dev', 'whiskey-search-dev', 'reviews-dev', 'ranking-aggregator-dev']
+        && ['whiskey-list-dev', 'whiskey-search-dev']
           .includes(resource.Properties.FunctionName));
-    expect(applicationFunctions).toHaveLength(4);
+    expect(applicationFunctions).toHaveLength(2);
     for (const [, fn] of applicationFunctions) {
       expect(fn.Properties?.Architectures).toEqual(['x86_64']);
       expect(fn.Properties?.Layers).toHaveLength(1);
-      if (fn.Properties?.FunctionName !== 'ranking-aggregator-dev') {
-        expect(fn.Properties?.Environment.Variables.ALLOWED_ORIGINS).toContain('https://dev.whiskeybar.site');
-      }
+      expect(fn.Properties?.Environment.Variables.ALLOWED_ORIGINS).toContain('https://dev.whiskeybar.site');
     }
-    const reviews = applicationFunctions.find(([, fn]) => fn.Properties?.FunctionName === 'reviews-dev')![1];
-    expect(reviews.Properties?.Environment.Variables.COGNITO_CLIENT_ID).toEqual(expect.objectContaining({ Ref: expect.any(String) }));
     const list = applicationFunctions
       .find(([, fn]) => fn.Properties?.FunctionName === 'whiskey-list-dev')![1];
     expect(list.Properties?.Environment.Variables.PUBLIC_SCAN_MAX_PAGES).toBe('1');
@@ -575,13 +558,7 @@ describe('Lambda bundling and shared layer', () => {
       PUBLIC_SCAN_MAX_PAGES: '5',
       PUBLIC_SCAN_PAGE_SIZE: '250',
     }));
-    const aggregator = applicationFunctions
-      .find(([, fn]) => fn.Properties?.FunctionName === 'ranking-aggregator-dev')![1];
-    expect(aggregator.Properties).toEqual(expect.objectContaining({
-      MemorySize: 512,
-      Timeout: 120,
-    }));
-    expect(aggregator.Properties?.ReservedConcurrentExecutions).toBeUndefined();
+    expect(search.Properties?.Environment.Variables.REVIEWS_TABLE).toBeUndefined();
     expect(resourcesOf(json, 'AWS::Lambda::LayerVersion')).toHaveLength(1);
   });
 
@@ -653,7 +630,6 @@ describe('Lambda bundling and shared layer', () => {
   test('reserved concurrency is added only when configured', () => {
     const previous = environments.dev.lambdaReservedConcurrency;
     environments.dev.lambdaReservedConcurrency = {
-      aggregator: 2,
       analyze: 2,
       places: 3,
       reconciler: 1,
@@ -661,7 +637,6 @@ describe('Lambda bundling and shared layer', () => {
     try {
       const { json } = createAppStack('dev');
       const rcOf = (name: string) => lambdaByName(json, name).Properties?.ReservedConcurrentExecutions;
-      expect(rcOf('ranking-aggregator-dev')).toBe(2);
       expect(rcOf('drink-log-analyze-dev')).toBe(2);
       expect(rcOf('drink-log-places-dev')).toBe(3);
       expect(rcOf('drink-log-reconciler-dev')).toBe(1);
@@ -676,11 +651,12 @@ describe('Lambda bundling and shared layer', () => {
     expect(source).toContain('pip install -r requirements.txt -t /asset-output');
     expect(source).toContain('cp -au . /asset-output');
     expect(source).toContain('find /asset-output -name __pycache__ -type d -exec rm -rf {} +');
+    expect(source).toContain("process.env.CDK_LOCAL_BUNDLING === '1'");
 
     const { json, outdir } = createAppStack('dev');
     const applicationFunctions = resourcesOf(json, 'AWS::Lambda::Function')
       .filter(([, resource]) => typeof resource.Properties?.FunctionName === 'string'
-        && ['whiskey-list-dev', 'whiskey-search-dev', 'reviews-dev', 'ranking-aggregator-dev']
+        && ['whiskey-list-dev', 'whiskey-search-dev']
           .includes(resource.Properties.FunctionName));
     for (const [, fn] of applicationFunctions) {
       const assetHash = JSON.stringify(fn.Properties?.Code).match(/[a-f0-9]{64}/)?.[0];
@@ -712,7 +688,7 @@ describe('Lambda bundling and shared layer', () => {
     const analyze = fs.readFileSync(path.join(lambdaRoot, 'drink-log-analyze', 'requirements.txt'), 'utf8');
     for (const requirement of ['boto3==1.43.4', 'botocore==1.43.4']) {
       // The new functions bundle their own SDK; the shared layer must NOT pin boto3
-      // so the frozen list/search/reviews/ranking functions keep runtime-provided boto3.
+      // so the list/search functions keep runtime-provided boto3.
       expect(common).not.toContain(requirement);
       expect(logs).toContain(requirement);
       expect(analyze).toContain(requirement);
@@ -730,48 +706,11 @@ describe('Lambda bundling and shared layer', () => {
   });
 });
 
-describe('scheduled ranking aggregation', () => {
-  test('uses an explicit group, dedicated confused-deputy-safe role, retry, and DLQ', () => {
-    const { json, template } = createAppStack('dev');
-    template.hasResourceProperties('AWS::Scheduler::ScheduleGroup', {
-      Name: 'ranking-aggregator-dev',
-    });
-    template.hasResourceProperties('AWS::Scheduler::Schedule', {
-      GroupName: 'ranking-aggregator-dev',
-      ScheduleExpression: 'rate(15 minutes)',
-      FlexibleTimeWindow: { Mode: 'OFF' },
-      Target: Match.objectLike({
-        Input: '{}',
-        DeadLetterConfig: { Arn: Match.anyValue() },
-        RetryPolicy: {
-          MaximumEventAgeInSeconds: 3600,
-          MaximumRetryAttempts: 3,
-        },
-      }),
-    });
-    template.hasResourceProperties('AWS::SQS::Queue', {
-      QueueName: 'ranking-aggregator-dlq-dev',
-      MessageRetentionPeriod: 1209600,
-      SqsManagedSseEnabled: true,
-    });
-
-    const groupLogicalId = resourcesOf(json, 'AWS::Scheduler::ScheduleGroup')[0][0];
-    const targetRole = resourcesOf(json, 'AWS::IAM::Role')
-      .find(([, role]) => role.Properties?.RoleName === 'ranking-scheduler-target-role-dev')![1];
-    const trust = targetRole.Properties?.AssumeRolePolicyDocument.Statement[0];
-    expect(trust.Principal).toEqual({ Service: 'scheduler.amazonaws.com' });
-    expect(trust.Condition).toEqual({
-      ArnEquals: { 'aws:SourceArn': { 'Fn::GetAtt': [groupLogicalId, 'Arn'] } },
-      StringEquals: { 'aws:SourceAccount': DEV_ACCOUNT },
-    });
-    const targetPolicy = rolePolicy(json, 'ranking-scheduler-target-role-dev');
-    expect(targetPolicy.map((statement) => actions(statement))).toEqual(
-      expect.arrayContaining([['lambda:InvokeFunction'], ['sqs:SendMessage']]),
-    );
-  });
-
+describe('scheduled drink log reconciliation', () => {
   test('drink log reconciler runs daily with its own safe target role and DLQ', () => {
     const { json, template } = createAppStack('dev');
+    expect(resourcesOf(json, 'AWS::Scheduler::Schedule')).toHaveLength(1);
+    expect(JSON.stringify(json)).not.toContain('ranking-aggregator');
     template.hasResourceProperties('AWS::Scheduler::Schedule', {
       Name: 'drink-log-reconciler-daily-dev',
       GroupName: 'drink-log-reconciler-dev',
@@ -815,7 +754,7 @@ describe('split stacks', () => {
       hostedZoneName: 'whiskeybar.site',
       delegationTargetAccounts: [DEV_ACCOUNT],
       enableCustomDomain: true,
-      enableGoogleAuth: false,
+      enableGoogleAuth: true,
     }));
     expect(environments.prd.parentZone).toBeUndefined();
     expect(environments.prd.lambdaReservedConcurrency).toBeUndefined();
@@ -963,18 +902,28 @@ describe('split stacks', () => {
     expect(dependencies).toContain(topicPolicyLogicalId);
   });
 
-  test('observability stack contains only Tokyo alarms with filtered S3 and reconciler metrics', () => {
+  test('observability stack creates availability alarms and sends every alarm to Tokyo SNS', () => {
     const app = new cdk.App();
+    const errorAlarmFunctionNames = [
+      'drink-log-analyze-dev',
+      'drink-log-places-dev',
+    ];
     const stack = new ObservabilityStack(app, 'Observability', {
       env: { account: DEV_ACCOUNT, region: 'ap-northeast-1' },
       environment: 'dev',
       notificationTopicArn: `arn:aws:sns:ap-northeast-1:${DEV_ACCOUNT}:alerts`,
       imagesBucketName: `whiskey-images-dev-${DEV_ACCOUNT}`,
       reconcilerFunctionName: 'drink-log-reconciler-dev',
+      restApiName: 'whiskey-api-dev',
+      errorAlarmFunctionNames,
     });
     const synthesized = Template.fromStack(stack).toJSON() as Synthesized & { templateFile?: string };
     const { templateFile: _ignored, ...json } = synthesized;
-    expect(resourcesOf(json, 'AWS::CloudWatch::Alarm')).toHaveLength(3);
+    // 3 existing + API 5xx + per-function Errors + Throttles. Must stay at or under the
+    // 10 alarm metrics that CloudWatch gives each account for free.
+    expect(resourcesOf(json, 'AWS::CloudWatch::Alarm'))
+      .toHaveLength(3 + 1 + errorAlarmFunctionNames.length + 1);
+    expect(resourcesOf(json, 'AWS::CloudWatch::Alarm').length).toBeLessThanOrEqual(10);
     expect(resourcesOf(json, 'AWS::Route53::HostedZone')).toHaveLength(0);
     expect(resourcesOf(json, 'AWS::Lambda::Function')).toHaveLength(0);
     const alarms = resourcesOf(json, 'AWS::CloudWatch::Alarm').map(([, alarm]) => alarm.Properties!);
@@ -1004,6 +953,51 @@ describe('split stacks', () => {
         Dimensions: [{ Name: 'FunctionName', Value: 'drink-log-reconciler-dev' }],
       }),
     ]));
+    expect(alarms).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        AlarmName: 'whiskey-dev-tmp-post-requests-high',
+        Threshold: 300,
+      }),
+      expect.objectContaining({
+        AlarmName: 'whiskey-dev-logs-get-requests-high',
+        Threshold: 2000,
+      }),
+      expect.objectContaining({
+        AlarmName: 'whiskey-dev-drink-log-reconciler-errors',
+        Threshold: 1,
+      }),
+      expect.objectContaining({
+        AlarmName: 'whiskey-dev-api-5xx-high',
+        MetricName: '5XXError',
+        Namespace: 'AWS/ApiGateway',
+        Threshold: 5,
+        Dimensions: [{ Name: 'ApiName', Value: 'whiskey-api-dev' }],
+      }),
+      expect.objectContaining({
+        AlarmName: 'whiskey-dev-lambda-throttles',
+        MetricName: 'Throttles',
+        Namespace: 'AWS/Lambda',
+        Threshold: 1,
+      }),
+    ]));
+
+    const lambdaErrorsAlarms = alarms.filter((alarm) =>
+      alarm.AlarmName.startsWith('whiskey-dev-lambda-errors-'));
+    expect(lambdaErrorsAlarms).toHaveLength(errorAlarmFunctionNames.length);
+    expect(lambdaErrorsAlarms.map((alarm) => alarm.Dimensions[0].Value).sort())
+      .toEqual([...errorAlarmFunctionNames].sort());
+    expect(lambdaErrorsAlarms.every((alarm) =>
+      alarm.MetricName === 'Errors' && alarm.Threshold === 3)).toBe(true);
+
+    const lambdaThrottlesAlarms = alarms.filter((alarm) =>
+      alarm.AlarmName === 'whiskey-dev-lambda-throttles');
+    expect(lambdaThrottlesAlarms).toHaveLength(1);
+    expect(lambdaThrottlesAlarms[0].Dimensions).toBeUndefined();
+
+    // Per-table DynamoDB alarms were dropped to stay inside the free tier.
+    expect(alarms.filter((alarm) =>
+      alarm.Namespace === 'AWS/DynamoDB')).toHaveLength(0);
+
     for (const alarm of alarms) {
       expect(alarm.AlarmActions).toEqual([
         `arn:aws:sns:ap-northeast-1:${DEV_ACCOUNT}:alerts`,
@@ -1058,7 +1052,14 @@ function synthesizeApplication(environment: 'dev' | 'prd') {
   const stacks = buildApp(app);
   const assembly = app.synth();
   const dns = assembly.getStackArtifact(stacks.dnsStack.artifactId).template as Synthesized;
-  return { assembly, dns };
+  const observability = assembly
+    .getStackArtifact(stacks.observabilityStack.artifactId).template as Synthesized;
+  return {
+    assembly,
+    dns,
+    observability,
+    observabilityStackName: stacks.observabilityStack.stackName,
+  };
 }
 
 describe('application builder environment wiring', () => {
@@ -1078,6 +1079,31 @@ describe('application builder environment wiring', () => {
     const artifacts = Object.keys(prd.assembly.manifest.artifacts ?? {});
     expect(artifacts).toContain('WhiskeyCertificate-Prd');
     expect(artifacts).toContain('WhiskeyApp-Prd');
+    expect(prd.observabilityStackName).toBe('WhiskeyObservability-Prd');
+
+    const alarms = resourcesOf(prd.observability, 'AWS::CloudWatch::Alarm')
+      .map(([, alarm]) => alarm.Properties!);
+    const api5xxAlarm = alarms.filter((alarm) =>
+      alarm.AlarmName === 'whiskey-prd-api-5xx-high');
+    expect(api5xxAlarm).toHaveLength(1);
+    expect(api5xxAlarm[0].Dimensions)
+      .toEqual([{ Name: 'ApiName', Value: 'whiskey-api-prd' }]);
+
+    // Only the functions that spend money per invocation get their own Errors alarm.
+    const expectedFunctionNames = [
+      'drink-log-analyze-prd',
+      'drink-log-places-prd',
+    ];
+    const lambdaErrorsAlarms = alarms.filter((alarm) =>
+      alarm.AlarmName.startsWith('whiskey-prd-lambda-errors-'));
+    expect(lambdaErrorsAlarms).toHaveLength(expectedFunctionNames.length);
+    expect(lambdaErrorsAlarms.map((alarm) => alarm.Dimensions[0].Value).sort())
+      .toEqual(expectedFunctionNames.sort());
+
+    // CloudWatch bills per metric referenced by an alarm and gives each account
+    // 10 alarm metrics free. Production must stay inside that allowance.
+    expect(alarms.length).toBeLessThanOrEqual(10);
+    expect(alarms.filter((alarm) => alarm.Namespace === 'AWS/DynamoDB')).toHaveLength(0);
   });
 
   test('dev wires the child zone to the production delegation role only', () => {

@@ -69,5 +69,5 @@ Google Places API (New) は日次クォータを持たない → **費用上界�
 ## 費用上界の保証範囲（正直な限定）
 
 - **確定上界あり**: Bedrock（カウンタ）・Places（カウンタ）・DrinkLogs 画像ストレージ（現在割当数カウンタ）。
-- **上界なし・残余リスク承認**: S3 PUT（presigned POST 窓）/ GET（presigned GET 窓）のリクエスト課金（低単価・CloudWatch アラームは通知であり遮断ではない）。Reviews は日次上限のみ・総件数上限なし。Cognito セルフサインアップ由来のレート（API GW スロットルは認証系に不適用）。
+- **上界なし・残余リスク承認**: S3 PUT（presigned POST 窓）/ GET（presigned GET 窓）のリクエスト課金（低単価・CloudWatch アラームは通知であり遮断ではない）。Cognito セルフサインアップ由来のレート（API GW スロットルは認証系に不適用）。
 - カウンタ書き込み失敗時は課金呼び出しの**前に** fail-closed（テストで保証）。

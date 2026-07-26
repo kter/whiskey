@@ -45,105 +45,6 @@ paths:
           schema: {type: string}
       responses:
         '200': {description: Suggestions}
-  /api/whiskeys/ranking:
-    get:
-      security: []
-      summary: Get whiskey rankings
-      responses:
-        '200': {description: Rankings}
-  /api/reviews:
-    get:
-      security:
-        - bearerAuth: []
-      summary: List the authenticated user's reviews
-      parameters:
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/NextToken'
-      responses:
-        '200':
-          description: User review page
-          headers:
-            Cache-Control:
-              schema: {type: string, example: 'private, no-store'}
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/ReviewPage'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-    post:
-      security:
-        - bearerAuth: []
-      summary: Create a review
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: '#/components/schemas/ReviewCreateInput'}
-      responses:
-        '201':
-          description: Review created
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/Review'}
-        '400': {$ref: '#/components/responses/BadRequest'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '429': {description: Daily review limit exceeded}
-  /api/reviews/public:
-    get:
-      security: []
-      summary: List public reviews
-      parameters:
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/NextToken'
-      responses:
-        '200':
-          description: Public review page
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/PublicReviewPage'}
-  /api/reviews/{id}:
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema: {type: string}
-    get:
-      security:
-        - bearerAuth: []
-      summary: Get an owned review
-      responses:
-        '200':
-          description: Review
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/Review'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '404': {$ref: '#/components/responses/NotFound'}
-    put:
-      security:
-        - bearerAuth: []
-      summary: Update an owned review
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: '#/components/schemas/ReviewUpdateInput'}
-      responses:
-        '200':
-          description: Review updated
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/Review'}
-        '400': {$ref: '#/components/responses/BadRequest'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '404': {$ref: '#/components/responses/NotFound'}
-    delete:
-      security:
-        - bearerAuth: []
-      summary: Delete an owned review
-      responses:
-        '204': {description: Review deleted}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '404': {$ref: '#/components/responses/NotFound'}
   /api/drink-logs/upload-url:
     post:
       security: [{bearerAuth: []}]
@@ -236,7 +137,7 @@ components:
         application/json:
           schema: {$ref: '#/components/schemas/Error'}
     NotFound:
-      description: Review not found
+      description: Drink log not found
       content:
         application/json:
           schema: {$ref: '#/components/schemas/Error'}
@@ -255,62 +156,6 @@ components:
         fields:
           type: object
           additionalProperties: {type: string}
-    Review:
-      type: object
-      required: [id, whiskey_id, rating, date, is_public, created_at, updated_at]
-      properties:
-        id: {type: string}
-        whiskey_id: {type: string}
-        whiskey_name: {type: string}
-        whiskey_distillery: {type: string}
-        user_id: {type: string, description: Returned only on authenticated owner routes}
-        rating: {$ref: '#/components/schemas/Rating'}
-        notes: {type: string, maxLength: 2000}
-        serving_style: {$ref: '#/components/schemas/ServingStyle'}
-        date: {type: string, format: date}
-        is_public: {type: boolean, default: false}
-        created_at: {type: string, format: date-time}
-        updated_at: {type: string, format: date-time}
-    ReviewPage:
-      type: object
-      required: [results, reviews, count]
-      properties:
-        results:
-          type: array
-          items: {$ref: '#/components/schemas/Review'}
-        reviews:
-          type: array
-          items: {$ref: '#/components/schemas/Review'}
-        count: {type: integer, minimum: 0}
-        next_token: {type: string, nullable: true}
-    PublicReview:
-      type: object
-      description: Public projection; owner and internal index identifiers are omitted
-      required: [id, whiskey_id, rating, date, is_public, created_at, updated_at]
-      properties:
-        id: {type: string}
-        whiskey_id: {type: string}
-        whiskey_name: {type: string}
-        whiskey_distillery: {type: string}
-        rating: {$ref: '#/components/schemas/Rating'}
-        notes: {type: string, maxLength: 2000}
-        serving_style: {$ref: '#/components/schemas/ServingStyle'}
-        date: {type: string, format: date}
-        is_public: {type: boolean}
-        created_at: {type: string, format: date-time}
-        updated_at: {type: string, format: date-time}
-    PublicReviewPage:
-      type: object
-      required: [results, reviews, count]
-      properties:
-        results:
-          type: array
-          items: {$ref: '#/components/schemas/PublicReview'}
-        reviews:
-          type: array
-          items: {$ref: '#/components/schemas/PublicReview'}
-        count: {type: integer, minimum: 0}
-        next_token: {type: string, nullable: true}
     Rating:
       type: number
       minimum: 1
@@ -318,27 +163,6 @@ components:
     ServingStyle:
       type: string
       enum: [NEAT, ROCKS, WATER, SODA, COCKTAIL]
-    ReviewCreateInput:
-      type: object
-      additionalProperties: false
-      required: [whiskey_id, rating, date]
-      properties:
-        whiskey_id: {type: string, minLength: 1}
-        rating: {$ref: '#/components/schemas/Rating'}
-        notes: {type: string, maxLength: 2000}
-        serving_style: {$ref: '#/components/schemas/ServingStyle'}
-        date: {type: string, format: date}
-        is_public: {type: boolean, default: false}
-    ReviewUpdateInput:
-      type: object
-      additionalProperties: false
-      minProperties: 1
-      properties:
-        rating: {$ref: '#/components/schemas/Rating'}
-        notes: {type: string, maxLength: 2000}
-        serving_style: {$ref: '#/components/schemas/ServingStyle'}
-        date: {type: string, format: date}
-        is_public: {type: boolean}
     DrinkLog:
       type: object
       description: GPS coordinates and Google-provided display names are never stored.

@@ -15,7 +15,6 @@ export AWS_ENDPOINT_URL_S3 := http://127.0.0.1:9000
 export ENVIRONMENT := local
 export WHISKEYS_TABLE := WhiskeySearch-local
 export WHISKEY_SEARCH_TABLE := WhiskeySearch-local
-export REVIEWS_TABLE := Reviews-local
 export DRINK_LOGS_TABLE := DrinkLogs-local
 export APP_STATE_TABLE := AppState-local
 export IMAGES_BUCKET := whiskey-images-local
@@ -30,7 +29,7 @@ unexport AWS_CONTAINER_CREDENTIALS_RELATIVE_URI
 unexport AWS_CONTAINER_CREDENTIALS_FULL_URI
 unexport AWS_ENDPOINT_URL
 
-.PHONY: local-up local-init local-aggregate api local-down
+.PHONY: local-up local-init api local-down
 
 $(VENV_PYTHON):
 	$(PYTHON) -m venv $(VENV)
@@ -62,10 +61,6 @@ local-init: $(REQUIREMENTS_STAMP)
 		sleep 2; \
 	done
 	$(VENV_PYTHON) scripts/local/seed_whiskeys.py --target local
-	$(MAKE) local-aggregate
-
-local-aggregate: $(REQUIREMENTS_STAMP)
-	$(VENV_PYTHON) -m local_api.main --aggregate
 
 api: $(REQUIREMENTS_STAMP)
 	$(VENV_PYTHON) -m uvicorn local_api.main:app --host 127.0.0.1 --port 8000 --reload

@@ -20,15 +20,13 @@ make api
 
 `make local-up` は DynamoDB Local（`127.0.0.1:8001`）と MinIO API/Console（`127.0.0.1:9000` / `127.0.0.1:9001`）の healthcheck、および `whiskey-images-local` バケット作成の完了を待ちます。
 
-`make local-init` は4テーブルを冪等に作成し、50銘柄を投入してからランキング集計 Lambda を直接実行します。`.venv` と固定済み Python 依存も必要に応じて作成します。
+`make local-init` は3テーブルを冪等に作成し、50銘柄を投入します。`.venv` と固定済み Python 依存も必要に応じて作成します。
 
 `make api` は FastAPI を `http://127.0.0.1:8000` で起動します。API パスは API Gateway と同じく末尾スラッシュなしです。
 
 ```bash
 curl --get --data-urlencode 'q=山崎' \
   http://localhost:8000/api/whiskeys/search
-
-curl http://localhost:8000/api/whiskeys/ranking
 ```
 
 ## 飲酒ログをローカルで動かす
@@ -47,13 +45,6 @@ make api
 ローカルAPIは`MOCK_AI=1`と`MOCK_PLACES=1`が既定です。
 写真解析は「モックウイスキー」、周辺店舗検索は「モックバー」を決定的に返すため、Bedrock、Google Places、Secrets Managerへはアクセスしません。
 写真のpresigned POST先はMinIOで、ブラウザからのアップロードはMinIOのCORS（`http://localhost:3000`）を経由します。
-
-飲酒ログの作成や削除ではランキングキャッシュを自動更新しません。
-ランキングへ反映したいタイミングで下記を実行する感じです。
-
-```bash
-make local-aggregate
-```
 
 ### 実Google Places APIを使う場合
 
@@ -102,11 +93,7 @@ make local-down
 
 `make api` は既定で `MOCK_AUTH=1` です。アダプタが固定ユーザー `local-test-user` の ID-token 相当 claims（`aud=local-client`、`token_use=id`）を API Gateway イベントへ注入します。Bearer token は不要です。
 
-```bash
-curl -i -X POST http://localhost:8000/api/reviews \
-  -H 'Content-Type: application/json' \
-  -d '{"whiskey_id":"yamazaki-12","rating":5,"date":"2026-07-19","is_public":true}'
-```
+飲酒ログ API は固定ユーザーの記録として利用できます。
 
 フロントエンドのローカル設定例です。
 
@@ -128,7 +115,7 @@ COGNITO_CLIENT_ID=xxxxxxxxxxxxxxxxxxxxxxxxxx \
 make api
 
 curl -H "Authorization: Bearer $ID_TOKEN" \
-  http://localhost:8000/api/reviews
+  http://localhost:8000/api/drink-logs
 ```
 
 トークンなし、access token、別 Client ID 向け token は `401` になります。Cognito の公開鍵取得にはネットワーク接続が必要ですが、DynamoDB と S3 は引き続きローカル endpoint を使います。
@@ -136,9 +123,6 @@ curl -H "Authorization: Bearer $ID_TOKEN" \
 ## 個別コマンド
 
 ```bash
-# シード後などにランキングを再生成
-make local-aggregate
-
 # AWS プロファイル変数を除いた状態で全手順を確認
 env -u AWS_PROFILE -u AWS_DEFAULT_PROFILE make local-up
 env -u AWS_PROFILE -u AWS_DEFAULT_PROFILE make local-init
@@ -151,6 +135,5 @@ dev テーブルへのシードは事故防止のため `--target dev --profile 
 - 起動待ちが失敗する: `docker compose ps` と `docker compose logs dynamodb-local minio minio-init` を確認してください。8001、9000、9001 が別プロセスで使用中でないことも確認します。
 - API が DynamoDB 接続エラーになる: `make local-up` の後に `make local-init` を再実行してください。DynamoDB Local は in-memory のため、コンテナを作り直すと再初期化が必要です。
 - 検索結果が空になる: URL エンコードを避けるため、上記のように `curl --get --data-urlencode 'q=山崎'` を使ってください。
-- ランキングが「集計中」のままになる: ローカルには15分スケジューラがないため、`make local-aggregate` を実行してください。
 - POST が `401` になる: モックなら API を `MOCK_AUTH=1 make api` で再起動します。実 Cognito なら ID token と2つの Cognito 環境変数を確認します。
 - 末尾スラッシュで `404` になる: 仕様どおりです。`/api/whiskeys/search` のように末尾スラッシュなしで呼び出してください。

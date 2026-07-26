@@ -16,35 +16,6 @@ REGION = "ap-northeast-1"
 LOCAL_DYNAMODB_ENDPOINT = "http://127.0.0.1:8001"
 TABLE_DEFINITIONS: tuple[dict[str, Any], ...] = (
     {
-        "TableName": "Reviews-local",
-        "KeySchema": [{"AttributeName": "id", "KeyType": "HASH"}],
-        "AttributeDefinitions": [
-            {"AttributeName": "id", "AttributeType": "S"},
-            {"AttributeName": "user_id", "AttributeType": "S"},
-            {"AttributeName": "date", "AttributeType": "S"},
-            {"AttributeName": "public_pk", "AttributeType": "S"},
-        ],
-        "GlobalSecondaryIndexes": [
-            {
-                "IndexName": "UserDateIndex",
-                "KeySchema": [
-                    {"AttributeName": "user_id", "KeyType": "HASH"},
-                    {"AttributeName": "date", "KeyType": "RANGE"},
-                ],
-                "Projection": {"ProjectionType": "ALL"},
-            },
-            {
-                "IndexName": "PublicDateIndex",
-                "KeySchema": [
-                    {"AttributeName": "public_pk", "KeyType": "HASH"},
-                    {"AttributeName": "date", "KeyType": "RANGE"},
-                ],
-                "Projection": {"ProjectionType": "ALL"},
-            },
-        ],
-        "BillingMode": "PAY_PER_REQUEST",
-    },
-    {
         "TableName": "WhiskeySearch-local",
         "KeySchema": [{"AttributeName": "id", "KeyType": "HASH"}],
         "AttributeDefinitions": [

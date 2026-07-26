@@ -22,7 +22,6 @@ const renderSearch = (nextToken: string | null) => mount(defineComponent({
     canSearch: computed(() => true),
     handleSearch: vi.fn(),
     resetSearch: vi.fn(),
-    selectForReview: vi.fn(),
     loadMoreAdvancedResults: vi.fn(),
   }),
   template,

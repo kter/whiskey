@@ -217,10 +217,10 @@ onMounted(() => {
     <!-- ナビゲーション -->
     <div class="mt-6">
       <NuxtLink
-        to="/reviews"
+        to="/logs"
         class="inline-flex items-center text-sm text-amber-300 hover:text-amber-100 transition-colors"
       >
-        ← レビュー一覧に戻る
+        ← 記録一覧に戻る
       </NuxtLink>
     </div>
   </div>

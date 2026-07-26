@@ -30,7 +30,7 @@ def test_dev_target_rejects_wrong_sts_account(monkeypatch):
         script.create_dynamodb_resource("dev")
 
 
-def test_bulk_writer_is_owned_by_script_and_revision_is_incremented():
+def test_bulk_writer_is_owned_by_script():
     writer = Mock()
     manager = Mock()
     manager.__enter__ = Mock(return_value=writer)
@@ -40,12 +40,3 @@ def test_bulk_writer_is_owned_by_script_and_revision_is_incremented():
     items = [{"id": "w1"}, {"id": "w2"}]
     assert script.bulk_write_whiskeys(table, items) == 2
     assert writer.put_item.call_count == 2
-
-    app_state = Mock()
-    script.increment_whiskey_revision(app_state)
-    counter_call, meta_call = [call.kwargs for call in app_state.update_item.call_args_list]
-    assert counter_call["Key"] == {"pk": "whiskey-change-counter"}
-    assert "dirty_since" not in counter_call["UpdateExpression"]
-    assert counter_call["ExpressionAttributeValues"][":one"] == 1
-    assert meta_call["Key"] == {"pk": "ranking-cache/meta"}
-    assert "dirty_since = if_not_exists" in meta_call["UpdateExpression"]
