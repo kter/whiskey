@@ -117,8 +117,7 @@ export function buildApp(app: cdk.App): AppStacks {
       imagesBucketName: appStack.imagesBucketName,
       reconcilerFunctionName: appStack.drinkLogReconcilerFunctionName,
       restApiName: appStack.restApiName,
-      lambdaFunctionNames: appStack.lambdaFunctionNames,
-      tableNames: appStack.tableNames,
+      errorAlarmFunctionNames: appStack.errorAlarmFunctionNames,
       tags,
     },
   );

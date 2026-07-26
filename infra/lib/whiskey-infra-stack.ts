@@ -54,8 +54,8 @@ export class WhiskeyInfraStack extends cdk.Stack {
   public readonly imagesBucketName: string;
   public readonly drinkLogReconcilerFunctionName: string;
   public readonly restApiName: string;
-  public readonly lambdaFunctionNames: string[];
-  public readonly tableNames: string[];
+  /** Functions billed per invocation by an external service; each gets its own Errors alarm. */
+  public readonly errorAlarmFunctionNames: string[];
 
   constructor(scope: Construct, id: string, props: WhiskeyInfraStackProps) {
     super(scope, id, props);
@@ -90,8 +90,10 @@ export class WhiskeyInfraStack extends cdk.Stack {
       drinkLogPlaces: `drink-log-places-${environment}`,
       drinkLogReconciler: `drink-log-reconciler-${environment}`,
     };
-    this.tableNames = Object.values(tableNames);
-    this.lambdaFunctionNames = Object.values(lambdaFunctionNames);
+    this.errorAlarmFunctionNames = [
+      lambdaFunctionNames.drinkLogAnalyze,
+      lambdaFunctionNames.drinkLogPlaces,
+    ];
     this.restApiName = `whiskey-api-${environment}`;
 
     if (enableCustomDomain && (!envConfig.domain || !envConfig.apiDomain || !props.hostedZone || !props.cloudFrontCertificateArn)) {

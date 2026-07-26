@@ -965,13 +965,9 @@ describe('split stacks', () => {
 
   test('observability stack creates availability alarms and sends every alarm to Tokyo SNS', () => {
     const app = new cdk.App();
-    const lambdaFunctionNames = [
-      'whiskey-list-dev',
-      'drink-log-reconciler-dev',
-    ];
-    const tableNames = [
-      'WhiskeySearch-dev',
-      'DrinkLogs-dev',
+    const errorAlarmFunctionNames = [
+      'drink-log-analyze-dev',
+      'drink-log-places-dev',
     ];
     const stack = new ObservabilityStack(app, 'Observability', {
       env: { account: DEV_ACCOUNT, region: 'ap-northeast-1' },
@@ -980,13 +976,15 @@ describe('split stacks', () => {
       imagesBucketName: `whiskey-images-dev-${DEV_ACCOUNT}`,
       reconcilerFunctionName: 'drink-log-reconciler-dev',
       restApiName: 'whiskey-api-dev',
-      lambdaFunctionNames,
-      tableNames,
+      errorAlarmFunctionNames,
     });
     const synthesized = Template.fromStack(stack).toJSON() as Synthesized & { templateFile?: string };
     const { templateFile: _ignored, ...json } = synthesized;
+    // 3 existing + API 5xx + per-function Errors + Throttles. Must stay at or under the
+    // 10 alarm metrics that CloudWatch gives each account for free.
     expect(resourcesOf(json, 'AWS::CloudWatch::Alarm'))
-      .toHaveLength(3 + 1 + lambdaFunctionNames.length + 1 + tableNames.length);
+      .toHaveLength(3 + 1 + errorAlarmFunctionNames.length + 1);
+    expect(resourcesOf(json, 'AWS::CloudWatch::Alarm').length).toBeLessThanOrEqual(10);
     expect(resourcesOf(json, 'AWS::Route53::HostedZone')).toHaveLength(0);
     expect(resourcesOf(json, 'AWS::Lambda::Function')).toHaveLength(0);
     const alarms = resourcesOf(json, 'AWS::CloudWatch::Alarm').map(([, alarm]) => alarm.Properties!);
@@ -1046,9 +1044,9 @@ describe('split stacks', () => {
 
     const lambdaErrorsAlarms = alarms.filter((alarm) =>
       alarm.AlarmName.startsWith('whiskey-dev-lambda-errors-'));
-    expect(lambdaErrorsAlarms).toHaveLength(lambdaFunctionNames.length);
+    expect(lambdaErrorsAlarms).toHaveLength(errorAlarmFunctionNames.length);
     expect(lambdaErrorsAlarms.map((alarm) => alarm.Dimensions[0].Value).sort())
-      .toEqual([...lambdaFunctionNames].sort());
+      .toEqual([...errorAlarmFunctionNames].sort());
     expect(lambdaErrorsAlarms.every((alarm) =>
       alarm.MetricName === 'Errors' && alarm.Threshold === 3)).toBe(true);
 
@@ -1057,15 +1055,9 @@ describe('split stacks', () => {
     expect(lambdaThrottlesAlarms).toHaveLength(1);
     expect(lambdaThrottlesAlarms[0].Dimensions).toBeUndefined();
 
-    const dynamodbThrottlesAlarms = alarms.filter((alarm) =>
-      alarm.AlarmName.startsWith('whiskey-dev-dynamodb-throttles-'));
-    expect(dynamodbThrottlesAlarms).toHaveLength(tableNames.length);
-    expect(dynamodbThrottlesAlarms.map((alarm) => alarm.Dimensions[0].Value).sort())
-      .toEqual([...tableNames].sort());
-    expect(dynamodbThrottlesAlarms.every((alarm) =>
-      alarm.MetricName === 'ThrottledRequests' &&
-      alarm.Namespace === 'AWS/DynamoDB' &&
-      alarm.Threshold === 1)).toBe(true);
+    // Per-table DynamoDB alarms were dropped to stay inside the free tier.
+    expect(alarms.filter((alarm) =>
+      alarm.Namespace === 'AWS/DynamoDB')).toHaveLength(0);
 
     for (const alarm of alarms) {
       expect(alarm.AlarmActions).toEqual([
@@ -1158,15 +1150,10 @@ describe('application builder environment wiring', () => {
     expect(api5xxAlarm[0].Dimensions)
       .toEqual([{ Name: 'ApiName', Value: 'whiskey-api-prd' }]);
 
+    // Only the functions that spend money per invocation get their own Errors alarm.
     const expectedFunctionNames = [
-      'whiskey-list-prd',
-      'whiskey-search-prd',
-      'reviews-prd',
-      'ranking-aggregator-prd',
-      'drink-logs-prd',
       'drink-log-analyze-prd',
       'drink-log-places-prd',
-      'drink-log-reconciler-prd',
     ];
     const lambdaErrorsAlarms = alarms.filter((alarm) =>
       alarm.AlarmName.startsWith('whiskey-prd-lambda-errors-'));
@@ -1174,17 +1161,10 @@ describe('application builder environment wiring', () => {
     expect(lambdaErrorsAlarms.map((alarm) => alarm.Dimensions[0].Value).sort())
       .toEqual(expectedFunctionNames.sort());
 
-    const expectedTableNames = [
-      'Reviews-prd',
-      'WhiskeySearch-prd',
-      'AppState-prd',
-      'DrinkLogs-prd',
-    ];
-    const dynamodbThrottlesAlarms = alarms.filter((alarm) =>
-      alarm.AlarmName.startsWith('whiskey-prd-dynamodb-throttles-'));
-    expect(dynamodbThrottlesAlarms).toHaveLength(expectedTableNames.length);
-    expect(dynamodbThrottlesAlarms.map((alarm) => alarm.Dimensions[0].Value).sort())
-      .toEqual(expectedTableNames.sort());
+    // CloudWatch bills per metric referenced by an alarm and gives each account
+    // 10 alarm metrics free. Production must stay inside that allowance.
+    expect(alarms.length).toBeLessThanOrEqual(10);
+    expect(alarms.filter((alarm) => alarm.Namespace === 'AWS/DynamoDB')).toHaveLength(0);
   });
 
   test('dev wires the child zone to the production delegation role only', () => {

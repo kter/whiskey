@@ -10,8 +10,13 @@ export interface ObservabilityStackProps extends cdk.StackProps {
   readonly imagesBucketName: string;
   readonly reconcilerFunctionName: string;
   readonly restApiName: string;
-  readonly lambdaFunctionNames: string[];
-  readonly tableNames: string[];
+  /**
+   * Functions that get their own Errors alarm. Deliberately narrowed to the
+   * functions that spend money per invocation (Bedrock, Google Places), because
+   * CloudWatch bills per metric referenced by an alarm and the account only gets
+   * 10 alarm metrics free. Failures elsewhere surface through the API 5xx alarm.
+   */
+  readonly errorAlarmFunctionNames: string[];
 }
 
 export class ObservabilityStack extends cdk.Stack {
@@ -91,7 +96,7 @@ export class ObservabilityStack extends cdk.Stack {
       resourceName.endsWith(environmentSuffix)
         ? resourceName.slice(0, -environmentSuffix.length)
         : resourceName;
-    const lambdaErrorsAlarms = props.lambdaFunctionNames.map((functionName, index) =>
+    const lambdaErrorsAlarms = props.errorAlarmFunctionNames.map((functionName, index) =>
       new cloudwatch.Alarm(this, `LambdaErrorsAlarm${index}`, {
         alarmName: `whiskey-${props.environment}-lambda-errors-${shortName(functionName)}`,
         metric: fiveMinuteMetric('AWS/Lambda', 'Errors', { FunctionName: functionName }),
@@ -110,15 +115,9 @@ export class ObservabilityStack extends cdk.Stack {
       comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     });
-    const dynamodbThrottlesAlarms = props.tableNames.map((tableName, index) =>
-      new cloudwatch.Alarm(this, `DynamoDbThrottlesAlarm${index}`, {
-        alarmName: `whiskey-${props.environment}-dynamodb-throttles-${shortName(tableName)}`,
-        metric: fiveMinuteMetric('AWS/DynamoDB', 'ThrottledRequests', { TableName: tableName }),
-        threshold: 1,
-        evaluationPeriods: 1,
-        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
-        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
-      }));
+    // No per-table DynamoDB throttle alarms: every table is PAY_PER_REQUEST, so
+    // throttling is rare, and four more alarm metrics would push the account past
+    // the free tier. Throttles that do matter show up as API 5xx or Lambda errors.
 
     for (const alarm of [
       tmpPostRequestsAlarm,
@@ -127,7 +126,6 @@ export class ObservabilityStack extends cdk.Stack {
       api5xxAlarm,
       ...lambdaErrorsAlarms,
       lambdaThrottlesAlarm,
-      ...dynamodbThrottlesAlarms,
     ]) {
       alarm.addAlarmAction(action);
     }
