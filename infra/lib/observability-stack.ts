@@ -96,8 +96,13 @@ export class ObservabilityStack extends cdk.Stack {
       resourceName.endsWith(environmentSuffix)
         ? resourceName.slice(0, -environmentSuffix.length)
         : resourceName;
-    const lambdaErrorsAlarms = props.errorAlarmFunctionNames.map((functionName, index) =>
-      new cloudwatch.Alarm(this, `LambdaErrorsAlarm${index}`, {
+    // Logical IDs derive from the function name, not the array position: an
+    // index-based id shifts when the list changes, and CloudFormation then tries to
+    // create the moved alarm before deleting the old one holding the same name.
+    const pascalCase = (value: string): string =>
+      value.split('-').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join('');
+    const lambdaErrorsAlarms = props.errorAlarmFunctionNames.map((functionName) =>
+      new cloudwatch.Alarm(this, `LambdaErrorsAlarm${pascalCase(shortName(functionName))}`, {
         alarmName: `whiskey-${props.environment}-lambda-errors-${shortName(functionName)}`,
         metric: fiveMinuteMetric('AWS/Lambda', 'Errors', { FunctionName: functionName }),
         threshold: 3,
