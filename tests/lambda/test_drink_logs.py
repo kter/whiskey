@@ -1189,3 +1189,55 @@ def test_handler_revalidates_authorizer_audience_and_token_use(monkeypatch):
     assert response["statusCode"] == 401
     assert response["headers"]["Cache-Control"] == "private, no-store"
     assert json.loads(response["body"])["error"] == "Authentication required"
+
+
+def test_manual_brand_edit_clears_the_matched_whiskey_id():
+    """Editing brand_text by hand must drop the previously matched whiskey_id.
+
+    The create path (_completion_from_analysis) already pops it. Leaving it on
+    update means the record shows the corrected name while still pointing at a
+    different product -- e.g. a log corrected to アラン 10年 that still links to
+    カリラ 12年.
+    """
+    calls = []
+
+    class UpdateTable:
+        meta = SimpleNamespace(client=RecordingClient())
+
+        def update_item(self, **kwargs):
+            calls.append(kwargs)
+            return {"Attributes": {"id": "log-1", "status": "complete"}}
+
+    drink_logs.update_drink_log(
+        UpdateTable(),
+        "user-1",
+        "log-1",
+        drink_logs.validate_update_input({"brand_text": "アラン 10年"}),
+    )
+
+    expression = calls[0]["UpdateExpression"]
+    assert "#brand_source = :manual" in expression
+    assert "REMOVE" in expression
+    assert "#whiskey_id" in expression.split("REMOVE", 1)[1]
+    assert calls[0]["ExpressionAttributeNames"]["#whiskey_id"] == "whiskey_id"
+
+
+def test_non_brand_edit_leaves_the_whiskey_id_alone():
+    """Only a brand correction invalidates the match -- notes must not."""
+    calls = []
+
+    class UpdateTable:
+        meta = SimpleNamespace(client=RecordingClient())
+
+        def update_item(self, **kwargs):
+            calls.append(kwargs)
+            return {"Attributes": {"id": "log-1", "status": "complete"}}
+
+    drink_logs.update_drink_log(
+        UpdateTable(),
+        "user-1",
+        "log-1",
+        drink_logs.validate_update_input({"notes": "うまい"}),
+    )
+
+    assert "#whiskey_id" not in calls[0]["UpdateExpression"]

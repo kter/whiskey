@@ -1090,6 +1090,11 @@ def update_drink_log(
         names["#brand_source"] = "brand_source"
         values[":manual"] = "manual"
         sets.append("#brand_source = :manual")
+        # 手入力で銘柄を直したなら、それ以前に照合された whiskey_id は別の商品を
+        # 指している。作成時の _completion_from_analysis は破棄しているので、
+        # 更新側も揃える。残すと訂正名と誤った ID が同居する。
+        names["#whiskey_id"] = "whiskey_id"
+        removes.append("#whiskey_id")
     if "store" in data:
         names.update({"#store": "store", "#name": "name", "#place_id": "place_id"})
         store = data["store"]
