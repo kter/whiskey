@@ -162,5 +162,9 @@ debug_response*.txt
 .codex/
 .agent-runs/
 
+# Brand-recognition evaluation artifacts
+scripts/eval/synthetic/
+brand-eval-results-*.json
+
 # CDK
 infra/cdk.out/
