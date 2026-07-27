@@ -607,7 +607,8 @@ describe('Lambda bundling and shared layer', () => {
       BEDROCK_MODEL_ALLOWLIST: 'jp.amazon.nova-2-lite-v1:0,jp.anthropic.claude-haiku-4-5-20251001-v1:0,jp.anthropic.claude-sonnet-4-6',
       ANALYZE_USER_DAILY_LIMIT: '20',
       ANALYZE_GLOBAL_DAILY_LIMIT: '50',
-      ANALYZE_GLOBAL_MONTHLY_LIMIT: '1000',
+      // Sonnet 4.6 の単価が確定するまでの暫定値。docs/COST_MATRIX.md 参照。
+      ANALYZE_GLOBAL_MONTHLY_LIMIT: '300',
     }));
     const placesEnv = lambdaByName(json, 'drink-log-places-dev').Properties?.Environment.Variables;
     expect(placesEnv).toEqual(expect.objectContaining({
