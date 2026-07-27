@@ -597,7 +597,11 @@ export class WhiskeyInfraStack extends cdk.Stack {
         BEDROCK_MODEL_ALLOWLIST: bedrockModelAllowlist(bedrockModels).join(','),
         ANALYZE_USER_DAILY_LIMIT: '20',
         ANALYZE_GLOBAL_DAILY_LIMIT: '50',
-        ANALYZE_GLOBAL_MONTHLY_LIMIT: '1000',
+        // Sonnet 4.6 の東京単価は Pricing API 未掲載のため確定できない。
+        // 1000 回のままだと docs/COST_MATRIX.md の月次 $15 枠を下限見積でも
+        // 超える（analyze だけで $12.7、places/ストレージと合わせて $18.3）。
+        // 実請求で単価が判明するまでの暫定値。詳細は COST_MATRIX 参照。
+        ANALYZE_GLOBAL_MONTHLY_LIMIT: '300',
         IMAGE_MAX_BYTES: '1572864',
         UPLOAD_MAX_BYTES: '3670016',
       },
