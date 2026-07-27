@@ -35,8 +35,15 @@ class RakutenNamesFetcher:
         self.rakuten_app_id = os.getenv('RAKUTEN_APP_ID')
         if not self.rakuten_app_id:
             raise ValueError("RAKUTEN_APP_ID環境変数が設定されていません")
-        
-        self.base_url = "https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601"
+
+        # 2026 年のポータル刷新でアプリ ID が UUID になり、accessKey との併用が必須に
+        # なった。旧 app.rakuten.co.jp のエンドポイントは新しいアプリ ID を認識せず
+        # "specify valid applicationId" を返す。
+        self.rakuten_access_key = os.getenv('RAKUTEN_ACCESS_KEY')
+        if not self.rakuten_access_key:
+            raise ValueError("RAKUTEN_ACCESS_KEY環境変数が設定されていません")
+
+        self.base_url = "https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20260701"
         
         # カテゴリID (genreId) 設定
         self.genre_id = '100330'  # ウイスキーカテゴリ
@@ -48,8 +55,11 @@ class RakutenNamesFetcher:
         
         # リクエストセッション設定
         self.session = requests.Session()
+        # accessKey はヘッダで送る。クエリ文字列に載せるとアクセスログ・シェル履歴・
+        # エラーメッセージに秘匿値が残る。
         self.session.headers.update({
-            'User-Agent': 'WhiskeyLog/1.0 (Educational Purpose)'
+            'User-Agent': 'WhiskeyLog/1.0 (Educational Purpose)',
+            'accessKey': self.rakuten_access_key,
         })
         
         logger.info(f"楽天API初期化完了 - App ID: {self.rakuten_app_id[:8]}***")
@@ -111,7 +121,10 @@ class RakutenNamesFetcher:
                     time.sleep(wait_time)
                     continue
                 else:
-                    logger.error(f"HTTPエラー: {e}")
+                    # 本文を出さないと "400 Client Error" しか見えず、どのパラメータが
+                    # 悪いのか判断できない。楽天は errorMessage に理由を入れてくる。
+                    body = (response.text or "")[:500]
+                    logger.error(f"HTTPエラー: {e} / レスポンス: {body}")
                     return None
                     
             except requests.exceptions.RequestException as e:

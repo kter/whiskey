@@ -230,6 +230,22 @@ describe('logs/new form behavior', () => {
     expect(wrapper.get('input[id^="brand-text-"]').attributes('required')).toBeDefined()
   })
 
+  it('shows catalog and AI candidate matching labels', () => {
+    const wrapper = renderLogPage({
+      candidates: [
+        { brand_text: 'カリラ 12年', confidence: 0.9, match_source: 'catalog' },
+        { brand_text: '山崎', confidence: 0.8, match_source: 'ai' },
+      ],
+    })
+
+    const options = wrapper.findAll('option')
+    expect(options[1].text()).toContain('カタログ一致')
+    expect(options[1].text()).not.toContain('AI読取')
+    expect(options[2].text()).toContain('AI読取')
+    expect(options[2].text()).not.toContain('カタログ一致')
+    expect(wrapper.text()).toContain('複数のボトルを検出しました。')
+  })
+
   it('opens the selected confirmation-card preview in the lightbox', async () => {
     const wrapper = renderLogPage()
 

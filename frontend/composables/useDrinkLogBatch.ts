@@ -124,7 +124,7 @@ export const useDrinkLogBatch = (provided?: DrinkLogBatchDependencies) => {
   const applyAnalysis = (item: DrinkLogBatchItem, analysis: DrinkLogAnalysis) => {
     item.analysisId = analysis.analysis_id
     item.candidates = analysis.candidates || []
-    if (item.candidates.length) {
+    if (item.candidates.length === 1) {
       item.selectedCandidateIndex = 0
       item.candidateSelection = '0'
       item.brandText = item.candidates[0]?.brand_text || ''

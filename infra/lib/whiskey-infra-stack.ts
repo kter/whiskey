@@ -448,6 +448,14 @@ export class WhiskeyInfraStack extends cdk.Stack {
           'arn:aws:bedrock:ap-northeast-3::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0',
         ],
       },
+      {
+        type: 'profile',
+        profileArn: `arn:aws:bedrock:${this.region}:${this.account}:inference-profile/jp.anthropic.claude-sonnet-4-6`,
+        destinationArns: [
+          'arn:aws:bedrock:ap-northeast-1::foundation-model/anthropic.claude-sonnet-4-6',
+          'arn:aws:bedrock:ap-northeast-3::foundation-model/anthropic.claude-sonnet-4-6',
+        ],
+      },
     ];
     for (const statement of bedrockInvokeStatements(bedrockModels)) {
       drinkLogAnalyzeRole.addToPolicy(statement);
@@ -585,7 +593,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
       environment: {
         ...authenticatedDrinkLogEnvironment,
         WHISKEY_SEARCH_TABLE: whiskeySearchTable.tableName,
-        BEDROCK_MODEL_ID: 'jp.amazon.nova-2-lite-v1:0',
+        BEDROCK_MODEL_ID: 'jp.anthropic.claude-sonnet-4-6',
         BEDROCK_MODEL_ALLOWLIST: bedrockModelAllowlist(bedrockModels).join(','),
         ANALYZE_USER_DAILY_LIMIT: '20',
         ANALYZE_GLOBAL_DAILY_LIMIT: '50',

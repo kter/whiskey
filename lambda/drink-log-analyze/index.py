@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -13,7 +14,6 @@ from pathlib import Path
 from typing import Any, Mapping
 
 import boto3
-from boto3.dynamodb.conditions import Key
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
@@ -43,18 +43,30 @@ SERVING_STYLE_ALIASES = {"HIGHBALL": "SODA", "SODA": "SODA"}
 UUID_TEXT = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}"
 UPLOAD_KEY_RE = re.compile(rf"^tmp/([^/]+)/({UUID_TEXT})\.(jpg|jpeg|png|webp)$")
 MAX_CANDIDATES = 5
-MAX_WHISKEY_SCAN_PAGES = 3
+MASTER_SNAPSHOT_TTL_SECONDS = 300
+MASTER_SNAPSHOT_MAX_PAGES = 20
+MASTER_SNAPSHOT_MAX_ITEMS = 5000
 ANALYSIS_TTL_SECONDS = 30 * 60
-HANDLER_BUDGET_MS = 20_000
+HANDLER_BUDGET_MS = 24_000
 INVOKE_SAFETY_MS = 4_000
 MIN_INVOKE_BUDGET_MS = 2_000
 PROMPT = (
-    "Analyze this drink photo. Return only strict JSON with exactly these keys: "
-    '{"brand_candidates":[{"name_ja":"","name_en":"","confidence":0.0}],'
-    '"serving_style":"NEAT|ROCKS|WATER|SODA|COCKTAIL","glass_type":""}. '
-    "Return at most 5 candidates. Confidence must be between 0 and 1. "
-    "Use SODA for highballs. Do not include markdown or commentary."
+    "この写真に写っているウイスキーと飲み方を判定してください。"
+    "日本で一般に流通している正式な日本語表記で答えてください。"
+    "熟成年数が読み取れる場合は必ず名前に含めてください。"
+    "判別できなければ whiskeys は空配列にし、推測しないでください。"
+    "複数のボトルが写っている場合は全て列挙してください（最大5件）。"
+    "ラベルに書かれていないカスク種別や熟成年数などの情報を補完しないでください。"
+    "ハイボールは serving_style を SODA にしてください。"
+    "次のキーだけを持つ厳密な JSON を返してください: "
+    '{"whiskeys":[{"name_ja":"カリラ 12年","name_en":"Caol Ila 12 Year Old",'
+    '"confidence":0.95}],"serving_style":"NEAT|ROCKS|WATER|SODA|COCKTAIL",'
+    '"glass_type":""}. '
+    "confidence は0以上1以下にしてください。Markdownや説明は含めないでください。"
 )
+
+_MASTER_CACHE_LOCK = threading.Lock()
+_MASTER_CACHE: dict[str, Any] | None = None
 
 
 class ValidationError(ValueError):
@@ -247,31 +259,31 @@ def _decimal_confidence(value: Any) -> Decimal | None:
 
 def _validate_model_output(payload: Any) -> dict[str, Any] | None:
     if not isinstance(payload, dict) or set(payload) != {
-        "brand_candidates",
+        "whiskeys",
         "serving_style",
         "glass_type",
     }:
         return None
-    raw_candidates = payload.get("brand_candidates")
-    if not isinstance(raw_candidates, list) or len(raw_candidates) > MAX_CANDIDATES:
+    raw_whiskeys = payload.get("whiskeys")
+    if not isinstance(raw_whiskeys, list) or len(raw_whiskeys) > MAX_CANDIDATES:
         return None
-    candidates: list[dict[str, Any]] = []
-    for candidate in raw_candidates:
-        if not isinstance(candidate, dict) or set(candidate) != {"name_ja", "name_en", "confidence"}:
+    whiskeys: list[dict[str, Any]] = []
+    for whiskey in raw_whiskeys:
+        if not isinstance(whiskey, dict) or set(whiskey) != {"name_ja", "name_en", "confidence"}:
             return None
-        name_ja = candidate.get("name_ja")
-        name_en = candidate.get("name_en")
-        confidence = _decimal_confidence(candidate.get("confidence"))
+        name_ja = whiskey.get("name_ja")
+        name_en = whiskey.get("name_en")
+        confidence = _decimal_confidence(whiskey.get("confidence"))
         if (
             not isinstance(name_ja, str)
             or not isinstance(name_en, str)
             or len(name_ja) > 200
             or len(name_en) > 200
-            or not (name_ja or name_en)
+            or not name_ja.strip()
             or confidence is None
         ):
             return None
-        candidates.append(
+        whiskeys.append(
             {"name_ja": name_ja, "name_en": name_en, "confidence": confidence}
         )
     serving_raw = payload.get("serving_style")
@@ -284,7 +296,7 @@ def _validate_model_output(payload: Any) -> dict[str, Any] | None:
     if not isinstance(glass_type, str) or len(glass_type) > 200:
         return None
     return {
-        "brand_candidates": candidates,
+        "whiskeys": whiskeys,
         "serving_style": serving_style,
         "glass_type": glass_type,
     }
@@ -324,7 +336,7 @@ def _invoke_model(model_id: str, image: bytes, context: Any, started: float) -> 
         return None
     if os.environ.get("ENVIRONMENT") == "local" and _env_flag_is_set("MOCK_AI"):
         return {
-            "brand_candidates": [
+            "whiskeys": [
                 {"name_ja": "モックウイスキー", "name_en": "Mock Whisky", "confidence": Decimal("0.9")}
             ],
             "serving_style": "NEAT",
@@ -353,10 +365,10 @@ def _invoke_model(model_id: str, image: bytes, context: Any, started: float) -> 
     return _validate_model_output(parsed) or {}
 
 
-def _candidate_names(candidate: Mapping[str, Any]) -> list[str]:
+def _whiskey_names(whiskey: Mapping[str, Any]) -> list[str]:
     return [
         value
-        for value in (candidate.get("name_ja"), candidate.get("name_en"))
+        for value in (whiskey.get("name_ja"), whiskey.get("name_en"))
         if isinstance(value, str) and value
     ]
 
@@ -366,69 +378,170 @@ def _whiskey_id(item: Mapping[str, Any]) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
-def _match_whiskey(table: Any, candidate: Mapping[str, Any]) -> str | None:
-    normalized_names = list(dict.fromkeys(normalize_text(name) for name in _candidate_names(candidate)))
-    normalized_names = [name for name in normalized_names if name]
-    for normalized in normalized_names:
-        response = table.query(
-            IndexName="NameIndex",
-            KeyConditionExpression=Key("normalized_name").eq(normalized),
-            Limit=1,
+def _snapshot_record(item: Mapping[str, Any]) -> dict[str, Any]:
+    record = dict(item)
+    names = [
+        value
+        for value in (
+            item.get("name_ja"),
+            item.get("name_en"),
+            item.get("name"),
+            item.get("normalized_name"),
         )
-        items = response.get("Items", [])
-        if items:
-            matched = _whiskey_id(items[0])
-            if matched:
-                return matched
+        if isinstance(value, str) and value
+    ]
+    normalized_names = tuple(
+        dict.fromkeys(normalized for name in names if (normalized := normalize_text(name)))
+    )
+    record["_normalized_names"] = normalized_names
+    return record
 
+
+def _reset_master_cache() -> None:
+    """Clear the module-level master snapshot cache for tests."""
+    global _MASTER_CACHE
+    with _MASTER_CACHE_LOCK:
+        _MASTER_CACHE = None
+
+
+def _build_master_snapshot(table: Any, table_name: str, logger: Any = None) -> dict[str, Any]:
+    items: list[dict[str, Any]] = []
     last_key = None
-    for _ in range(MAX_WHISKEY_SCAN_PAGES):
+    page_count = 0
+    complete = True
+    incomplete_reason = None
+    while page_count < MASTER_SNAPSHOT_MAX_PAGES:
         kwargs: dict[str, Any] = {
             "ProjectionExpression": "id, #name, name_ja, name_en, normalized_name",
             "ExpressionAttributeNames": {"#name": "name"},
         }
         if last_key:
             kwargs["ExclusiveStartKey"] = last_key
-        response = table.scan(**kwargs)
-        for item in response.get("Items", []):
-            item_names = [
-                item.get("normalized_name"),
-                item.get("name"),
-                item.get("name_ja"),
-                item.get("name_en"),
-            ]
-            for item_name in item_names:
-                if not isinstance(item_name, str):
-                    continue
-                normalized_item = normalize_text(item_name)
-                if not normalized_item:
-                    continue
-                if any(name in normalized_item or normalized_item in name for name in normalized_names):
-                    matched = _whiskey_id(item)
-                    if matched:
-                        return matched
+        try:
+            response = table.scan(**kwargs)
+        except (BotoCoreError, ClientError) as exc:
+            complete = False
+            incomplete_reason = "scan_error"
+            if logger is not None:
+                logger.warning(
+                    "Master snapshot scan failed",
+                    error_type=type(exc).__name__,
+                )
+            break
+        page_count += 1
+        page_items = response.get("Items", [])
+        if not isinstance(page_items, list):
+            page_items = []
+        remaining = MASTER_SNAPSHOT_MAX_ITEMS - len(items)
+        items.extend(_snapshot_record(item) for item in page_items[:remaining])
         last_key = response.get("LastEvaluatedKey")
+        if len(page_items) > remaining or (
+            len(items) >= MASTER_SNAPSHOT_MAX_ITEMS and last_key
+        ):
+            complete = False
+            incomplete_reason = "max_items"
+            break
         if not last_key:
             break
-    return None
+    else:
+        complete = not bool(last_key)
+        if not complete:
+            incomplete_reason = "max_pages"
+
+    snapshot = {
+        "table_name": table_name,
+        "expires_at": time.monotonic() + MASTER_SNAPSHOT_TTL_SECONDS,
+        "items": tuple(items),
+        "complete": complete,
+        "incomplete_reason": incomplete_reason,
+        "page_count": page_count,
+    }
+    if not complete and incomplete_reason != "scan_error" and logger is not None:
+        logger.warning(
+            "Master snapshot incomplete",
+            master_snapshot_size=len(items),
+            page_count=page_count,
+            incomplete_reason=incomplete_reason,
+        )
+    return snapshot
 
 
-def _build_candidates(table: Any, analysis: Mapping[str, Any]) -> list[dict[str, Any]]:
-    results: list[dict[str, Any]] = []
-    for candidate in analysis.get("brand_candidates", []):
-        name_ja = candidate["name_ja"]
-        name_en = candidate["name_en"]
-        result: dict[str, Any] = {
-            "brand_text": name_ja or name_en,
-            "name_ja": name_ja,
-            "name_en": name_en,
-            "confidence": candidate["confidence"],
+def _get_master_snapshot(table: Any, table_name: str, logger: Any = None) -> dict[str, Any]:
+    global _MASTER_CACHE
+    now = time.monotonic()
+    cached = _MASTER_CACHE
+    if (
+        cached is not None
+        and cached["table_name"] == table_name
+        and cached["expires_at"] > now
+    ):
+        return cached
+    with _MASTER_CACHE_LOCK:
+        cached = _MASTER_CACHE
+        now = time.monotonic()
+        if (
+            cached is not None
+            and cached["table_name"] == table_name
+            and cached["expires_at"] > now
+        ):
+            return cached
+        snapshot = _build_master_snapshot(table, table_name, logger)
+        if snapshot.get("incomplete_reason") != "scan_error":
+            _MASTER_CACHE = snapshot
+        return snapshot
+
+
+def _unique_records(records: list[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
+    unique: dict[str, Mapping[str, Any]] = {}
+    for record in records:
+        record_id = _whiskey_id(record)
+        if record_id:
+            unique[record_id] = record
+    return list(unique.values())
+
+
+def _catalog_match(
+    snapshot: Mapping[str, Any],
+    whiskey: Mapping[str, Any],
+) -> Mapping[str, Any] | None:
+    if not snapshot.get("complete"):
+        return None
+
+    normalized_names = tuple(
+        dict.fromkeys(
+            normalized
+            for name in _whiskey_names(whiskey)
+            if (normalized := normalize_text(name))
+        )
+    )
+    exact_matches = _unique_records(
+        [
+            item
+            for item in snapshot.get("items", ())
+            if set(normalized_names).intersection(item.get("_normalized_names", ()))
+        ]
+    )
+    return exact_matches[0] if len(exact_matches) == 1 else None
+
+
+def _build_candidates(
+    snapshot: Mapping[str, Any],
+    analysis: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    for whiskey in analysis.get("whiskeys", []):
+        matched = _catalog_match(snapshot, whiskey)
+        candidate = {
+            "brand_text": whiskey["name_ja"],
+            "name_ja": whiskey["name_ja"],
+            "name_en": whiskey["name_en"],
+            "confidence": whiskey["confidence"],
+            "match_source": "catalog" if matched is not None else "ai",
         }
-        matched = _match_whiskey(table, candidate)
-        if matched:
-            result["whiskey_id"] = matched
-        results.append(result)
-    return results
+        if matched is not None and (whiskey_id := _whiskey_id(matched)):
+            candidate["whiskey_id"] = whiskey_id
+        candidates.append(candidate)
+    return candidates
 
 
 def analyze_upload(
@@ -443,6 +556,7 @@ def analyze_upload(
     model_id: str,
     context: Any,
     started: float,
+    logger: Any = None,
 ) -> dict[str, Any]:
     upload_uuid = _upload_identity(s3_key, user_id)
     head = s3.head_object(Bucket=bucket_name, Key=s3_key)
@@ -484,9 +598,36 @@ def analyze_upload(
         if analysis is None or analysis:
             break
     if not analysis:
-        analysis = {"brand_candidates": [], "serving_style": "NEAT", "glass_type": ""}
+        analysis = {
+            "whiskeys": [],
+            "serving_style": "NEAT",
+            "glass_type": "",
+        }
 
-    candidates = _build_candidates(dynamodb.Table(whiskey_table_name), analysis)
+    snapshot = _get_master_snapshot(
+        dynamodb.Table(whiskey_table_name),
+        whiskey_table_name,
+        logger,
+    )
+    candidates = _build_candidates(snapshot, analysis)
+    if logger is not None:
+        catalog_count = sum(
+            candidate["match_source"] == "catalog" for candidate in candidates
+        )
+        logger.info(
+            "Brand candidates resolved",
+            detected_count=len(candidates),
+            match_source_counts={
+                "catalog": catalog_count,
+                "ai": len(candidates) - catalog_count,
+            },
+            whiskey_id_present_count=sum(
+                "whiskey_id" in candidate for candidate in candidates
+            ),
+            model_id=model_id,
+            master_snapshot_complete=snapshot["complete"],
+            master_snapshot_size=len(snapshot["items"]),
+        )
     expires_at = int((_utc_now() + timedelta(seconds=ANALYSIS_TTL_SECONDS)).timestamp())
     analysis_id = f"ai-result:{user_id}:{upload_uuid}"
     item: dict[str, Any] = {
@@ -511,6 +652,7 @@ def analyze_upload(
         "serving_style": item["serving_style"],
         "model_id": model_id,
         "confidence": item.get("confidence"),
+        "multiple_detected": len(candidates) > 1,
     }
     return response
 
@@ -552,6 +694,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             model_id=model_id,
             context=context,
             started=started,
+            logger=logger,
         )
         return create_response(200, result, event=event, private=True)
     except ValidationError as exc:

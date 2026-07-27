@@ -1,0 +1,110 @@
+{
+  "version": 1,
+  "bottlers": [
+    {
+      "bottler_key": "douglas_laing",
+      "bottler_ja": "ダグラスレイン",
+      "bottler_en": "Douglas Laing",
+      "aliases": [
+        "ダグラスレイン",
+        "ダグラス・レイン",
+        "Douglas Laing",
+        "プロベナンス",
+        "Provenance",
+        "オールドパティキュラー",
+        "オールド パティキュラー",
+        "Old Particular"
+      ]
+    },
+    {
+      "bottler_key": "gordon_macphail",
+      "bottler_ja": "ゴードン＆マクファイル",
+      "bottler_en": "Gordon & MacPhail",
+      "aliases": [
+        "ゴードン＆マクファイル",
+        "ゴードン&マクファイル",
+        "ゴードン・アンド・マクファイル",
+        "Gordon & MacPhail",
+        "Gordon and MacPhail",
+        "コニサーズチョイス",
+        "コニサーズ チョイス",
+        "Connoisseurs Choice"
+      ]
+    },
+    {
+      "bottler_key": "hunter_laing",
+      "bottler_ja": "ハンターレイン",
+      "bottler_en": "Hunter Laing",
+      "aliases": [
+        "ハンターレイン",
+        "ハンター・レイン",
+        "Hunter Laing",
+        "オールド モルト カスク",
+        "オールドモルトカスク",
+        "Old Malt Cask"
+      ]
+    },
+    {
+      "bottler_key": "signatory",
+      "bottler_ja": "シグナトリー",
+      "bottler_en": "Signatory",
+      "aliases": [
+        "シグナトリー",
+        "シグナトリーヴィンテージ",
+        "シグナトリー ヴィンテージ",
+        "Signatory",
+        "Signatory Vintage"
+      ]
+    },
+    {
+      "bottler_key": "berry_bros",
+      "bottler_ja": "ベリーブラザーズ",
+      "bottler_en": "Berry Bros. & Rudd",
+      "aliases": [
+        "ベリーブラザーズ",
+        "ベリー・ブラザーズ",
+        "ベリー・ブラザーズ＆ラッド",
+        "Berry Bros",
+        "Berry Bros. & Rudd",
+        "BBR",
+        "スモールバッチ",
+        "スモール バッチ"
+      ]
+    },
+    {
+      "bottler_key": "kingsbury",
+      "bottler_ja": "キングスバリー",
+      "bottler_en": "Kingsbury",
+      "aliases": [
+        "キングスバリー",
+        "Kingsbury",
+        "サー オービル",
+        "サーオービル",
+        "Sir Orville"
+      ]
+    },
+    {
+      "bottler_key": "golden_cask",
+      "bottler_ja": "ゴールデンカスク",
+      "bottler_en": "Golden Cask",
+      "aliases": [
+        "ゴールデンカスク",
+        "ゴールデン カスク",
+        "Golden Cask",
+        "The Golden Cask"
+      ]
+    },
+    {
+      "bottler_key": "boutiquey",
+      "bottler_ja": "ブティックウイスキーカンパニー",
+      "bottler_en": "That Boutique-y Whisky Company",
+      "aliases": [
+        "ブティックウイスキーカンパニー",
+        "ブティック ウイスキー カンパニー",
+        "That Boutique-y Whisky Company",
+        "Boutique-y Whisky",
+        "Boutique-y"
+      ]
+    }
+  ]
+}

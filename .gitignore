@@ -144,6 +144,18 @@ temp/
 tmp/
 *.json
 !scripts/local/seed_data/*.json
+# 人手で書いたカタログの正本。これらが ignore されるとカタログがローカルにしか
+# 存在せず、CI と他のクローンが壊れる。
+!scripts/catalog/brands.json
+!scripts/catalog/expressions.json
+!scripts/catalog/bottlers.json
+# 楽天由来の生成物はコミットしない。当リポジトリは public であり、楽天ウェブサービス
+# 利用規約 第10条(1)(9)「取得した情報を不特定または多数の者と共有可能な場所に
+# 保存すること」に抵触するため。レビューはローカルで行う。
+scripts/catalog/extracted_expressions*.json
+scripts/catalog/proposed_brands.json
+scripts/catalog/proposed_bottlers.json
+scripts/catalog/failed_batches/
 *.zip
 debug_response*.txt
 
@@ -161,6 +173,10 @@ debug_response*.txt
 # ローカルツール設定 / エージェント実行ログ
 .codex/
 .agent-runs/
+
+# Brand-recognition evaluation artifacts
+scripts/eval/synthetic/
+brand-eval-results-*.json
 
 # CDK
 infra/cdk.out/

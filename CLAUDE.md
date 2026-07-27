@@ -65,7 +65,7 @@ make api               # FastAPI アダプタ(:8000)
 # 🆕 Large-scale data processing with Bedrock Nova Lite
 python scripts/fetch_rakuten_names_only.py  # Fetch 3,037 products from Rakuten
 python scripts/extract_whiskey_names_nova_lite.py --input-file rakuten_product_names_*.json  # Extract with AI
-ENVIRONMENT=prd python scripts/insert_whiskeys_to_dynamodb.py nova_lite_extraction_results_*.json  # Insert to prod
+AWS_PROFILE=dev python scripts/insert_whiskeys_to_dynamodb.py nova_lite_extraction_results_*.json --target dev  # Insert to verified dev
 
 # Legacy method (archived)
 python scripts/fetch_whiskey_data.py --mode fetch --whiskeys 100
@@ -266,7 +266,7 @@ NUXT_PUBLIC_ENVIRONMENT=dev
 ### External Data Processing
 1. **Fetch**: `python scripts/fetch_rakuten_names_only.py`（楽天から商品名取得）
 2. **Extract**: `python scripts/extract_whiskey_names_nova_lite.py --input-file rakuten_*.json`（Bedrock Nova Lite で抽出）
-3. **Seed/Insert**: `python scripts/local/seed_whiskeys.py --target dev`（厳選シード）/ `insert_whiskeys_to_dynamodb.py`（大規模投入）
+3. **Seed/Insert**: `python scripts/local/seed_whiskeys.py --target dev --profile dev`（厳選シード）/ `AWS_PROFILE=dev python scripts/insert_whiskeys_to_dynamodb.py <input.json> --target dev`（大規模投入）
 4. **Verification**: DynamoDB のカウントと検索の動作確認（英語/日本語）
 
 ### Current Data Status

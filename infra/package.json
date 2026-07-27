@@ -17,8 +17,8 @@
     "deploy:observability:prd": "./scripts/deploy.sh prd --observability",
     "diff:observability:dev": "./scripts/deploy.sh dev --observability --diff-only",
     "diff:observability:prd": "./scripts/deploy.sh prd --observability --diff-only",
-    "synth:dev": "cdk synth -c env=dev",
-    "synth:prd": "cdk synth -c env=prd",
+    "synth:dev": "CDK_LOCAL_BUNDLING=1 cdk synth -c env=dev",
+    "synth:prd": "CDK_LOCAL_BUNDLING=1 cdk synth -c env=prd",
     "destroy:dev": "./scripts/deploy.sh dev --base --destroy",
     "destroy:prd": "./scripts/deploy.sh prd --base --destroy"
   },
