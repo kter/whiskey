@@ -1,0 +1,5 @@
+# This human-maintained review configuration is part of the catalog source.
+!generic_terms.json
+
+# Review output is generated locally from extracted marketplace data.
+pending_brands.json

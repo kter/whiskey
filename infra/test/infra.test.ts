@@ -435,19 +435,22 @@ describe('least-privilege Lambda roles', () => {
     expect(reconciler.some((statement) => actions(statement).includes('s3:PutObject'))).toBe(false);
   });
 
-  test('Bedrock permissions match both approved profiles and destinations without discovery access', () => {
+  test('Bedrock permissions match all three approved profiles and destinations without discovery access', () => {
     const json = createAppStack('dev').json;
     const analyze = rolePolicy(json, 'drink-log-analyze-role-dev');
     const bedrock = analyze.filter((statement) => actions(statement).includes('bedrock:InvokeModel'));
     const profileArns = [
       `arn:aws:bedrock:ap-northeast-1:${DEV_ACCOUNT}:inference-profile/jp.amazon.nova-2-lite-v1:0`,
       `arn:aws:bedrock:ap-northeast-1:${DEV_ACCOUNT}:inference-profile/jp.anthropic.claude-haiku-4-5-20251001-v1:0`,
+      `arn:aws:bedrock:ap-northeast-1:${DEV_ACCOUNT}:inference-profile/jp.anthropic.claude-sonnet-4-6`,
     ];
     const destinationArns = [
       'arn:aws:bedrock:ap-northeast-1::foundation-model/amazon.nova-2-lite-v1:0',
       'arn:aws:bedrock:ap-northeast-3::foundation-model/amazon.nova-2-lite-v1:0',
       'arn:aws:bedrock:ap-northeast-1::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0',
       'arn:aws:bedrock:ap-northeast-3::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0',
+      'arn:aws:bedrock:ap-northeast-1::foundation-model/anthropic.claude-sonnet-4-6',
+      'arn:aws:bedrock:ap-northeast-3::foundation-model/anthropic.claude-sonnet-4-6',
     ];
     expect(bedrock).toHaveLength(2);
     expect(bedrock[0].Resource).toEqual(profileArns);
@@ -600,8 +603,8 @@ describe('Lambda bundling and shared layer', () => {
     }));
     const analyzeEnv = lambdaByName(json, 'drink-log-analyze-dev').Properties?.Environment.Variables;
     expect(analyzeEnv).toEqual(expect.objectContaining({
-      BEDROCK_MODEL_ID: 'jp.amazon.nova-2-lite-v1:0',
-      BEDROCK_MODEL_ALLOWLIST: 'jp.amazon.nova-2-lite-v1:0,jp.anthropic.claude-haiku-4-5-20251001-v1:0',
+      BEDROCK_MODEL_ID: 'jp.anthropic.claude-sonnet-4-6',
+      BEDROCK_MODEL_ALLOWLIST: 'jp.amazon.nova-2-lite-v1:0,jp.anthropic.claude-haiku-4-5-20251001-v1:0,jp.anthropic.claude-sonnet-4-6',
       ANALYZE_USER_DAILY_LIMIT: '20',
       ANALYZE_GLOBAL_DAILY_LIMIT: '50',
       ANALYZE_GLOBAL_MONTHLY_LIMIT: '1000',
@@ -1022,6 +1025,8 @@ describe('split stacks', () => {
     expect(deploySource).not.toContain('"$ENVIRONMENT" == "prd" && ("$SELECT_DNS"');
     expect(packageJson.scripts['deploy:observability:dev']).toContain('--observability');
     expect(packageJson.scripts['diff:observability:dev']).toContain('--observability --diff-only');
+    expect(packageJson.scripts['synth:dev']).toContain('CDK_LOCAL_BUNDLING=1');
+    expect(packageJson.scripts['synth:prd']).toContain('CDK_LOCAL_BUNDLING=1');
   });
 
   test.each([

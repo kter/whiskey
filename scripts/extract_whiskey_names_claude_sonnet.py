@@ -42,8 +42,8 @@ DEFAULT_BOTTLER_PROPOSALS_PATH = SCRIPT_DIR / "catalog" / "proposed_bottlers.jso
 DEFAULT_CHECKPOINT_PATH = (
     SCRIPT_DIR / "catalog" / "extracted_expressions.checkpoint.json"
 )
+DEFAULT_FAILED_BATCHES_DIR = SCRIPT_DIR / "catalog" / "failed_batches"
 MODEL_RESULT_FIELDS = {
-    "source_title",
     "is_whiskey",
     "is_multi_bottle_set",
     "brand_ja",
@@ -94,25 +94,75 @@ def normalize_label(value: str) -> str:
     return " ".join(normalized.split())
 
 
+def _without_leading_article(value: str) -> str | None:
+    """Remove one English or Japanese leading article when enough text remains."""
+    if value.startswith("the "):
+        candidate = value[4:].strip()
+    elif value.startswith("ザ・"):
+        candidate = value[2:].strip()
+    elif value.startswith("ザ "):
+        candidate = value[2:].strip()
+    elif value.startswith("ザ"):
+        candidate = value[1:].strip()
+    else:
+        return None
+    remaining_characters = re.sub(r"\s+", "", candidate)
+    return candidate if len(remaining_characters) >= 3 else None
+
+
 def comparison_keys(value: str) -> set[str]:
     """Return conservative comparison forms without creating catalog aliases."""
     normalized = normalize_label(value)
     keys = {normalized}
-    if normalized.startswith("the "):
-        keys.add(normalized[4:])
+    without_article = _without_leading_article(normalized)
+    if without_article is not None:
+        keys.add(without_article)
     return keys
 
 
-def proposed_brand_key(brand_ja: str | None, brand_en: str | None) -> str:
-    """Build a deterministic review key for an unknown observed brand."""
-    candidate = unicodedata.normalize("NFKD", brand_en or "")
-    ascii_candidate = candidate.encode("ascii", "ignore").decode("ascii").casefold()
-    ascii_candidate = re.sub(r"^the\s+", "", ascii_candidate)
-    slug = re.sub(r"[^a-z0-9]+", "_", ascii_candidate).strip("_")
-    if slug:
-        return slug
+def proposed_brand_key(
+    brand_ja: str | list[str] | None,
+    brand_en: str | list[str] | None = None,
+) -> str:
+    """Build an order-independent review key from observed brand labels."""
+    if isinstance(brand_ja, str):
+        observed_variants = [brand_ja]
+    else:
+        observed_variants = list(brand_ja or [])
+    if isinstance(brand_en, str):
+        english_variants = [brand_en]
+    else:
+        english_variants = list(brand_en or [])
+    for value in english_variants:
+        if value not in observed_variants:
+            observed_variants.append(value)
 
-    observed = normalize_label(brand_ja or brand_en or "unknown")
+    slugs: set[str] = set()
+    for value in english_variants:
+        normalized_value = normalize_label(value)
+        canonical_value = (
+            _without_leading_article(normalized_value) or normalized_value
+        )
+        ascii_candidate = (
+            unicodedata.normalize("NFKD", canonical_value)
+            .encode("ascii", "ignore")
+            .decode("ascii")
+            .casefold()
+        )
+        slug = re.sub(r"[^a-z0-9]+", "_", ascii_candidate).strip("_")
+        if slug:
+            slugs.add(slug)
+    if slugs:
+        return min(slugs)
+
+    canonical_labels = {
+        comparison_key
+        for value in observed_variants
+        for comparison_key in comparison_keys(value)
+    }
+    if not canonical_labels:
+        canonical_labels.add("unknown")
+    observed = min(canonical_labels, key=lambda value: (len(value), value))
     digest = hashlib.sha256(observed.encode("utf-8")).hexdigest()[:10]
     return f"proposed_{digest}"
 
@@ -438,6 +488,125 @@ def _infer_leading_unknown_bottler(
     return prefix
 
 
+def _aggregate_unknown_brand_proposals(
+    observations: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[int, str]]:
+    """Join unknown observations only when their normalized labels exactly overlap."""
+    if not observations:
+        return [], {}
+
+    parents = list(range(len(observations)))
+
+    def find(index: int) -> int:
+        while parents[index] != index:
+            parents[index] = parents[parents[index]]
+            index = parents[index]
+        return index
+
+    def union(left: int, right: int) -> None:
+        left_root = find(left)
+        right_root = find(right)
+        if left_root != right_root:
+            parents[max(left_root, right_root)] = min(left_root, right_root)
+
+    owners: dict[str, int] = {}
+    for index, observation in enumerate(observations):
+        keys = {
+            comparison_key
+            for _, value in observation["variants"]
+            for comparison_key in comparison_keys(value)
+        }
+        for key in keys:
+            owner = owners.setdefault(key, index)
+            union(index, owner)
+
+    components: dict[int, list[int]] = defaultdict(list)
+    for index in range(len(observations)):
+        components[find(index)].append(index)
+
+    component_details: list[dict[str, Any]] = []
+    for indexes in components.values():
+        observed_variants = {
+            value
+            for index in indexes
+            for _, value in observations[index]["variants"]
+        }
+        english_variants = {
+            value
+            for index in indexes
+            for field, value in observations[index]["variants"]
+            if field == "brand_en"
+        }
+        sorted_variants = sorted(
+            observed_variants,
+            key=lambda value: (
+                value in english_variants,
+                normalize_label(value),
+                value,
+            ),
+        )
+        titles: list[str] = []
+        for index in indexes:
+            title = observations[index]["source_title"]
+            if title not in titles and len(titles) < 3:
+                titles.append(title)
+        component_details.append(
+            {
+                "candidate_key": proposed_brand_key(
+                    sorted_variants, sorted(english_variants)
+                ),
+                "signature": tuple(
+                    sorted(
+                        (
+                            field,
+                            normalize_label(value),
+                            value,
+                        )
+                        for index in indexes
+                        for field, value in observations[index]["variants"]
+                    )
+                ),
+                "observation_indexes": indexes,
+                "observed_variants": sorted_variants,
+                "occurrence_count": len(indexes),
+                "sample_source_titles": titles,
+            }
+        )
+
+    key_collisions: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for details in component_details:
+        key_collisions[details["candidate_key"]].append(details)
+
+    proposals: list[dict[str, Any]] = []
+    brand_keys_by_record: dict[int, str] = {}
+    for candidate_key, colliding_components in key_collisions.items():
+        colliding_components.sort(key=lambda details: details["signature"])
+        for collision_index, details in enumerate(colliding_components):
+            brand_key = candidate_key
+            if collision_index:
+                signature_json = json.dumps(
+                    details["signature"], ensure_ascii=False, separators=(",", ":")
+                )
+                suffix = hashlib.sha256(signature_json.encode("utf-8")).hexdigest()[:8]
+                brand_key = f"{candidate_key}_{suffix}"
+            proposal = {
+                "brand_key": brand_key,
+                "observed_variants": details["observed_variants"],
+                "occurrence_count": details["occurrence_count"],
+                "sample_source_titles": details["sample_source_titles"],
+                "suggested_aliases": list(details["observed_variants"]),
+            }
+            proposals.append(proposal)
+            for observation_index in details["observation_indexes"]:
+                record_index = observations[observation_index]["record_index"]
+                brand_keys_by_record[record_index] = brand_key
+
+    proposals.sort(
+        key=lambda proposal: (-proposal["occurrence_count"], proposal["brand_key"])
+    )
+    return proposals, brand_keys_by_record
+
+
 def build_catalog_outputs(
     raw_results: list[dict[str, Any]],
     brands: dict[str, dict[str, Any]],
@@ -453,8 +622,9 @@ def build_catalog_outputs(
     """Filter, match, deduplicate, and aggregate model results."""
     matcher = BrandMatcher(brands)
     deduplicated: dict[str, dict[str, Any]] = {}
-    proposals: dict[str, dict[str, Any]] = {}
     bottler_proposals: dict[str, dict[str, Any]] = {}
+    prepared_records: list[dict[str, Any]] = []
+    unknown_brand_observations: list[dict[str, Any]] = []
 
     whiskey_count = sum(bool(record["is_whiskey"]) for record in raw_results)
     set_excluded_count = sum(
@@ -507,30 +677,33 @@ def build_catalog_outputs(
             known_brand_count += 1
         else:
             unknown_brand_count += 1
-            if raw.get("brand_ja") or raw.get("brand_en"):
-                brand_key = proposed_brand_key(
-                    raw.get("brand_ja"), raw.get("brand_en")
-                )
-                proposal = proposals.setdefault(
-                    brand_key,
-                    {
-                        "brand_key": brand_key,
-                        "observed_variants": [],
-                        "occurrence_count": 0,
-                        "sample_source_titles": [],
-                    },
-                )
-                proposal["occurrence_count"] += 1
-                for value in (raw.get("brand_ja"), raw.get("brand_en")):
-                    if value and value not in proposal["observed_variants"]:
-                        proposal["observed_variants"].append(value)
-                if (
-                    raw["source_title"] not in proposal["sample_source_titles"]
-                    and len(proposal["sample_source_titles"]) < 3
-                ):
-                    proposal["sample_source_titles"].append(raw["source_title"])
-            else:
-                brand_key = None
+            brand_key = None
+
+        record_index = len(prepared_records)
+        raw["_resolved_brand_key"] = brand_key
+        observed_variants = [
+            (field, value)
+            for field in ("brand_ja", "brand_en")
+            if (value := raw.get(field))
+        ]
+        if brand_key is None and observed_variants:
+            unknown_brand_observations.append(
+                {
+                    "record_index": record_index,
+                    "variants": observed_variants,
+                    "source_title": raw["source_title"],
+                }
+            )
+        prepared_records.append(raw)
+
+    proposed_brands, proposed_keys_by_record = (
+        _aggregate_unknown_brand_proposals(unknown_brand_observations)
+    )
+    for record_index, brand_key in proposed_keys_by_record.items():
+        prepared_records[record_index]["_resolved_brand_key"] = brand_key
+
+    for raw in prepared_records:
+        brand_key = raw["_resolved_brand_key"]
 
         identity = {
             "brand_key": brand_key,
@@ -593,10 +766,6 @@ def build_catalog_outputs(
         deduplicated[key] = record
 
     expressions = list(deduplicated.values())
-    proposed_brands = sorted(
-        proposals.values(),
-        key=lambda proposal: (-proposal["occurrence_count"], proposal["brand_key"]),
-    )
     proposed_bottlers = sorted(
         bottler_proposals.values(),
         key=lambda proposal: (-proposal["occurrence_count"], proposal["bottler_key"]),
@@ -614,49 +783,82 @@ def build_catalog_outputs(
 
 
 def parse_response_json(response_text: str) -> dict[str, Any]:
-    """Parse a JSON object, allowing only a surrounding Markdown fence."""
-    stripped = response_text.strip()
-    fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", stripped, re.DOTALL)
-    if fenced:
-        stripped = fenced.group(1)
-    parsed = json.loads(stripped)
-    if not isinstance(parsed, dict) or not isinstance(parsed.get("results"), list):
-        raise ValueError("model response must contain a results array")
-    return parsed
+    """Extract the first valid results object from fences or surrounding prose."""
+    decoder = json.JSONDecoder()
+    decode_errors: list[json.JSONDecodeError] = []
+    for match in re.finditer(r"\{", response_text):
+        start = match.start()
+        try:
+            parsed, _ = decoder.raw_decode(response_text[start:])
+        except json.JSONDecodeError as error:
+            decode_errors.append(
+                json.JSONDecodeError(error.msg, response_text, start + error.pos)
+            )
+            continue
+        if isinstance(parsed, dict) and isinstance(parsed.get("results"), list):
+            return parsed
+
+    if decode_errors:
+        raise max(decode_errors, key=lambda error: error.pos)
+    raise ValueError("model response must contain a results array")
 
 
 def map_batch_results(
     product_titles: list[str],
     parsed_results: list[Any],
     bottlers: dict[str, dict[str, Any]] | None = None,
+    logger: logging.Logger | None = None,
 ) -> list[dict[str, Any]]:
-    """Map results back to immutable input titles using one-based input indexes."""
-    if len(parsed_results) != len(product_titles):
-        raise ValueError(
-            f"model returned {len(parsed_results)} results for {len(product_titles)} titles"
-        )
-
-    by_index: dict[int, Any] = {}
-    for position, raw in enumerate(parsed_results, start=1):
+    """Map valid zero-based indexes to immutable inputs without guessing."""
+    result_logger = logger or logging.getLogger(__name__)
+    candidates: dict[int, list[Any]] = defaultdict(list)
+    for raw in parsed_results:
         if not isinstance(raw, dict):
-            raise ValueError("each model result must be an object")
-        input_index = raw.get("input_index", position)
+            result_logger.warning("Discarding non-object model result")
+            continue
+        if "input_index" not in raw:
+            result_logger.warning("Discarding model result with missing input_index")
+            continue
+        input_index = raw["input_index"]
         if (
             isinstance(input_index, bool)
             or not isinstance(input_index, int)
-            or input_index < 1
-            or input_index > len(product_titles)
-            or input_index in by_index
+            or input_index < 0
+            or input_index >= len(product_titles)
         ):
-            raise ValueError(f"invalid or duplicate input_index: {input_index!r}")
-        by_index[input_index] = raw
+            result_logger.warning(
+                "Discarding model result with out-of-range input_index: %r",
+                input_index,
+            )
+            continue
+        candidates[input_index].append(raw)
 
-    return [
-        sanitize_model_result(
-            by_index[index], product_titles[index - 1], bottlers=bottlers
+    duplicate_indexes = {
+        input_index
+        for input_index, records in candidates.items()
+        if len(records) > 1
+    }
+    for input_index in sorted(duplicate_indexes):
+        result_logger.warning(
+            "Discarding duplicate model results for input_index: %d",
+            input_index,
         )
-        for index in range(1, len(product_titles) + 1)
-    ]
+        del candidates[input_index]
+
+    mapped: list[dict[str, Any]] = []
+    for input_index in range(len(product_titles)):
+        records = candidates.get(input_index)
+        if not records:
+            result_logger.warning(
+                "No valid model result for input_index: %d", input_index
+            )
+            continue
+        record = sanitize_model_result(
+            records[0], product_titles[input_index], bottlers=bottlers
+        )
+        record["_input_index"] = input_index
+        mapped.append(record)
+    return mapped
 
 
 def load_product_titles(
@@ -726,6 +928,7 @@ class ClaudeSonnetWhiskeyExtractor:
         sleep_fn: Callable[[float], None] = time.sleep,
         now_fn: Callable[[], str] = utc_now,
         bottlers_path: Path | str = DEFAULT_BOTTLERS_PATH,
+        failed_batches_dir: Path | str = DEFAULT_FAILED_BATCHES_DIR,
     ):
         self.model_id = model_id or os.getenv("EXTRACT_MODEL_ID", DEFAULT_MODEL_ID)
         self.region = region
@@ -735,6 +938,7 @@ class ClaudeSonnetWhiskeyExtractor:
         self.sleep_fn = sleep_fn
         self.now_fn = now_fn
         self.bottlers_path = Path(bottlers_path)
+        self.failed_batches_dir = Path(failed_batches_dir)
         self.bottlers = load_bottlers(self.bottlers_path)
         self.logger = logging.getLogger(__name__)
 
@@ -755,7 +959,7 @@ class ClaudeSonnetWhiskeyExtractor:
         """Build an extraction-only prompt without any alias-generation field."""
         indexed_products = [
             {"input_index": index, "source_title": title}
-            for index, title in enumerate(product_titles, start=1)
+            for index, title in enumerate(product_titles)
         ]
         products_json = json.dumps(indexed_products, ensure_ascii=False)
         bottlers_json = json.dumps(
@@ -773,7 +977,7 @@ class ClaudeSonnetWhiskeyExtractor:
         return f"""You extract structured whiskey facts from Japanese ecommerce titles.
 
 Rules:
-- Return exactly one result for every input, with the same input_index and order.
+- Return exactly one result for every input, with the same zero-based input_index and order.
 - Extract only text or numbers present in source_title. Never translate, infer, or add facts.
 - Use null when a field is not explicitly readable from the title.
 - Never output aliases or alternate names.
@@ -798,8 +1002,7 @@ Return JSON only in this shape:
 {{
   "results": [
     {{
-      "input_index": 1,
-      "source_title": "copy of the input title",
+      "input_index": 0,
       "is_whiskey": true,
       "is_multi_bottle_set": false,
       "brand_ja": null,
@@ -845,60 +1048,171 @@ Inputs:
             raise ValueError("Bedrock response contained no text")
         return response_text
 
-    def process_batch(self, product_titles: list[str]) -> list[dict[str, Any]]:
-        """Extract and validate one batch, retrying only failed batch attempts."""
+    def _save_failed_response(
+        self,
+        response_text: str,
+        batch_start_index: int,
+        error: Exception,
+    ) -> Path:
+        """Persist and log a model response that could not be parsed or validated."""
+        self.failed_batches_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        failed_path = (
+            self.failed_batches_dir / f"{timestamp}_{batch_start_index}.txt"
+        )
+        failed_path.write_text(response_text, encoding="utf-8")
+
+        preview = response_text[:200]
+        error_position = (
+            error.pos if isinstance(error, json.JSONDecodeError) else None
+        )
+        if error_position is None:
+            context = response_text[:200]
+            position_label = "unknown"
+        else:
+            context = response_text[
+                max(0, error_position - 100) : error_position + 100
+            ]
+            position_label = str(error_position)
+        self.logger.warning(
+            "Model response parse/validation failed at position %s; "
+            "first 200 chars=%r; context (+/-100 chars)=%r; saved=%s",
+            position_label,
+            preview,
+            context,
+            failed_path,
+        )
+        return failed_path
+
+    def _attempt_batch(
+        self,
+        product_titles: list[str],
+        *,
+        result_offset: int,
+        batch_start_index: int,
+    ) -> list[dict[str, Any]]:
+        """Make one model call and map its local indexes into the original batch."""
         prompt = self.create_extraction_prompt(product_titles)
-        last_error: Exception | None = None
-        for attempt in range(1, self.max_retries + 1):
+        response_text = self.call_bedrock_api(prompt)
+        try:
+            parsed = parse_response_json(response_text)
+            mapped = map_batch_results(
+                product_titles,
+                parsed["results"],
+                bottlers=self.bottlers,
+                logger=self.logger,
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            self._save_failed_response(response_text, batch_start_index, error)
+            raise
+        for record in mapped:
+            record["_input_index"] += result_offset
+        return mapped
+
+    @staticmethod
+    def _is_retryable_client_error(error: ClientError) -> bool:
+        code = error.response.get("Error", {}).get("Code", "")
+        return code in {
+            "ThrottlingException",
+            "ModelTimeoutException",
+            "ServiceUnavailableException",
+            "InternalServerException",
+        }
+
+    def _run_stage_attempt(
+        self,
+        product_titles: list[str],
+        *,
+        result_offset: int,
+        batch_start_index: int,
+        stage: str,
+    ) -> list[dict[str, Any]]:
+        try:
+            return self._attempt_batch(
+                product_titles,
+                result_offset=result_offset,
+                batch_start_index=batch_start_index,
+            )
+        except ClientError as error:
+            if not self._is_retryable_client_error(error):
+                raise
+            self.logger.warning("%s failed: %s", stage, error)
+            raise RuntimeError(f"{stage} failed") from error
+        except (BotoCoreError, KeyError, TypeError, ValueError) as error:
+            self.logger.warning("%s failed: %s", stage, error)
+            raise RuntimeError(f"{stage} failed") from error
+
+    def process_batch(
+        self,
+        product_titles: list[str],
+        *,
+        batch_start_index: int = 0,
+    ) -> list[dict[str, Any]]:
+        """Extract a batch, then shrink only failed work to halves and singletons."""
+        if not product_titles:
+            return []
+        try:
+            return self._run_stage_attempt(
+                product_titles,
+                result_offset=0,
+                batch_start_index=batch_start_index,
+                stage="Full batch attempt",
+            )
+        except RuntimeError:
+            if len(product_titles) == 1:
+                self.logger.error(
+                    "Discarding failed input index %d", batch_start_index
+                )
+                return []
+
+        midpoint = len(product_titles) // 2
+        chunks = [
+            (0, product_titles[:midpoint]),
+            (midpoint, product_titles[midpoint:]),
+        ]
+        recovered: list[dict[str, Any]] = []
+        failed_chunks: list[tuple[int, list[str]]] = []
+        for offset, chunk in chunks:
             try:
-                parsed = parse_response_json(self.call_bedrock_api(prompt))
-                return map_batch_results(
-                    product_titles, parsed["results"], bottlers=self.bottlers
+                recovered.extend(
+                    self._run_stage_attempt(
+                        chunk,
+                        result_offset=offset,
+                        batch_start_index=batch_start_index + offset,
+                        stage=f"Half-batch attempt at index {batch_start_index + offset}",
+                    )
                 )
-            except ClientError as error:
-                code = error.response.get("Error", {}).get("Code", "")
-                if code not in {
-                    "ThrottlingException",
-                    "ModelTimeoutException",
-                    "ServiceUnavailableException",
-                    "InternalServerException",
-                }:
-                    raise
-                last_error = error
-                self.logger.warning(
-                    "Batch attempt %d/%d failed: %s",
-                    attempt,
-                    self.max_retries,
-                    error,
-                )
-                if attempt < self.max_retries:
-                    self.sleep_fn(1.0)
-            except (
-                BotoCoreError,
-                KeyError,
-                TypeError,
-                ValueError,
-                json.JSONDecodeError,
-            ) as error:
-                last_error = error
-                self.logger.warning(
-                    "Batch attempt %d/%d failed: %s",
-                    attempt,
-                    self.max_retries,
-                    error,
-                )
-                if attempt < self.max_retries:
-                    self.sleep_fn(1.0)
-        raise RuntimeError("batch extraction failed after retries") from last_error
+            except RuntimeError:
+                failed_chunks.append((offset, chunk))
+
+        for chunk_offset, chunk in failed_chunks:
+            for item_offset, title in enumerate(chunk):
+                result_offset = chunk_offset + item_offset
+                absolute_index = batch_start_index + result_offset
+                try:
+                    recovered.extend(
+                        self._run_stage_attempt(
+                            [title],
+                            result_offset=result_offset,
+                            batch_start_index=absolute_index,
+                            stage=f"Single-item attempt at index {absolute_index}",
+                        )
+                    )
+                except RuntimeError:
+                    self.logger.error(
+                        "Discarding failed input index %d", absolute_index
+                    )
+
+        return sorted(recovered, key=lambda record: record["_input_index"])
 
     def _load_checkpoint(
         self,
         checkpoint_path: Path,
         fingerprint: str,
         input_path: Path,
-    ) -> tuple[int, list[dict[str, Any]], str]:
+    ) -> tuple[int, list[dict[str, Any]], str, list[dict[str, Any]]]:
         if not checkpoint_path.exists():
-            return 0, [], self.now_fn()
+            return 0, [], self.now_fn(), []
         with checkpoint_path.open(encoding="utf-8") as checkpoint_file:
             checkpoint = json.load(checkpoint_file)
         expected = {
@@ -916,14 +1230,16 @@ Inputs:
         results = checkpoint.get("raw_results")
         next_index = checkpoint.get("next_index")
         extracted_at = checkpoint.get("extracted_at")
+        failed_batches = checkpoint.get("failed_batches", [])
         if (
             not isinstance(results, list)
             or isinstance(next_index, bool)
             or not isinstance(next_index, int)
             or not isinstance(extracted_at, str)
+            or not isinstance(failed_batches, list)
         ):
             raise ValueError(f"checkpoint {checkpoint_path} is malformed")
-        return next_index, results, extracted_at
+        return next_index, results, extracted_at, failed_batches
 
     def _save_checkpoint(
         self,
@@ -933,11 +1249,12 @@ Inputs:
         next_index: int,
         raw_results: list[dict[str, Any]],
         extracted_at: str,
+        failed_batches: list[dict[str, Any]],
     ) -> None:
         write_json(
             checkpoint_path,
             {
-                "version": 1,
+                "version": 2,
                 "input_file": str(input_path.resolve()),
                 "input_fingerprint": fingerprint,
                 "model_id": self.model_id,
@@ -945,6 +1262,7 @@ Inputs:
                 "next_index": next_index,
                 "extracted_at": extracted_at,
                 "raw_results": raw_results,
+                "failed_batches": failed_batches,
             },
         )
 
@@ -960,7 +1278,7 @@ Inputs:
         checkpoint_path: Path | str = DEFAULT_CHECKPOINT_PATH,
         limit: int | None = None,
         dry_run: bool = False,
-    ) -> dict[str, int] | None:
+    ) -> dict[str, Any] | None:
         """Process a source file, saving each completed batch for safe resume."""
         input_path = Path(input_path)
         brands_path = Path(brands_path)
@@ -980,7 +1298,12 @@ Inputs:
             if product_titles
             else 0
         )
-        maximum_calls = total_batches * self.max_retries
+        maximum_calls = 0
+        for start in range(0, len(product_titles), self.batch_size):
+            batch_length = len(product_titles[start : start + self.batch_size])
+            maximum_calls += 1
+            if batch_length > 1:
+                maximum_calls += 2 + batch_length
         print(f"処理対象: {len(product_titles)}件")
         print(f"バッチ数: {total_batches}")
         print(
@@ -993,10 +1316,10 @@ Inputs:
             return None
 
         fingerprint = titles_fingerprint(product_titles)
-        next_index, raw_results, extracted_at = self._load_checkpoint(
-            checkpoint_path, fingerprint, input_path
+        next_index, raw_results, extracted_at, failed_batches = (
+            self._load_checkpoint(checkpoint_path, fingerprint, input_path)
         )
-        if next_index > len(product_titles) or len(raw_results) != next_index:
+        if next_index > len(product_titles) or len(raw_results) > next_index:
             raise ValueError(f"checkpoint {checkpoint_path} has inconsistent progress")
         if next_index:
             print(f"再開: {next_index}/{len(product_titles)}件を復元")
@@ -1006,12 +1329,30 @@ Inputs:
             batch_source_fields = source_fields[start : start + self.batch_size]
             batch_number = start // self.batch_size + 1
             print(f"バッチ {batch_number}/{total_batches}: {len(batch)}件")
-            batch_results = self.process_batch(batch)
-            for record, item_source_fields in zip(
-                batch_results, batch_source_fields, strict=True
-            ):
+            batch_results = self.process_batch(
+                batch, batch_start_index=start
+            )
+            successful_local_indexes: set[int] = set()
+            for record in batch_results:
+                local_index = record.pop("_input_index")
+                successful_local_indexes.add(local_index)
+                item_source_fields = batch_source_fields[local_index]
                 if item_source_fields:
                     record["source_fields"] = item_source_fields
+            failed_local_indexes = sorted(
+                set(range(len(batch))) - successful_local_indexes
+            )
+            if failed_local_indexes:
+                failed_batches.append(
+                    {
+                        "batch_number": batch_number,
+                        "start_index": start,
+                        "end_index": start + len(batch) - 1,
+                        "failed_indexes": [
+                            start + index for index in failed_local_indexes
+                        ],
+                    }
+                )
             raw_results.extend(batch_results)
             next_index = start + len(batch)
             self._save_checkpoint(
@@ -1021,6 +1362,7 @@ Inputs:
                 next_index,
                 raw_results,
                 extracted_at,
+                failed_batches,
             )
 
         brands = load_brands(brands_path)
@@ -1031,6 +1373,17 @@ Inputs:
             extracted_at,
             bottlers=self.bottlers,
         )
+        summary.update(
+            {
+                "input_total": len(product_titles),
+                "successful_item_count": len(raw_results),
+                "failed_batch_count": len(failed_batches),
+                "failed_item_count": sum(
+                    len(batch["failed_indexes"]) for batch in failed_batches
+                ),
+                "failed_batches": failed_batches,
+            }
+        )
         write_json(
             output_path,
             {
@@ -1040,6 +1393,8 @@ Inputs:
                     "source_metadata": source_metadata,
                     "extraction_model": self.model_id,
                     "extracted_at": extracted_at,
+                    "failed_batch_count": len(failed_batches),
+                    "failed_batches": failed_batches,
                 },
                 "expressions": expressions,
             },
@@ -1067,16 +1422,26 @@ Inputs:
         return summary
 
 
-def print_summary(summary: dict[str, int]) -> None:
+def print_summary(summary: dict[str, Any]) -> None:
     """Print the required extraction summary."""
     print("=== サマリ ===")
-    print(f"総件数: {summary['total']}")
+    print(f"総件数: {summary.get('input_total', summary['total'])}")
+    print(f"抽出成功件数: {summary.get('successful_item_count', summary['total'])}")
     print(f"ウイスキー判定件数: {summary['whiskey']}")
     print(f"セット除外件数: {summary['set_excluded']}")
     print(f"重複排除後の件数: {summary['deduplicated']}")
     print(f"既知ブランド一致件数: {summary['known_brand']}")
     print(f"未知ブランド件数: {summary['unknown_brand']}")
     print(f"未知ボトラー候補件数: {summary['unknown_bottler']}")
+    print(f"失敗バッチ数: {summary.get('failed_batch_count', 0)}")
+    for failed_batch in summary.get("failed_batches", []):
+        print(
+            "失敗バッチ "
+            f"{failed_batch['batch_number']}: "
+            f"対象インデックス {failed_batch['start_index']}"
+            f"-{failed_batch['end_index']} "
+            f"(破棄: {failed_batch['failed_indexes']})"
+        )
 
 
 def non_negative_int(value: str) -> int:
@@ -1123,7 +1488,7 @@ def main(argv: list[str] | None = None) -> int:
 
     extractor = ClaudeSonnetWhiskeyExtractor()
     try:
-        extractor.process_file(
+        summary = extractor.process_file(
             args.input_file,
             brands_path=args.brands_file,
             bottlers_path=args.bottlers_file,
@@ -1134,7 +1499,7 @@ def main(argv: list[str] | None = None) -> int:
             limit=args.limit,
             dry_run=args.dry_run,
         )
-        return 0
+        return 1 if summary and summary.get("failed_batch_count", 0) else 0
     except KeyboardInterrupt:
         print("中断しました。完了済みバッチはチェックポイントに保存されています。")
         return 130

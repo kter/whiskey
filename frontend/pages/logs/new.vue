@@ -287,9 +287,12 @@ const openLightbox = (src: string, alt: string) => {
           <select :id="`brand-candidate-${item.id}`" v-model="item.candidateSelection" :disabled="item.saveStatus === 'saved'" class="mt-2 block w-full rounded-md border-amber-700 bg-stone-700 text-amber-100 disabled:opacity-50" @change="handleCandidateSelection(item)">
             <option value="">候補を使わず手入力</option>
             <option v-for="(candidate, candidateIndex) in item.candidates" :key="`${candidate.brand_text}-${candidateIndex}`" :value="String(candidateIndex)" class="bg-stone-700 text-amber-100">
-              {{ candidate.brand_text }}（確度 {{ Math.round(candidate.confidence * 100) }}%・{{ candidate.match_source?.startsWith('master') ? '照合済み' : candidate.match_source === 'ambiguous' ? '候補が複数・未確定' : 'AI推定・未照合' }}）
+              {{ candidate.brand_text }}（確度 {{ Math.round(candidate.confidence * 100) }}%・{{ candidate.match_source === 'catalog' ? 'カタログ一致' : 'AI読取' }}）
             </option>
           </select>
+          <p v-if="item.candidates.length > 1" class="mt-2 rounded-md border border-amber-700 bg-amber-950/60 p-3 text-sm text-amber-200">
+            複数のボトルを検出しました。記録する銘柄を選んでください。
+          </p>
           <p v-if="!item.candidates.length" class="mt-2 rounded-md border border-amber-700 bg-amber-950/60 p-3 text-sm text-amber-200">
             銘柄候補を特定できませんでした。下の銘柄名を手入力してください。
           </p>

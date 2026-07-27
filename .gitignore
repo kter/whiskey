@@ -155,6 +155,7 @@ tmp/
 scripts/catalog/extracted_expressions*.json
 scripts/catalog/proposed_brands.json
 scripts/catalog/proposed_bottlers.json
+scripts/catalog/failed_batches/
 *.zip
 debug_response*.txt
 

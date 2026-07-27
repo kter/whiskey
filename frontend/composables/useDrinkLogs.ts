@@ -17,7 +17,8 @@ export interface DrinkLogAnalysis {
   candidates: DrinkLogCandidate[]
   serving_style?: string
   model_id: string
-  confidence: number
+  confidence: number | null
+  multiple_detected?: boolean
 }
 
 export interface DrinkLogStore {

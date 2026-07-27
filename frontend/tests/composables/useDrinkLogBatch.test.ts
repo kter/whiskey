@@ -77,6 +77,29 @@ describe('useDrinkLogBatch', () => {
     })
   })
 
+  it('does not automatically select when multiple bottles are detected', async () => {
+    const dependencies = makeDependencies()
+    dependencies.analyze.mockResolvedValue({
+      analysis_id: 'analysis-multiple',
+      candidates: [
+        { brand_text: 'グレンリベット 12年', confidence: 0.95 },
+        { brand_text: 'ラガヴーリン 16年', confidence: 0.94 },
+      ],
+      model_id: 'test-model',
+      confidence: 0.95,
+      multiple_detected: true,
+    })
+    const batch = useDrinkLogBatch(dependencies)
+
+    await batch.processFiles([new File(['photo'], 'multiple.jpg')])
+
+    const item = batch.items.value[0]!
+    expect(item.candidates).toHaveLength(2)
+    expect(item.selectedCandidateIndex).toBeNull()
+    expect(item.candidateSelection).toBe('')
+    expect(item.brandText).toBe('')
+  })
+
   it('limits one selection to the first ten photos', async () => {
     const dependencies = makeDependencies()
     const batch = useDrinkLogBatch(dependencies)

@@ -10,9 +10,8 @@ BRANDS_PATH = Path(__file__).parents[1] / "scripts" / "catalog" / "brands.json"
 BOTTLERS_PATH = Path(__file__).parents[1] / "scripts" / "catalog" / "bottlers.json"
 
 
-def model_result(source_title, **overrides):
+def model_result(_source_title, **overrides):
     result = {
-        "source_title": source_title,
         "is_whiskey": True,
         "is_multi_bottle_set": False,
         "brand_ja": None,
@@ -293,7 +292,7 @@ class StubBedrock:
         self.calls.append(kwargs)
         indexed_results = [
             {"input_index": index, **result}
-            for index, result in enumerate(self.results, start=1)
+            for index, result in enumerate(self.results)
         ]
         return {
             "output": {
@@ -302,6 +301,36 @@ class StubBedrock:
                 }
             }
         }
+
+
+class CallbackBedrock:
+    def __init__(self, callback):
+        self.callback = callback
+        self.calls = []
+        self.call_title_batches = []
+
+    def converse(self, **kwargs):
+        self.calls.append(kwargs)
+        prompt = kwargs["messages"][0]["content"][0]["text"]
+        inputs = json.loads(prompt.split("Inputs:\n", maxsplit=1)[1])
+        titles = [item["source_title"] for item in inputs]
+        self.call_title_batches.append(titles)
+        response_text = self.callback(titles)
+        return {
+            "output": {
+                "message": {
+                    "content": [{"text": response_text}]
+                }
+            }
+        }
+
+
+def valid_response(titles, **overrides):
+    results = [
+        {"input_index": index, **model_result(title, **overrides)}
+        for index, title in enumerate(titles)
+    ]
+    return json.dumps({"results": results}, ensure_ascii=False)
 
 
 def test_unknown_bottler_is_proposed_without_modifying_curated_catalog(tmp_path):
@@ -399,6 +428,9 @@ def test_prompt_contains_all_curated_bottlers_as_reference(bottlers):
         assert bottler["bottler_key"] in prompt
         assert bottler["bottler_ja"] in prompt
     assert "do not invent aliases" in prompt
+    output_schema = prompt.split("Return JSON only in this shape:", maxsplit=1)[1]
+    output_schema = output_schema.split("Known bottlers", maxsplit=1)[0]
+    assert '"source_title"' not in output_schema
 
 
 def test_unknown_brand_review_output_does_not_modify_brands_or_accept_aliases(
@@ -465,6 +497,7 @@ def test_unknown_brand_review_output_does_not_modify_brands_or_accept_aliases(
             "observed_variants": ["マクダフ"],
             "occurrence_count": 2,
             "sample_source_titles": titles,
+            "suggested_aliases": ["マクダフ"],
         }
     ]
     assert "aliases" not in json.dumps(output, ensure_ascii=False)
@@ -478,19 +511,352 @@ def test_unknown_brand_review_output_does_not_modify_brands_or_accept_aliases(
     )
 
 
-def test_source_title_is_restored_from_input_instead_of_model_output():
-    real_title = "アラン 10年 700ml"
+@pytest.mark.parametrize(
+    ("title", "brand_ja", "expected_brand_key"),
+    [
+        ("ザ・マッカラン 12年 700ml", "ザ・マッカラン", "macallan"),
+        ("ザ グレンリベット 12年 700ml", "ザ グレンリベット", "glenlivet"),
+    ],
+)
+def test_japanese_leading_article_matches_known_brand_without_proposal(
+    brands, title, brand_ja, expected_brand_key
+):
+    record = sanitized(title, brand_ja=brand_ja, age=12, volume_ml=700)
+
+    expressions, proposals, _, summary = extraction.build_catalog_outputs(
+        [record],
+        brands,
+        extraction.DEFAULT_MODEL_ID,
+        "2026-07-26T00:00:00+00:00",
+    )
+
+    assert expressions[0]["brand_key"] == expected_brand_key
+    assert proposals == []
+    assert summary["known_brand"] == 1
+    assert summary["unknown_brand"] == 0
+
+
+def test_japanese_article_removal_is_limited_to_the_start():
+    value = "ニッカ ザ ネッサンス"
+
+    assert extraction.comparison_keys(value) == {
+        extraction.normalize_label(value)
+    }
+    assert (
+        extraction.normalize_label("ニッカ ネッサンス")
+        not in extraction.comparison_keys(value)
+    )
+
+
+@pytest.mark.parametrize("value", ["ザ・響", "ザ AB", "THE A B"])
+def test_article_is_not_removed_when_only_one_or_two_characters_remain(value):
+    assert extraction.comparison_keys(value) == {
+        extraction.normalize_label(value)
+    }
+
+
+def _unknown_brand_proposals(records):
+    _, proposals, _, _ = extraction.build_catalog_outputs(
+        records,
+        {},
+        extraction.DEFAULT_MODEL_ID,
+        "2026-07-26T00:00:00+00:00",
+    )
+    return proposals
+
+
+def test_japanese_only_and_later_english_brand_observations_are_merged():
+    records = [
+        sanitized("ジムビーム 700ml", brand_ja="ジムビーム", volume_ml=700),
+        sanitized(
+            "Jim Beam ジムビーム 1000ml",
+            brand_ja="ジムビーム",
+            brand_en="Jim Beam",
+            volume_ml=1000,
+        ),
+    ]
+
+    expressions, proposals, _, _ = extraction.build_catalog_outputs(
+        records,
+        {},
+        extraction.DEFAULT_MODEL_ID,
+        "2026-07-26T00:00:00+00:00",
+    )
+
+    assert len(expressions) == 1
+    assert expressions[0]["brand_key"] == "jim_beam"
+    assert proposals == [
+        {
+            "brand_key": "jim_beam",
+            "observed_variants": ["ジムビーム", "Jim Beam"],
+            "occurrence_count": 2,
+            "sample_source_titles": [record["source_title"] for record in records],
+            "suggested_aliases": ["ジムビーム", "Jim Beam"],
+        }
+    ]
+
+
+def test_merged_brand_key_does_not_depend_on_observation_order():
+    records = [
+        sanitized("ジムビーム 700ml", brand_ja="ジムビーム", volume_ml=700),
+        sanitized(
+            "Jim Beam ジムビーム 1000ml",
+            brand_ja="ジムビーム",
+            brand_en="Jim Beam",
+            volume_ml=1000,
+        ),
+    ]
+
+    forward = _unknown_brand_proposals(records)
+    reversed_order = _unknown_brand_proposals(list(reversed(records)))
+
+    assert forward[0]["brand_key"] == "jim_beam"
+    assert reversed_order[0]["brand_key"] == forward[0]["brand_key"]
+
+
+def test_suggested_aliases_contain_only_observed_variants():
+    records = [
+        sanitized(
+            "AMAHAGAN アマハガン 700ml",
+            brand_ja="アマハガン",
+            brand_en="AMAHAGAN",
+            volume_ml=700,
+        ),
+        sanitized("アマハガン 500ml", brand_ja="アマハガン", volume_ml=500),
+    ]
+
+    proposal = _unknown_brand_proposals(records)[0]
+
+    assert set(proposal["suggested_aliases"]) == {"アマハガン", "AMAHAGAN"}
+    assert proposal["suggested_aliases"] == proposal["observed_variants"]
+
+
+def test_similar_but_not_exact_english_brands_are_not_fuzzy_merged():
+    records = [
+        sanitized("Arran 10 years old", brand_en="Arran", age=10),
+        sanitized("Aran 10 years old", brand_en="Aran", age=10),
+    ]
+
+    proposals = _unknown_brand_proposals(records)
+
+    assert len(proposals) == 2
+    assert {proposal["brand_key"] for proposal in proposals} == {"arran", "aran"}
+    assert {tuple(proposal["observed_variants"]) for proposal in proposals} == {
+        ("Arran",),
+        ("Aran",),
+    }
+
+
+def test_brand_proposals_are_sorted_by_descending_occurrence_count():
+    records = [
+        sanitized(f"Alpha ロット{index}", brand_en="Alpha")
+        for index in range(3)
+    ]
+    records.extend(
+        [
+            sanitized("Beta 700ml", brand_en="Beta", volume_ml=700),
+            sanitized("Gamma 700ml", brand_en="Gamma", volume_ml=700),
+            sanitized("Gamma 1000ml", brand_en="Gamma", volume_ml=1000),
+        ]
+    )
+
+    proposals = _unknown_brand_proposals(records)
+
+    assert [proposal["occurrence_count"] for proposal in proposals] == [3, 2, 1]
+    assert [proposal["brand_key"] for proposal in proposals] == [
+        "alpha",
+        "gamma",
+        "beta",
+    ]
+
+
+def test_source_title_with_quotes_is_restored_from_input_without_model_field():
+    real_title = (
+        "【ウイスキー】イチローズモルト　モルト＆グレーン　"
+        "“クラシカルエディション”　700ml　2本セット"
+    )
     raw = model_result(
-        "モデルが改変したタイトル",
-        input_index=1,
-        brand_ja="アラン",
-        age=10,
+        real_title,
+        input_index=0,
+        brand_ja="イチローズモルト",
         volume_ml=700,
     )
 
     records = extraction.map_batch_results([real_title], [raw])
 
+    assert "source_title" not in raw
     assert records[0]["source_title"] == real_title
+    assert "source_title" not in extraction.MODEL_RESULT_FIELDS
+
+
+def test_missing_input_index_is_discarded_with_warning(caplog):
+    titles = ["アラン 10年 700ml", "アラン 18年 700ml"]
+    missing = model_result(titles[0], age=10)
+    valid = model_result(titles[1], input_index=1, age=18)
+
+    records = extraction.map_batch_results(titles, [missing, valid])
+
+    assert [record["source_title"] for record in records] == [titles[1]]
+    assert "missing input_index" in caplog.text
+    assert "No valid model result for input_index: 0" in caplog.text
+
+
+def test_duplicate_and_out_of_range_input_indexes_are_discarded(caplog):
+    titles = ["アラン 10年 700ml", "アラン 18年 700ml"]
+    results = [
+        model_result(titles[0], input_index=0, age=10),
+        model_result(titles[0], input_index=0, age=10),
+        model_result(titles[1], input_index=2, age=18),
+    ]
+
+    records = extraction.map_batch_results(titles, results)
+
+    assert records == []
+    assert "duplicate model results for input_index: 0" in caplog.text
+    assert "out-of-range input_index: 2" in caplog.text
+
+
+def test_reapplied_source_title_still_rejects_invented_values():
+    title = "アラン 10年 700ml"
+    raw = model_result(
+        title,
+        input_index=0,
+        brand_ja="アラン",
+        expression="モデルが発明した表現",
+        age=10,
+        volume_ml=700,
+    )
+
+    records = extraction.map_batch_results([title], [raw])
+
+    assert records[0]["source_title"] == title
+    assert records[0]["brand_ja"] == "アラン"
+    assert records[0]["expression"] is None
+    assert records[0]["age"] == 10
+
+
+def test_response_json_accepts_fences_and_surrounding_text():
+    response = (
+        "Extraction follows.\n```json\n"
+        '{"results": [{"input_index": 0}]}'
+        "\n```\nDone."
+    )
+
+    parsed = extraction.parse_response_json(response)
+
+    assert parsed == {"results": [{"input_index": 0}]}
+
+
+def test_broken_batch_continues_writes_successes_and_returns_nonzero(
+    tmp_path, monkeypatch, capsys
+):
+    titles = ["壊れる商品", "アラン 10年 700ml"]
+    input_path = tmp_path / "input.json"
+    input_path.write_text(json.dumps({"product_names": titles}), encoding="utf-8")
+
+    def response(titles_in_call):
+        if titles_in_call == ["壊れる商品"]:
+            return '{"results": [{"input_index": 0, "is_whiskey": true'
+        return valid_response(
+            titles_in_call,
+            brand_ja="アラン",
+            age=10,
+            volume_ml=700,
+        )
+
+    stub = CallbackBedrock(response)
+    extractor = extraction.ClaudeSonnetWhiskeyExtractor(
+        batch_size=1,
+        bedrock_client=stub,
+        now_fn=lambda: "2026-07-26T00:00:00+00:00",
+        failed_batches_dir=tmp_path / "failed_batches",
+    )
+    monkeypatch.setattr(
+        extraction, "ClaudeSonnetWhiskeyExtractor", lambda: extractor
+    )
+    output_path = tmp_path / "output.json"
+
+    exit_code = extraction.main(
+        [
+            "--input-file",
+            str(input_path),
+            "--output-file",
+            str(output_path),
+            "--proposed-brands-file",
+            str(tmp_path / "proposed-brands.json"),
+            "--proposed-bottlers-file",
+            str(tmp_path / "proposed-bottlers.json"),
+            "--checkpoint-file",
+            str(tmp_path / "checkpoint.json"),
+        ]
+    )
+
+    output = json.loads(output_path.read_text(encoding="utf-8"))
+    assert exit_code == 1
+    assert len(output["expressions"]) == 1
+    assert output["expressions"][0]["source_title"] == titles[1]
+    assert output["metadata"]["failed_batch_count"] == 1
+    assert output["metadata"]["failed_batches"] == [
+        {
+            "batch_number": 1,
+            "start_index": 0,
+            "end_index": 0,
+            "failed_indexes": [0],
+        }
+    ]
+    summary_output = capsys.readouterr().out
+    assert "失敗バッチ数: 1" in summary_output
+    assert "対象インデックス 0-0" in summary_output
+    assert len(stub.calls) == 2
+
+
+def test_retry_shrinks_20_to_halves_then_singletons_and_recovers_19(tmp_path):
+    titles = [f"title-{index}" for index in range(20)]
+    broken_title = titles[0]
+
+    def response(titles_in_call):
+        if broken_title in titles_in_call:
+            return '{"results": [{"input_index": 0, "is_whiskey": true'
+        return valid_response(titles_in_call)
+
+    stub = CallbackBedrock(response)
+    extractor = extraction.ClaudeSonnetWhiskeyExtractor(
+        bedrock_client=stub,
+        failed_batches_dir=tmp_path / "failed_batches",
+    )
+
+    records = extractor.process_batch(titles, batch_start_index=100)
+
+    assert [len(batch) for batch in stub.call_title_batches] == [
+        20,
+        10,
+        10,
+        *([1] * 10),
+    ]
+    assert len(records) == 19
+    assert {record["source_title"] for record in records} == set(titles[1:])
+    assert {record["_input_index"] for record in records} == set(range(1, 20))
+
+
+def test_failed_raw_response_is_saved_and_logged_with_context(tmp_path, caplog):
+    malformed = (
+        '{"results": [{"input_index": 0, "is_whiskey": true, '
+        '"expression": "broken "quote""}]}'
+    )
+    stub = CallbackBedrock(lambda _titles: malformed)
+    failed_dir = tmp_path / "failed_batches"
+    extractor = extraction.ClaudeSonnetWhiskeyExtractor(
+        bedrock_client=stub,
+        failed_batches_dir=failed_dir,
+    )
+
+    assert extractor.process_batch(["broken"], batch_start_index=42) == []
+
+    saved = list(failed_dir.glob("*_42.txt"))
+    assert len(saved) == 1
+    assert saved[0].read_text(encoding="utf-8") == malformed
+    assert "first 200 chars=" in caplog.text
+    assert "context (+/-100 chars)=" in caplog.text
 
 
 def test_date_code_is_not_accepted_as_a_vintage():
@@ -526,7 +892,7 @@ def test_dry_run_honors_limit_without_creating_a_bedrock_client(tmp_path, capsys
     output = capsys.readouterr().out
     assert "処理対象: 21件" in output
     assert "バッチ数: 2" in output
-    assert "Bedrock予定コール数: 2（リトライ込み最大 4 コール）" in output
+    assert "Bedrock予定コール数: 2（リトライ込み最大 24 コール）" in output
 
 
 def test_checkpoint_is_resumed_without_reprocessing_completed_titles(tmp_path, brands):
