@@ -223,3 +223,43 @@ describe('useDrinkLogBatch', () => {
     expect(item.phase).toBe('ready')
   })
 })
+
+describe('useDrinkLogBatch save validation', () => {
+  it('asks the user to pick a bottle when several were detected', async () => {
+    const dependencies = makeDependencies()
+    dependencies.analyze.mockResolvedValue({
+      analysis_id: 'analysis-multi',
+      candidates: [
+        { brand_text: 'グレンリベット 12年', confidence: 0.95 },
+        { brand_text: 'ラガヴーリン 16年', confidence: 0.94 },
+      ],
+      model_id: 'test-model',
+      confidence: 0.95,
+      multiple_detected: true,
+    })
+    const batch = useDrinkLogBatch(dependencies)
+    await batch.processFiles([new File(['photo'], 'multi.jpg')])
+    const item = batch.items.value[0]!
+
+    await batch.savePending('', '')
+
+    expect(item.saveError).toBe('検出された銘柄から1つ選んでください。')
+  })
+
+  it('still asks for a brand name when nothing was detected', async () => {
+    const dependencies = makeDependencies()
+    dependencies.analyze.mockResolvedValue({
+      analysis_id: 'analysis-none',
+      candidates: [],
+      model_id: 'test-model',
+      confidence: 0,
+    })
+    const batch = useDrinkLogBatch(dependencies)
+    await batch.processFiles([new File(['photo'], 'none.jpg')])
+    const item = batch.items.value[0]!
+
+    await batch.savePending('', '')
+
+    expect(item.saveError).toBe('銘柄名を入力してください。')
+  })
+})

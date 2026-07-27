@@ -117,6 +117,23 @@ class Context:
         return self.remaining
 
 
+class SequencedContext(Context):
+    """Return a different remaining time on each call.
+
+    Lets a test give the model call enough budget while leaving the work that
+    follows it short, which is where the post-invoke guards matter.
+    """
+
+    def __init__(self, remaining_values):
+        super().__init__()
+        self.remaining_values = iter(remaining_values)
+        self.last = 0
+
+    def get_remaining_time_in_millis(self):
+        self.last = next(self.remaining_values, self.last)
+        return self.last
+
+
 class Bedrock:
     def __init__(self, texts):
         self.texts = list(texts)
@@ -891,3 +908,49 @@ def test_monthly_analysis_limit_is_a_503_circuit_breaker():
         )
 
     assert exc.value.status_code == 503
+
+
+def test_low_budget_skips_the_catalog_scan_and_still_returns_200(monkeypatch):
+    """The post-invoke scan must not be able to push the handler past timeout.
+
+    _get_master_snapshot can cost up to MASTER_SNAPSHOT_MAX_PAGES sequential
+    round trips on a cold container, and it runs after the model call. Without
+    a budget check it can exceed the Lambda timeout, which the client sees as a
+    502 rather than a record saved with no catalog id.
+    """
+    upload_uuid = "12345678-1234-4234-8234-123456789abc"
+    key = f"tmp/user-1/{upload_uuid}.png"
+    dynamodb = FakeDynamoDB()
+    bedrock = Bedrock([_model_json([_whiskey("カリラ 12年")])])
+    _wire_handler(monkeypatch, dynamodb, MemoryS3(key, _png_bytes()), bedrock)
+
+    # Enough budget for the model call, not enough for the scan afterwards.
+    response = analyze.lambda_handler(_event(key), SequencedContext([28_000, 28_000, 1_000]))
+
+    assert response["statusCode"] == 200
+    assert dynamodb.whiskeys.scan_calls == []
+    body = json.loads(response["body"])
+    assert [candidate["match_source"] for candidate in body["candidates"]] == ["ai"]
+    assert "whiskey_id" not in body["candidates"][0]
+
+
+def test_warm_cache_is_used_even_when_the_budget_is_low(monkeypatch):
+    """A cached snapshot costs nothing, so a tight budget must not discard it."""
+    upload_uuid = "12345678-1234-4234-8234-123456789abc"
+    key = f"tmp/user-1/{upload_uuid}.png"
+    dynamodb = FakeDynamoDB()
+    analyze._MASTER_CACHE = _snapshot([CAOL_ILA_ITEM])
+    try:
+        bedrock = Bedrock([_model_json([_whiskey("カリラ 12年")])])
+        _wire_handler(monkeypatch, dynamodb, MemoryS3(key, _png_bytes()), bedrock)
+
+        response = analyze.lambda_handler(
+            _event(key), SequencedContext([28_000, 28_000, 1_000])
+        )
+    finally:
+        analyze._reset_master_cache()
+
+    assert response["statusCode"] == 200
+    assert dynamodb.whiskeys.scan_calls == []
+    body = json.loads(response["body"])
+    assert body["candidates"][0]["match_source"] == "catalog"
