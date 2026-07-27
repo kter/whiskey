@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useDrinkLogBatch, type DrinkLogBatchDependencies } from '~/composables/useDrinkLogBatch'
-import type { CreateDrinkLogPayload, DrinkLog } from '~/composables/useDrinkLogs'
+import type { CreateDrinkLogPayload, DrinkLog, DrinkLogAnalysis } from '~/composables/useDrinkLogs'
 
 const makeLog = (index: number): DrinkLog => ({
   id: `log-${index}`,
@@ -19,7 +19,10 @@ const makeDependencies = () => {
     resizeImage: vi.fn(async () => ({ blob: new Blob(['jpeg'], { type: 'image/jpeg' }), contentType: 'image/jpeg' })),
     getUploadUrl: vi.fn(async (_contentType: string) => ({ upload_url: 'https://upload.test', fields: {}, s3_key: `photo-${++uploadSequence}` })),
     uploadToS3: vi.fn(async (_url, _fields, _blob, onProgress) => onProgress?.(100)),
-    analyze: vi.fn(async s3Key => ({
+    // Annotated with the real response type so mockResolvedValue can set
+    // optional fields such as multiple_detected. Without it the mock's type is
+    // inferred from this literal alone and every optional field is a type error.
+    analyze: vi.fn(async (s3Key: string): Promise<DrinkLogAnalysis> => ({
       analysis_id: `analysis-${s3Key}`,
       candidates: [{ brand_text: `Brand ${s3Key}`, confidence: 0.9 }],
       model_id: 'test-model',
@@ -201,7 +204,7 @@ describe('useDrinkLogBatch', () => {
   it('ignores a duplicate retry for an item already re-queued (double-click guard)', async () => {
     const dependencies = makeDependencies()
     let analyzeCalls = 0
-    dependencies.analyze = vi.fn(async (s3Key: string) => {
+    dependencies.analyze = vi.fn(async (s3Key: string): Promise<DrinkLogAnalysis> => {
       analyzeCalls += 1
       if (analyzeCalls === 1) throw new Error('degraded')
       return { analysis_id: `analysis-${s3Key}`, candidates: [{ brand_text: 'X', confidence: 0.9 }], model_id: 'm', confidence: 0.9 }
