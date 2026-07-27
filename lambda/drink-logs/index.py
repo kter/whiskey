@@ -435,9 +435,18 @@ def _completion_from_analysis(
     brand_text = _candidate_brand(candidate) if candidate_selected else ""
     whiskey_id = None
     if isinstance(candidate, Mapping):
+        # The selected candidate is authoritative -- including when it has no
+        # match. analyze writes a top-level whiskey_id taken from candidates[0],
+        # so falling back to it makes picking the 2nd bottle in a multi-bottle
+        # photo inherit the 1st bottle's master ID and report brand_source
+        # "matched": the exact class of confidently-wrong record this design
+        # exists to prevent.
         whiskey_id = candidate.get("whiskey_id") or candidate.get("matched_whiskey_id")
-    if candidate_selected:
-        whiskey_id = whiskey_id or result.get("whiskey_id") or result.get("matched_whiskey_id")
+    elif candidate_selected:
+        # Legacy analysis items whose candidate is not a Mapping (e.g. a bare
+        # string) still rely on the analysis-level value. Those sit in AppState
+        # under a 30-minute TTL, so the path has to keep working.
+        whiskey_id = result.get("whiskey_id") or result.get("matched_whiskey_id")
     if whiskey_id is not None and (not isinstance(whiskey_id, str) or not whiskey_id):
         raise AnalysisConflict("Matched whiskey ID is invalid")
     serving_style = result.get("serving_style", "NEAT")

@@ -327,6 +327,9 @@ def _analysis_item(user_id, upload_uuid, body, content_type):
         "serving_style": "NEAT",
         "model_id": "model-1",
         "confidence": Decimal("0.8"),
+        # analyze mirrors candidates[0] to the top level. Omitting it here made
+        # the fixture unable to catch the 2nd-candidate cross-contamination bug.
+        "whiskey_id": "whiskey-1",
         "expires_at": int(datetime.now(timezone.utc).timestamp()) + 600,
         "body": body,
     }
@@ -1241,3 +1244,55 @@ def test_non_brand_edit_leaves_the_whiskey_id_alone():
     )
 
     assert "#whiskey_id" not in calls[0]["UpdateExpression"]
+
+
+def test_selecting_a_later_bottle_does_not_inherit_the_first_bottles_match():
+    """Multi-bottle photos must not cross-contaminate whiskey_id.
+
+    analyze mirrors candidates[0].whiskey_id to the top level of the analysis
+    item. Falling back to it for a selected candidate that has no match of its
+    own means picking the 2nd bottle records it against the 1st bottle's master
+    row, labelled brand_source "matched" -- a confidently wrong record.
+    """
+    result = {
+        "whiskey_id": "caol-ila-12",
+        "confidence": Decimal("0.9"),
+        "model_id": "model-1",
+        "serving_style": "NEAT",
+    }
+    unmatched_second = {
+        "brand_text": "厚岸 シングルモルト",
+        "confidence": Decimal("0.8"),
+        "match_source": "ai",
+    }
+
+    completion = drink_logs._completion_from_analysis(
+        result, unmatched_second, {}, candidate_selected=True
+    )
+
+    assert completion["brand_text"] == "厚岸 シングルモルト"
+    assert "whiskey_id" not in completion
+    assert completion["brand_source"] == "ai"
+
+
+def test_selecting_a_matched_bottle_still_attaches_its_own_id():
+    """The fix must not stop a genuinely matched candidate from linking."""
+    result = {
+        "whiskey_id": "caol-ila-12",
+        "confidence": Decimal("0.9"),
+        "model_id": "model-1",
+        "serving_style": "NEAT",
+    }
+    matched = {
+        "brand_text": "カリラ 12年",
+        "whiskey_id": "caol-ila-12",
+        "confidence": Decimal("0.9"),
+        "match_source": "catalog",
+    }
+
+    completion = drink_logs._completion_from_analysis(
+        result, matched, {}, candidate_selected=True
+    )
+
+    assert completion["whiskey_id"] == "caol-ila-12"
+    assert completion["brand_source"] == "matched"
