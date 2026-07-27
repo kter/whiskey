@@ -21,7 +21,7 @@
      │              │              │               │
 ┌────▼────┐  ┌──────▼─────┐  ┌─────▼─────┐  ┌──────▼──────┐
 │DynamoDB │  │  Cognito   │  │  Bedrock  │  │Google Places│
-│(各テーブル)│ │(認証/OAuth) │ │(Nova Lite) │  │  (店名推定)  │
+│(各テーブル)│ │(認証/OAuth) │ │(Sonnet 4.6)│  │  (店名推定)  │
 └─────────┘  └────────────┘  └───────────┘  └─────────────┘
 ```
 
@@ -29,7 +29,7 @@
 サーバーレス）。VPC は `natGateways: 0`、DynamoDB は pay-per-request。
 
 ### 主要機能
-- **多言語ウイスキー検索**: 楽天市場API + Amazon Bedrock Nova Lite で抽出したデータを英語/日本語で検索
+- **多言語ウイスキー検索**: 楽天市場API + Amazon Bedrock で抽出したデータを英語/日本語で検索
 - **フォトファースト飲酒ログ**: 写真アップロード → Bedrock で銘柄・飲み方を自動判別 →
   GPS + Google Places で店名候補を提案 → タイムラインで閲覧・編集・削除
 - **認証**: AWS Cognito（メール/パスワード + Google OAuth）
@@ -114,7 +114,7 @@ AWS_PROFILE=dev bash scripts/deploy.sh dev --base --diff-only # 無変更ドラ�
 
 ```bash
 python scripts/fetch_rakuten_names_only.py                                   # 楽天から商品名取得
-python scripts/extract_whiskey_names_nova_lite.py --input-file rakuten_*.json # Bedrock Nova Lite で抽出
+AWS_PROFILE=dev python scripts/extract_whiskey_names_claude_sonnet.py --input-file rakuten_*.json # Bedrock で構造化抽出
 python scripts/local/seed_whiskeys.py --target dev                           # 厳選シードを投入
 ```
 

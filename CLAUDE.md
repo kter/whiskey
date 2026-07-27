@@ -11,7 +11,7 @@ This is a photo-first whiskey drink-log application built with a cost-optimized 
 - **Authentication**: AWS Cognito with Google OAuth（フロントは **ID トークン**を送信）
 - **Search**: Multi-language (English/Japanese) whiskey search
 - **Drink Log** 🆕: 写真を撮るだけの飲酒ログ（画像→S3、Bedrock で銘柄/飲み方判別、GPS + Google Places で店名推定、タイムライン）
-- **Data**: Rakuten API から Amazon Bedrock Nova Lite で抽出したウイスキーデータ
+- **Data**: Rakuten API から Amazon Bedrock（`jp.anthropic.claude-sonnet-4-6`）で抽出したウイスキーデータ
 - **Deployment**: CDK は手動（`infra/scripts/deploy.sh`）、CI はテスト + フロントデプロイ（`main` push、dev のみ）
 - **Cost Savings**: サーバーレス化 + 原子カウンタ/スロットリングで Bedrock・Places・画像ストレージの費用に上界
 
@@ -62,10 +62,10 @@ make api               # FastAPI アダプタ(:8000)
 
 ### Data Management
 ```bash
-# 🆕 Large-scale data processing with Bedrock Nova Lite
+# 🆕 Large-scale data processing with Bedrock (Claude Sonnet 4.6)
 python scripts/fetch_rakuten_names_only.py  # Fetch 3,037 products from Rakuten
-python scripts/extract_whiskey_names_nova_lite.py --input-file rakuten_product_names_*.json  # Extract with AI
-AWS_PROFILE=dev python scripts/insert_whiskeys_to_dynamodb.py nova_lite_extraction_results_*.json --target dev  # Insert to verified dev
+AWS_PROFILE=dev python scripts/extract_whiskey_names_claude_sonnet.py --input-file rakuten_product_names_*.json  # Extract with AI
+AWS_PROFILE=dev python scripts/insert_whiskeys_to_dynamodb.py scripts/catalog/extracted_expressions.json --target dev  # Insert to verified dev
 
 # Legacy method (archived)
 python scripts/fetch_whiskey_data.py --mode fetch --whiskeys 100
@@ -114,7 +114,7 @@ curl "https://api.dev.whiskeybar.site/api/whiskeys/search/?q=%E3%83%9C%E3%82%A6%
   - `AppState-dev`: 濫用/コスト防御の原子カウンタ（PK `pk`、TTL 有効）
   - ~~`Users-dev`~~: 廃止（プロフィールは Cognito 属性の読み取り専用表示）
   - ~~`Whiskeys-dev`~~: 廃止（`WhiskeySearch-dev` に統合）
-- **Bedrock**: 画像から銘柄/飲み方を判別（`jp.amazon.nova-2-lite-v1:0` 既定 / `jp.anthropic.claude-haiku-4-5` フォールバック、APAC 域内固定プロファイル、Converse API）
+- **Bedrock**: 画像から銘柄/飲み方を判別（`jp.anthropic.claude-sonnet-4-6` 既定 / Nova 2 Lite・Haiku 4.5 は切り戻し用、APAC 域内固定プロファイル、Converse API）。Nova/Haiku は銘柄名の音写が実用に耐えないため既定から外した（実写真27枚で検証）
 - **Cognito**: User authentication + Google OAuth（MAU従量）
 - **Route53**: DNS management with custom domains（クエリ従量）
 
@@ -247,7 +247,7 @@ WHISKEY_SEARCH_TABLE=WhiskeySearch-dev            # Search-optimized table
 DRINKLOGS_TABLE=DrinkLogs-dev                      # Drink logs table
 APP_STATE_TABLE=AppState-dev                       # Abuse/cost counters
 IMAGES_BUCKET=whiskey-images-dev-<account>         # Drink log images bucket
-BEDROCK_MODEL_ID=jp.amazon.nova-2-lite-v1:0        # Analyze model (allowlist gated)
+BEDROCK_MODEL_ID=jp.anthropic.claude-sonnet-4-6    # Analyze model (allowlist gated)
 ```
 
 ### Frontend (.env)
@@ -265,13 +265,13 @@ NUXT_PUBLIC_ENVIRONMENT=dev
 
 ### External Data Processing
 1. **Fetch**: `python scripts/fetch_rakuten_names_only.py`（楽天から商品名取得）
-2. **Extract**: `python scripts/extract_whiskey_names_nova_lite.py --input-file rakuten_*.json`（Bedrock Nova Lite で抽出）
+2. **Extract**: `AWS_PROFILE=dev python scripts/extract_whiskey_names_claude_sonnet.py --input-file rakuten_*.json`（Bedrock で構造化抽出。`--dry-run` で件数のみ確認可）
 3. **Seed/Insert**: `python scripts/local/seed_whiskeys.py --target dev --profile dev`（厳選シード）/ `AWS_PROFILE=dev python scripts/insert_whiskeys_to_dynamodb.py <input.json> --target dev`（大規模投入）
 4. **Verification**: DynamoDB のカウントと検索の動作確認（英語/日本語）
 
 ### Current Data Status
 - **Languages**: English and Japanese names（名前検索に特化、蒸留所検索は削除済み）
-- **Source**: 楽天市場API + Amazon Bedrock Nova Lite で抽出
+- **Source**: 楽天市場API + Amazon Bedrock で抽出
 - **Search Coverage**: Full text search across both languages
 
 ## AWS Profile Configuration

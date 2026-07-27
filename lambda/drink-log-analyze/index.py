@@ -491,6 +491,52 @@ def _get_master_snapshot(table: Any, table_name: str, logger: Any = None) -> dic
         return snapshot
 
 
+def _cached_master_snapshot(table_name: str) -> dict[str, Any] | None:
+    """Return the warm cache for this table, if any."""
+    cached = _MASTER_CACHE
+    if (
+        cached is not None
+        and cached["table_name"] == table_name
+        and cached["expires_at"] > time.monotonic()
+    ):
+        return cached
+    return None
+
+
+def _master_snapshot_within_budget(
+    table: Any,
+    table_name: str,
+    context: Any,
+    started: float,
+    logger: Any = None,
+) -> dict[str, Any]:
+    """Skip the catalog scan when there is not enough time left to afford it.
+
+    The scan runs after the model call and can take up to
+    MASTER_SNAPSHOT_MAX_PAGES sequential round trips on a cold container. With
+    no guard it can push the handler past the Lambda timeout, which surfaces as
+    a 502 instead of a graceful degradation. A warm cache costs nothing, so it
+    is always used; only an actual scan is gated.
+    """
+    cached = _cached_master_snapshot(table_name)
+    if cached is not None:
+        return cached
+    if _remaining_budget_ms(context, started) >= MIN_INVOKE_BUDGET_MS:
+        return _get_master_snapshot(table, table_name, logger)
+    if logger is not None:
+        logger.warning("Skipped master snapshot scan", reason="insufficient_budget")
+    # An incomplete snapshot makes every candidate fall back to match_source
+    # "ai": the record still saves, it just carries no catalog id.
+    return {
+        "table_name": table_name,
+        "expires_at": 0.0,
+        "items": (),
+        "complete": False,
+        "incomplete_reason": "insufficient_budget",
+        "page_count": 0,
+    }
+
+
 def _unique_records(records: list[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
     unique: dict[str, Mapping[str, Any]] = {}
     for record in records:
@@ -604,9 +650,11 @@ def analyze_upload(
             "glass_type": "",
         }
 
-    snapshot = _get_master_snapshot(
+    snapshot = _master_snapshot_within_budget(
         dynamodb.Table(whiskey_table_name),
         whiskey_table_name,
+        context,
+        started,
         logger,
     )
     candidates = _build_candidates(snapshot, analysis)

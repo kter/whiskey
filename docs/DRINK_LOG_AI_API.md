@@ -11,18 +11,35 @@
   "analysis_id": "ai-result:{user}:{uuid}",
   "candidates": [
     {
-      "brand_text": "表示名",
-      "name_ja": "日本語名",
-      "name_en": "English name",
+      "brand_text": "カリラ 12年",
+      "name_ja": "カリラ 12年",
+      "name_en": "Caol Ila 12 Year Old",
       "confidence": 0.9,
-      "whiskey_id": "完全一致または部分一致したID"
+      "match_source": "catalog",
+      "whiskey_id": "正規化後に完全一致したカタログのID（一致時のみ）"
     }
   ],
   "serving_style": "NEAT",
-  "model_id": "jp.amazon.nova-2-lite-v1:0",
-  "confidence": 0.9
+  "model_id": "jp.anthropic.claude-sonnet-4-6",
+  "confidence": 0.9,
+  "multiple_detected": false
 }
 ```
+
+`brand_text` は**常にモデルが読み取った銘柄名**で、カタログの名前で置き換えない。
+カタログはモデルの読みを上書きせず、一致したときに `whiskey_id` を付けるだけである
+（`山崎` を `山崎 12年` に格上げしない）。
+
+| `match_source` | 意味 |
+|---|---|
+| `catalog` | `normalize_text` による完全一致でカタログの ID を付与した |
+| `ai` | カタログに一致が無い。記録は成立し、`whiskey_id` は付かない |
+
+**部分一致・あいまい一致による ID 付与は行わない。** カタログが疎な状態で部分一致を許すと、
+`山崎` が `山崎 12年` に、シェリーオークが `ダブルカスク` に確定するといった誤りが起きる。
+
+`multiple_detected` は複数のボトルが検出されたことを示す。この場合フロントは候補を
+自動選択せず、ユーザーに選ばせる。`candidates` は最大5件。判別できない場合は空配列になる。
 
 画像はEXIF orientation適用、RGB化、メタデータ除去、JPEG再エンコードを行ってからBedrockへ送る。元画像バイトやEXIFはレスポンスに含めない。入力不正は400、所有権不一致は403、日次上限は429、月次グローバル遮断は503を返す。
 

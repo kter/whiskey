@@ -191,7 +191,11 @@ export const useDrinkLogBatch = (provided?: DrinkLogBatchDependencies) => {
   const saveItem = async (item: DrinkLogBatchItem, storeName: string, placeId: string) => {
     if (!item.analysisId || !item.brandText.trim()) {
       item.saveStatus = 'failed'
-      item.saveError = '銘柄名を入力してください。'
+      // Multiple bottles are deliberately left unselected, so the required
+      // action is picking one -- not typing a name.
+      item.saveError = item.candidates.length > 1 && item.selectedCandidateIndex === null
+        ? '検出された銘柄から1つ選んでください。'
+        : '銘柄名を入力してください。'
       return null
     }
 
