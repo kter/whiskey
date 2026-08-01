@@ -45,6 +45,7 @@ export interface DrinkLog {
 
 export interface CreateDrinkLogPayload {
   analysis_id: string
+  datetime?: string
   candidate_index?: number
   brand_text?: string
   serving_style?: string
@@ -55,6 +56,7 @@ export interface CreateDrinkLogPayload {
 
 export interface DrinkLogFormValues {
   analysisId: string
+  capturedAt?: string | null
   candidateIndex: number | null
   brandText: string
   servingStyle?: string
@@ -130,6 +132,7 @@ export const normalizeDrinkLogError = (cause: unknown, fallback: string) => {
 
 export const buildDrinkLogPayload = (form: DrinkLogFormValues): CreateDrinkLogPayload => ({
   analysis_id: form.analysisId,
+  ...(form.capturedAt ? { datetime: form.capturedAt } : {}),
   ...(form.candidateIndex === null
     ? { brand_text: form.brandText.trim() }
     : { candidate_index: form.candidateIndex }),

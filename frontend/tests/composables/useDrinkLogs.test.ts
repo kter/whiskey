@@ -7,7 +7,7 @@ vi.mock('~/composables/useApi', async importOriginal => {
   return { ...actual, useApi: () => ({ request }) }
 })
 
-import { useDrinkLogs } from '~/composables/useDrinkLogs'
+import { buildDrinkLogPayload, useDrinkLogs } from '~/composables/useDrinkLogs'
 
 const record = (id: string, datetime: string, brandText = id) => ({
   id,
@@ -52,6 +52,28 @@ describe('useDrinkLogs API contract', () => {
     expect(request).toHaveBeenNthCalledWith(3, '/api/drink-logs', {
       method: 'POST', auth: 'required', body: { analysis_id: 'a1', candidate_index: 0 },
     })
+  })
+
+  it('maps capturedAt to datetime and omits the key when no capture time exists', () => {
+    expect(buildDrinkLogPayload({
+      analysisId: 'a1',
+      capturedAt: '2026-08-01T21:30:00+09:00',
+      candidateIndex: 0,
+      brandText: 'AI銘柄',
+    })).toEqual({
+      analysis_id: 'a1',
+      datetime: '2026-08-01T21:30:00+09:00',
+      candidate_index: 0,
+    })
+
+    for (const capturedAt of [null, undefined]) {
+      expect(buildDrinkLogPayload({
+        analysisId: 'a1',
+        capturedAt,
+        candidateIndex: 0,
+        brandText: 'AI銘柄',
+      })).not.toHaveProperty('datetime')
+    }
   })
 
   it('uses every list, detail, update, delete and Places endpoint with required auth', async () => {

@@ -14,6 +14,7 @@ import {
 import { buildDrinkLogPayload, candidateIndexAfterBrandEdit, type DrinkLogCandidate, type PlaceCandidate } from '~/composables/useDrinkLogs'
 import LogsNewPage from '~/pages/logs/new.vue'
 import { SERVING_STYLES } from '~/types/whiskey'
+import { formatLocalLogDate, formatLocalLogTime } from '~/utils/drinkLogs'
 
 const pageMocks = vi.hoisted(() => ({
   processFiles: vi.fn(),
@@ -95,6 +96,7 @@ if (!template) throw new Error('logs/new.vue template not found')
 const batchItem = (candidates: DrinkLogCandidate[] = [], index = 0): DrinkLogBatchItem => ({
   id: `photo-${index + 1}`,
   file: new File(['photo'], 'photo.jpg', { type: 'image/jpeg' }),
+  capturedAt: null,
   phase: 'ready',
   uploadProgress: 100,
   previewUrl: 'blob:preview',
@@ -119,6 +121,7 @@ const renderLogPage = (options: {
   candidates?: DrinkLogCandidate[]
   places?: PlaceCandidate[]
   itemCount?: number
+  capturedAt?: string | null
 } = {}) => mount(defineComponent({
   setup: () => {
     const lightbox = reactive({ open: false, src: '', alt: '' })
@@ -126,6 +129,9 @@ const renderLogPage = (options: {
       { length: options.itemCount || 1 },
       (_, index) => batchItem(options.candidates || [], index),
     ))
+    items.value.forEach(item => {
+      item.capturedAt = options.capturedAt || null
+    })
     const places = ref(options.places || [])
     const readyItems = computed(() => items.value.filter(item => item.phase === 'ready'))
     const selectCandidate = (item: ReturnType<typeof batchItem>, index: number) => {
@@ -173,6 +179,8 @@ const renderLogPage = (options: {
       SERVING_STYLES,
       styleLabels: { NEAT: 'ストレート', ROCKS: 'ロック', WATER: '水割り', SODA: 'ハイボール', COCKTAIL: 'カクテル' },
       processingLabels: { queued: '処理中', resizing: '処理中', uploading: '処理中', analyzing: '処理中', ready: '解析完了', failed: '失敗' },
+      formatLocalLogDate,
+      formatLocalLogTime,
       handleFileSelection: vi.fn(),
       handleSubmit: vi.fn(),
       selectCandidate,
@@ -228,6 +236,11 @@ describe('logs/new form behavior', () => {
       analysis_id: 'a1',
       candidate_index: 0,
     })
+  })
+
+  it('shows a captured timestamp when EXIF exists and a save-time fallback otherwise', () => {
+    expect(renderLogPage({ capturedAt: '2026-07-01T21:30:00+09:00' }).text()).toContain('撮影日時:')
+    expect(renderLogPage().text()).toContain('記録日時: 保存時刻')
   })
 
   it('sends brand_text without candidate_index for manual input', () => {

@@ -1,4 +1,5 @@
 import { computed, ref } from 'vue'
+import { ApiError } from '~/composables/useApi'
 import {
   buildDrinkLogPayload,
   normalizeDrinkLogError,
@@ -8,6 +9,7 @@ import {
   type DrinkLogCandidate,
 } from '~/composables/useDrinkLogs'
 import { SERVING_STYLES, type ServingStyle } from '~/types/whiskey'
+import { readExifCapturedAt } from '~/utils/exifCapturedAt'
 import { ImageTooLargeError, resizeImage } from '~/utils/imageResize'
 
 export const MAX_DRINK_LOG_BATCH_SIZE = 10
@@ -20,6 +22,7 @@ export type BatchSaveStatus = 'idle' | 'saving' | 'saved' | 'failed'
 export interface DrinkLogBatchItem {
   id: string
   file: File
+  capturedAt: string | null
   phase: BatchProcessingPhase
   uploadProgress: number
   previewUrl: string
@@ -39,6 +42,7 @@ export interface DrinkLogBatchItem {
 }
 
 export interface DrinkLogBatchDependencies {
+  readExifCapturedAt: typeof readExifCapturedAt
   resizeImage: typeof resizeImage
   getUploadUrl: ReturnType<typeof useDrinkLogs>['getUploadUrl']
   uploadToS3: ReturnType<typeof useDrinkLogs>['uploadToS3']
@@ -106,6 +110,13 @@ export const setPlaceOnPendingItems = (items: DrinkLogBatchItem[], placeId: stri
   })
 }
 
+/** True for the one create failure a retry with the same payload can never clear. */
+const isDatetimeRejection = (cause: unknown) => {
+  if (!(cause instanceof ApiError) || cause.status !== 400) return false
+  const fields = (cause.details as { fields?: unknown } | undefined)?.fields
+  return Boolean(fields && typeof fields === 'object' && 'datetime' in fields)
+}
+
 const processingError = (cause: unknown) => {
   if (cause instanceof ImageTooLargeError) return '画像を3.5MB以下にできませんでした。別の画像を選択してください。'
   return normalizeDrinkLogError(cause, '画像の準備または解析に失敗しました。')
@@ -114,6 +125,7 @@ const processingError = (cause: unknown) => {
 const newItem = (file: File, id: string): DrinkLogBatchItem => ({
   id,
   file,
+  capturedAt: null,
   phase: 'queued',
   uploadProgress: 0,
   previewUrl: '',
@@ -135,6 +147,7 @@ const newItem = (file: File, id: string): DrinkLogBatchItem => ({
 export const useDrinkLogBatch = (provided?: DrinkLogBatchDependencies) => {
   const drinkLogs = provided ? null : useDrinkLogs()
   const dependencies: DrinkLogBatchDependencies = provided || {
+    readExifCapturedAt,
     resizeImage,
     getUploadUrl: drinkLogs!.getUploadUrl,
     uploadToS3: drinkLogs!.uploadToS3,
@@ -171,6 +184,7 @@ export const useDrinkLogBatch = (provided?: DrinkLogBatchDependencies) => {
   const processItem = async (item: DrinkLogBatchItem) => {
     revokePreview(item)
     item.phase = 'resizing'
+    item.capturedAt = null
     item.uploadProgress = 0
     item.analysisId = ''
     item.candidates = []
@@ -183,6 +197,7 @@ export const useDrinkLogBatch = (provided?: DrinkLogBatchDependencies) => {
     item.createdLog = null
 
     try {
+      item.capturedAt = await dependencies.readExifCapturedAt(item.file)
       const resized = await dependencies.resizeImage(item.file)
       item.previewUrl = URL.createObjectURL(resized.blob)
       item.phase = 'uploading'
@@ -234,17 +249,29 @@ export const useDrinkLogBatch = (provided?: DrinkLogBatchDependencies) => {
 
     item.saveStatus = 'saving'
     item.saveError = ''
+    const payloadFor = (capturedAt: string | null) => buildDrinkLogPayload({
+      analysisId: item.analysisId,
+      capturedAt,
+      candidateIndex: item.selectedCandidateIndex,
+      brandText: item.brandText,
+      servingStyle: item.servingStyle,
+      storeName: item.storeName,
+      placeId: item.placeId,
+      notes: item.notes,
+      rating: item.rating,
+    })
     try {
-      const created = await dependencies.createLog(buildDrinkLogPayload({
-        analysisId: item.analysisId,
-        candidateIndex: item.selectedCandidateIndex,
-        brandText: item.brandText,
-        servingStyle: item.servingStyle,
-        storeName: item.storeName,
-        placeId: item.placeId,
-        notes: item.notes,
-        rating: item.rating,
-      }))
+      let created: DrinkLog
+      try {
+        created = await dependencies.createLog(payloadFor(item.capturedAt))
+      } catch (cause) {
+        // The server bounds the capture time against its own clock, so a device
+        // running fast enough gets a 400 the user could never resolve. Drop the
+        // EXIF time once and let the server stamp the record instead.
+        if (!isDatetimeRejection(cause)) throw cause
+        item.capturedAt = null
+        created = await dependencies.createLog(payloadFor(null))
+      }
       item.createdLog = created
       item.saveStatus = 'saved'
       return created

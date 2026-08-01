@@ -75,6 +75,11 @@ paths:
     post:
       security: [{bearerAuth: []}]
       summary: Create a drink log
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateDrinkLogRequest'}
       responses:
         '501': {$ref: '#/components/responses/NotImplemented'}
     get:
@@ -163,6 +168,25 @@ components:
     ServingStyle:
       type: string
       enum: [NEAT, ROCKS, WATER, SODA, COCKTAIL]
+    CreateDrinkLogRequest:
+      type: object
+      required: [analysis_id]
+      properties:
+        analysis_id: {type: string}
+        candidate_index: {type: integer, minimum: 0}
+        datetime:
+          type: string
+          format: date-time
+          description: Optional RFC3339 capture time with an explicit offset or Z; accepted from 2000-01-01T00:00:00Z through five minutes after the current server time. Defaults to server time and is normalized to UTC.
+        brand_text: {type: string, maxLength: 200}
+        serving_style: {$ref: '#/components/schemas/ServingStyle'}
+        store:
+          type: object
+          properties:
+            name: {type: string, maxLength: 200, description: User-entered name only}
+            place_id: {type: string}
+        notes: {type: string, maxLength: 2000}
+        rating: {$ref: '#/components/schemas/Rating'}
     DrinkLog:
       type: object
       description: GPS coordinates and Google-provided display names are never stored.
