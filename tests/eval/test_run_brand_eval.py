@@ -235,6 +235,88 @@ def test_manifest_validation_accepts_uppercase_image_extension():
     assert brand_eval.validate_manifest_data(manifest) == manifest
 
 
+def test_manifest_validation_rejects_non_boolean_needs_review():
+    case = _case("bottle_front", "a")
+    case["needs_review"] = "false"
+
+    with pytest.raises(brand_eval.ManifestError, match="needs_review must be a boolean"):
+        brand_eval.validate_manifest_data({"version": 1, "cases": [case]})
+
+
+def test_draft_manifest_matches_schema_and_marks_every_case_for_review(tmp_path):
+    image_directory = tmp_path / "images-real"
+    image_directory.mkdir()
+    for name in ("first.jpg", "second.jpg"):
+        (image_directory / name).write_bytes(b"\xff\xd8\xffplaceholder")
+    manifest_path = tmp_path / "manifest.real.json"
+    seed = brand_eval.build_draft_seed_manifest(image_directory, manifest_path)
+    records = [
+        _record(
+            0,
+            seed["cases"][0],
+            [{"name_ja": "山崎 12年", "whiskey_id": "yamazaki-12"}],
+        ),
+        _record(
+            1,
+            seed["cases"][1],
+            [{"brand_text": "不明なボトル"}],
+        ),
+    ]
+
+    draft = brand_eval.build_draft_manifest(seed, records)
+
+    jsonschema = pytest.importorskip("jsonschema")
+    schema_path = Path(brand_eval.__file__).with_name("manifest.schema.json")
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    jsonschema.Draft202012Validator(schema).validate(draft)
+    assert all(case["needs_review"] is True for case in draft["cases"])
+    assert all(case["condition"] == "bottle_front" for case in draft["cases"])
+    assert all(case["notes"] == brand_eval.DRAFT_NOTES for case in draft["cases"])
+    assert draft["cases"][0]["expected_whiskey_id"] == "yamazaki-12"
+    assert draft["cases"][0]["expected_canonical_name"] == "山崎 12年"
+    assert draft["cases"][1]["expected_whiskey_id"] is None
+    assert draft["cases"][1]["expected_canonical_name"] == "不明なボトル"
+
+
+def test_draft_manifest_rejects_case_without_successful_response():
+    seed = {"version": 1, "cases": [_case("bottle_front", None, "photo.jpg")]}
+
+    with pytest.raises(ValueError, match="case 0 has no successful response"):
+        brand_eval.build_draft_manifest(seed, [])
+
+
+def test_load_manifest_rejects_draft_until_all_cases_are_reviewed(tmp_path):
+    case = _case("bottle_front", "a", "photo.jpg")
+    case["needs_review"] = True
+    manifest = {"version": 1, "cases": [case]}
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(brand_eval.ManifestError, match="needs_review=true"):
+        brand_eval.load_manifest(manifest_path)
+
+    case["needs_review"] = False
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    loaded = brand_eval.load_manifest(manifest_path)
+    score = brand_eval.score_evaluation(
+        _record(0, loaded["cases"][0], [{"whiskey_id": "a"}])
+    )
+    assert score["confirmed_correct"] is True
+
+
+def test_dry_run_exits_nonzero_when_manifest_still_needs_review(tmp_path, capsys):
+    case = _case("bottle_front", "a", "photo.jpg")
+    case["needs_review"] = True
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps({"version": 1, "cases": [case]}),
+        encoding="utf-8",
+    )
+
+    assert brand_eval.main([str(manifest_path), "--dry-run"]) == 1
+    assert "needs_review=true" in capsys.readouterr().err
+
+
 def test_image_validation_reports_all_missing_empty_oversize_and_magic_errors(tmp_path):
     images = tmp_path / "images"
     images.mkdir()
@@ -460,6 +542,165 @@ class FailingLambda:
         )
 
 
+def test_emit_manifest_cli_uses_image_directory_and_writes_review_draft(
+    tmp_path, monkeypatch
+):
+    image_directory = tmp_path / "images-real"
+    image_directory.mkdir()
+    (image_directory / "photo.jpg").write_bytes(b"\xff\xd8\xffplaceholder")
+    manifest_path = tmp_path / "manifest.json"
+    result_path = tmp_path / "result.json"
+    s3 = StubS3()
+    lambda_client = StubLambda(
+        [
+            (
+                200,
+                {
+                    "candidates": [
+                        {
+                            "name_ja": "カリラ 12年",
+                            "whiskey_id": "caol-ila-12",
+                        }
+                    ]
+                },
+            )
+        ]
+    )
+    app_state = Mock()
+    app_state.get_item.return_value = {"Item": {"count": 0}}
+    monkeypatch.setattr(
+        brand_eval,
+        "create_dev_clients",
+        lambda _profile: (s3, lambda_client, app_state, "images-dev"),
+    )
+
+    exit_code = brand_eval.main(
+        [
+            str(image_directory),
+            "--target",
+            "dev",
+            "--emit-manifest",
+            str(manifest_path),
+            "--profile",
+            "dev",
+            "--aud",
+            "client-123",
+            "--max-cases",
+            "1",
+            "--yes",
+            "--json",
+            str(result_path),
+        ]
+    )
+
+    assert exit_code == 0
+    draft = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert draft["cases"][0]["needs_review"] is True
+    assert draft["cases"][0]["expected_whiskey_id"] == "caol-ila-12"
+    assert draft["cases"][0]["expected_canonical_name"] == "カリラ 12年"
+    assert result_path.is_file()
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    assert result["mode"] == "manifest_draft"
+    assert result["manifest"] == manifest_path.name
+    assert len(s3.uploads) == 1
+    assert len(s3.deletes) == 1
+
+
+def test_partial_emit_manifest_writes_no_manifest_and_reports_pending(
+    tmp_path, monkeypatch, capsys
+):
+    image_directory = tmp_path / "images-real"
+    image_directory.mkdir()
+    for name in ("first.jpg", "second.jpg"):
+        (image_directory / name).write_bytes(b"\xff\xd8\xffplaceholder")
+    manifest_path = tmp_path / "manifest.json"
+    result_path = tmp_path / "result.json"
+    s3 = StubS3()
+    lambda_client = StubLambda([(200, {"candidates": []})])
+    app_state = Mock()
+    app_state.get_item.return_value = {"Item": {"count": 0}}
+    monkeypatch.setattr(
+        brand_eval,
+        "create_dev_clients",
+        lambda _profile: (s3, lambda_client, app_state, "images-dev"),
+    )
+
+    exit_code = brand_eval.main(
+        [
+            str(image_directory),
+            "--target",
+            "dev",
+            "--emit-manifest",
+            str(manifest_path),
+            "--profile",
+            "dev",
+            "--aud",
+            "client-123",
+            "--max-cases",
+            "1",
+            "--yes",
+            "--json",
+            str(result_path),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert not manifest_path.exists()
+    assert "Manifest draft pending: 1 case(s) remain" in captured.out
+    assert json.loads(result_path.read_text(encoding="utf-8"))["mode"] == (
+        "manifest_draft"
+    )
+
+
+def test_emit_manifest_refuses_existing_file_unless_force(tmp_path, capsys):
+    image_directory = tmp_path / "images-real"
+    image_directory.mkdir()
+    (image_directory / "photo.jpg").write_bytes(b"\xff\xd8\xffplaceholder")
+    manifest_path = tmp_path / "manifest.json"
+    original = b'{"reviewed_labels":"must survive"}\n'
+    manifest_path.write_bytes(original)
+    seed = brand_eval.build_draft_seed_manifest(image_directory, manifest_path)
+    resume_path = tmp_path / "resume.json"
+    brand_eval.save_json_atomic(
+        resume_path,
+        {
+            "result_version": brand_eval.RESULT_VERSION,
+            "manifest_sha256": brand_eval.manifest_digest(seed),
+            "results": [_record(0, seed["cases"][0], [])],
+        },
+    )
+    base_args = [
+        str(image_directory),
+        "--target",
+        "dev",
+        "--emit-manifest",
+        str(manifest_path),
+        "--resume",
+        str(resume_path),
+    ]
+
+    assert brand_eval.main(base_args) == 1
+    assert manifest_path.read_bytes() == original
+    assert "may contain reviewed labels" in capsys.readouterr().err
+
+    assert brand_eval.main([*base_args, "--force"]) == 0
+    draft = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert draft["cases"][0]["needs_review"] is True
+
+
+def test_result_manifest_path_is_repository_relative_or_basename(tmp_path, monkeypatch):
+    repository_root = tmp_path / "repository"
+    monkeypatch.setattr(brand_eval, "REPOSITORY_ROOT", repository_root)
+
+    assert brand_eval.repository_relative_path(
+        repository_root / "scripts/eval/manifest.real.json"
+    ) == "scripts/eval/manifest.real.json"
+    assert brand_eval.repository_relative_path(
+        tmp_path / "private/manifest.real.json"
+    ) == "manifest.real.json"
+
+
 def test_execute_evaluation_validates_images_before_any_upload(tmp_path):
     case = _case("bottle_front", "a", "images/missing.jpg")
     s3 = StubS3()
@@ -549,6 +790,8 @@ def test_cleanup_error_preserves_original_error_and_interrupts(tmp_path):
     )
 
     assert document["interrupted"] is True
+    assert document["mode"] == "evaluation"
+    assert document["manifest"] == "manifest.json"
     assert document["interruption_reason"] == "temporary S3 object cleanup failed"
     assert "ServiceException" in document["results"][0]["original_error"]
     assert "AccessDenied" in document["results"][0]["cleanup_error"]
