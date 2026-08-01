@@ -11,7 +11,8 @@ import { SERVING_STYLES, type ServingStyle } from '~/types/whiskey'
 import { ImageTooLargeError, resizeImage } from '~/utils/imageResize'
 
 export const MAX_DRINK_LOG_BATCH_SIZE = 10
-export const DRINK_LOG_BATCH_CONCURRENCY = 2
+export const DRINK_LOG_PROCESS_CONCURRENCY = 2
+export const DRINK_LOG_SAVE_CONCURRENCY = 1
 
 export type BatchProcessingPhase = 'queued' | 'resizing' | 'uploading' | 'analyzing' | 'ready' | 'failed'
 export type BatchSaveStatus = 'idle' | 'saving' | 'saved' | 'failed'
@@ -128,8 +129,8 @@ export const useDrinkLogBatch = (provided?: DrinkLogBatchDependencies) => {
     createLog: drinkLogs!.createLog,
   }
   const items = ref<DrinkLogBatchItem[]>([])
-  const processWithLimit = createLimiter(DRINK_LOG_BATCH_CONCURRENCY)
-  const saveWithLimit = createLimiter(DRINK_LOG_BATCH_CONCURRENCY)
+  const processWithLimit = createLimiter(DRINK_LOG_PROCESS_CONCURRENCY)
+  const saveWithLimit = createLimiter(DRINK_LOG_SAVE_CONCURRENCY)
   let itemSequence = 0
 
   const revokePreview = (item: DrinkLogBatchItem) => {

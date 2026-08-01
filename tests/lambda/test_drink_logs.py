@@ -762,6 +762,266 @@ def test_transaction_loser_joins_winner_without_second_counter_charge(monkeypatc
     assert len(client.transactions) == 1
 
 
+def _disable_transaction_retry_delays(monkeypatch):
+    retry = drink_logs.transact_write_with_retry
+
+    def without_delays(client, transact_items, **kwargs):
+        return retry(
+            client,
+            transact_items,
+            sleep=lambda _delay: None,
+            jitter=lambda: 1.0,
+            **kwargs,
+        )
+
+    monkeypatch.setattr(drink_logs, "transact_write_with_retry", without_delays)
+
+
+def _stub_initial_create(monkeypatch, upload_uuid):
+    pending = {
+        "id": drink_logs.derive_drink_log_id("user-1", upload_uuid),
+        "user_id": "user-1",
+        "status": "pending",
+    }
+    consume = {"Delete": {"TableName": "AppState-test", "Key": {"pk": "analysis"}}}
+    monkeypatch.setattr(
+        drink_logs,
+        "_prepare_initial_record",
+        lambda *_args, **_kwargs: (pending, consume),
+    )
+    return pending
+
+
+def _post_event(path, body):
+    return {
+        "httpMethod": "POST",
+        "path": path,
+        "body": json.dumps(body),
+        "headers": {"origin": "https://app.example"},
+        "requestContext": {
+            "requestId": "request-1",
+            "authorizer": {
+                "claims": {
+                    "sub": "user-1",
+                    "aud": "client-123",
+                    "token_use": "id",
+                }
+            },
+        },
+    }
+
+
+def test_create_retries_transaction_conflict_and_completes(monkeypatch):
+    upload_uuid = "12345678-1234-4234-8234-123456789abc"
+    attempts = 0
+
+    def conflict_once(_transaction):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise TransactionCanceled([{"Code": "TransactionConflict"}] * 6)
+
+    client = RecordingClient(conflict_once)
+    records = StaticTable(item=None, client=client)
+    dynamodb = FakeDynamoDB({"DrinkLogs-test": records}, client)
+    pending = _stub_initial_create(monkeypatch, upload_uuid)
+    monkeypatch.setattr(
+        drink_logs,
+        "_finish_pending_create",
+        lambda *_args, **_kwargs: pending,
+    )
+    _disable_transaction_retry_delays(monkeypatch)
+
+    record, created = drink_logs.create_drink_log(
+        dynamodb,
+        PresignS3(),
+        "DrinkLogs-test",
+        "AppState-test",
+        "images-test",
+        "user-1",
+        {"analysis_id": upload_uuid, "candidate_index": 0},
+    )
+
+    assert record == pending
+    assert created is True
+    assert len(client.transactions) == 2
+
+
+def test_exhausted_create_conflict_raises_transient_conflict(monkeypatch):
+    upload_uuid = "12345678-1234-4234-8234-123456789abc"
+
+    def always_conflict(_transaction):
+        raise TransactionCanceled([{"Code": "TransactionConflict"}] * 6)
+
+    client = RecordingClient(always_conflict)
+    records = StaticTable(item=None, client=client)
+    dynamodb = FakeDynamoDB({"DrinkLogs-test": records}, client)
+    _stub_initial_create(monkeypatch, upload_uuid)
+    _disable_transaction_retry_delays(monkeypatch)
+
+    with pytest.raises(drink_logs.TransientConflict):
+        drink_logs.create_drink_log(
+            dynamodb,
+            PresignS3(),
+            "DrinkLogs-test",
+            "AppState-test",
+            "images-test",
+            "user-1",
+            {"analysis_id": upload_uuid, "candidate_index": 0},
+        )
+
+    assert len(client.transactions) == 4
+
+
+def test_exhausted_create_conflict_returns_503_from_handler(monkeypatch):
+    upload_uuid = "12345678-1234-4234-8234-123456789abc"
+
+    def always_conflict(_transaction):
+        raise TransactionCanceled([{"Code": "TransactionConflict"}] * 6)
+
+    client = RecordingClient(always_conflict)
+    dynamodb = FakeDynamoDB(
+        {"DrinkLogs-test": StaticTable(item=None, client=client)},
+        client,
+    )
+    _stub_initial_create(monkeypatch, upload_uuid)
+    _disable_transaction_retry_delays(monkeypatch)
+    monkeypatch.setattr(drink_logs, "get_dynamodb_resource", lambda: dynamodb)
+    monkeypatch.setattr(drink_logs, "get_s3_client", PresignS3)
+
+    response = drink_logs.lambda_handler(
+        _post_event(
+            "/api/drink-logs",
+            {"analysis_id": upload_uuid, "candidate_index": 0},
+        ),
+        SimpleNamespace(aws_request_id="aws-1"),
+    )
+
+    assert response["statusCode"] == 503
+    assert json.loads(response["body"]) == {
+        "error": "書き込みが混み合っています。少し時間をおいて再試行してください。"
+    }
+    assert len(client.transactions) == 4
+
+
+def test_upload_limit_stays_429_without_retry(monkeypatch):
+    def conditional_failure(_transaction):
+        raise TransactionCanceled([{"Code": "ConditionalCheckFailed"}, {"Code": "None"}])
+
+    client = RecordingClient(conditional_failure)
+    dynamodb = FakeDynamoDB(
+        {"DrinkLogs-test": StaticTable(client=client)},
+        client,
+    )
+    monkeypatch.setattr(drink_logs, "get_dynamodb_resource", lambda: dynamodb)
+    monkeypatch.setattr(drink_logs, "get_s3_client", PresignS3)
+
+    response = drink_logs.lambda_handler(
+        _post_event("/api/drink-logs/upload-url", {"content_type": "image/jpeg"}),
+        SimpleNamespace(aws_request_id="aws-1"),
+    )
+
+    assert response["statusCode"] == 429
+    assert len(client.transactions) == 1
+
+
+def test_create_limit_stays_429_without_retry(monkeypatch):
+    upload_uuid = "12345678-1234-4234-8234-123456789abc"
+
+    def conditional_failure(_transaction):
+        raise TransactionCanceled(
+            [
+                {"Code": "None"},
+                {"Code": "ConditionalCheckFailed"},
+                {"Code": "None"},
+                {"Code": "None"},
+                {"Code": "None"},
+                {"Code": "None"},
+            ]
+        )
+
+    client = RecordingClient(conditional_failure)
+    dynamodb = FakeDynamoDB(
+        {"DrinkLogs-test": StaticTable(item=None, client=client)},
+        client,
+    )
+    _stub_initial_create(monkeypatch, upload_uuid)
+    monkeypatch.setattr(drink_logs, "get_dynamodb_resource", lambda: dynamodb)
+    monkeypatch.setattr(drink_logs, "get_s3_client", PresignS3)
+
+    response = drink_logs.lambda_handler(
+        _post_event(
+            "/api/drink-logs",
+            {"analysis_id": upload_uuid, "candidate_index": 0},
+        ),
+        SimpleNamespace(aws_request_id="aws-1"),
+    )
+
+    assert response["statusCode"] == 429
+    assert len(client.transactions) == 1
+
+
+def test_mixed_reasons_prefer_the_limit_over_the_conflict(monkeypatch):
+    """A real limit must win over a co-occurring conflict: 429, never 503."""
+    upload_uuid = "12345678-1234-4234-8234-123456789abc"
+
+    def mixed_failure(_transaction):
+        raise TransactionCanceled(
+            [
+                {"Code": "TransactionConflict"},
+                {"Code": "None"},
+                {"Code": "ConditionalCheckFailed"},
+                {"Code": "None"},
+                {"Code": "None"},
+                {"Code": "None"},
+            ]
+        )
+
+    client = RecordingClient(mixed_failure)
+    dynamodb = FakeDynamoDB(
+        {"DrinkLogs-test": StaticTable(item=None, client=client)},
+        client,
+    )
+    _stub_initial_create(monkeypatch, upload_uuid)
+    monkeypatch.setattr(drink_logs, "get_dynamodb_resource", lambda: dynamodb)
+    monkeypatch.setattr(drink_logs, "get_s3_client", PresignS3)
+
+    response = drink_logs.lambda_handler(
+        _post_event(
+            "/api/drink-logs",
+            {"analysis_id": upload_uuid, "candidate_index": 0},
+        ),
+        SimpleNamespace(aws_request_id="aws-1"),
+    )
+
+    assert response["statusCode"] == 429
+    assert len(client.transactions) == 1
+
+
+def test_upload_conflict_returns_503_instead_of_false_429(monkeypatch):
+    def always_conflict(_transaction):
+        raise TransactionCanceled(
+            [{"Code": "TransactionConflict"}, {"Code": "None"}]
+        )
+
+    client = RecordingClient(always_conflict)
+    dynamodb = FakeDynamoDB(
+        {"DrinkLogs-test": StaticTable(client=client)},
+        client,
+    )
+    _disable_transaction_retry_delays(monkeypatch)
+    monkeypatch.setattr(drink_logs, "get_dynamodb_resource", lambda: dynamodb)
+    monkeypatch.setattr(drink_logs, "get_s3_client", PresignS3)
+
+    response = drink_logs.lambda_handler(
+        _post_event("/api/drink-logs/upload-url", {"content_type": "image/jpeg"}),
+        SimpleNamespace(aws_request_id="aws-1"),
+    )
+
+    assert response["statusCode"] == 503
+    assert len(client.transactions) == 4
+
+
 @pytest.mark.parametrize(
     ("fmt", "content_type", "extension"),
     [("PNG", "image/png", "png"), ("WEBP", "image/webp", "webp")],

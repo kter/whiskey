@@ -26,6 +26,7 @@ try:
     from whiskey_common.logger import extract_correlation_id, get_logger
     from whiskey_common.responses import create_response
     from whiskey_common.scan_utils import decode_next_token, encode_next_token
+    from whiskey_common.transactions import transact_write_with_retry
 except ModuleNotFoundError as exc:
     if exc.name != "whiskey_common":
         raise
@@ -40,6 +41,7 @@ except ModuleNotFoundError as exc:
     from whiskey_common.logger import extract_correlation_id, get_logger
     from whiskey_common.responses import create_response
     from whiskey_common.scan_utils import decode_next_token, encode_next_token
+    from whiskey_common.transactions import transact_write_with_retry
 
 
 SERVING_STYLES = {"NEAT", "ROCKS", "WATER", "SODA", "COCKTAIL"}
@@ -88,6 +90,21 @@ class AnalysisConflict(Exception):
 
 class CreateConflict(Exception):
     pass
+
+
+class TransientConflict(Exception):
+    pass
+
+
+def _is_transaction_conflict_only(reasons: Any) -> bool:
+    if not isinstance(reasons, list) or not reasons:
+        return False
+    if any(not isinstance(reason, Mapping) for reason in reasons):
+        return False
+    codes = [reason.get("Code") for reason in reasons]
+    return "TransactionConflict" in codes and all(
+        code in {None, "None", "TransactionConflict"} for code in codes
+    )
 
 
 def _utc_now() -> datetime:
@@ -361,8 +378,9 @@ def create_upload_url(
     ttl = int((now_dt + timedelta(days=2)).timestamp())
     client = dynamodb.meta.client
     try:
-        client.transact_write_items(
-            TransactItems=[
+        transact_write_with_retry(
+            client,
+            [
                 _rate_counter_update(
                     app_state_table_name,
                     f"drinklog-counter#upload#user#{user_id}#{utc_date}",
@@ -377,10 +395,15 @@ def create_upload_url(
                     ttl,
                     now,
                 ),
-            ]
+            ],
         )
     except client.exceptions.TransactionCanceledException as exc:
-        raise RateLimitExceeded from exc
+        reasons = exc.response.get("CancellationReasons", [])
+        if any(reason.get("Code") == "ConditionalCheckFailed" for reason in reasons):
+            raise RateLimitExceeded from exc
+        if _is_transaction_conflict_only(reasons):
+            raise TransientConflict from exc
+        raise
 
     _format, extension = CONTENT_TYPES[content_type]
     key = f"tmp/{user_id}/{uuid.uuid4()}.{extension}"
@@ -641,7 +664,7 @@ def _initial_create_transaction(
         ),
         dict(consume_analysis),
     ]
-    dynamodb.meta.client.transact_write_items(TransactItems=transaction)
+    transact_write_with_retry(dynamodb.meta.client, transaction)
 
 
 def _compensate_pending(
@@ -653,8 +676,9 @@ def _compensate_pending(
     now = _rfc3339(_utc_now())
     client = dynamodb.meta.client
     try:
-        client.transact_write_items(
-            TransactItems=[
+        transact_write_with_retry(
+            client,
+            [
                 {
                     "Delete": {
                         "TableName": drinklogs_table_name,
@@ -680,7 +704,7 @@ def _compensate_pending(
                     "drinklog-quota#global",
                     now,
                 ),
-            ]
+            ],
         )
         return True
     except client.exceptions.TransactionCanceledException:
@@ -970,6 +994,8 @@ def create_drink_log(
             raise AnalysisConflict("Analysis result is stale or already consumed") from exc
         if reasons[0].get("Code") == "ConditionalCheckFailed":
             raise CreateConflict("Concurrent creation did not expose a winner") from exc
+        if _is_transaction_conflict_only(reasons):
+            raise TransientConflict from exc
         raise
 
     return _finish_pending_create(
@@ -1169,7 +1195,7 @@ def _finalize_delete(
             ]
         )
     try:
-        client.transact_write_items(TransactItems=transaction)
+        transact_write_with_retry(client, transaction)
         return True
     except client.exceptions.TransactionCanceledException:
         if _get_record(dynamodb.Table(drinklogs_table_name), item["id"]) is None:
@@ -1273,6 +1299,13 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                     event=event,
                     private=True,
                 )
+            except TransientConflict:
+                return create_response(
+                    503,
+                    {"error": "書き込みが混み合っています。少し時間をおいて再試行してください。"},
+                    event=event,
+                    private=True,
+                )
             return create_response(200, result, event=event, private=True)
 
         if method == "POST" and not record_id:
@@ -1293,6 +1326,13 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 return create_response(
                     429,
                     {"error": "Daily create or storage limit exceeded"},
+                    event=event,
+                    private=True,
+                )
+            except TransientConflict:
+                return create_response(
+                    503,
+                    {"error": "書き込みが混み合っています。少し時間をおいて再試行してください。"},
                     event=event,
                     private=True,
                 )

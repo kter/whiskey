@@ -19,6 +19,7 @@ try:
     from whiskey_common.jwt_utils import extract_user_id_from_event
     from whiskey_common.logger import extract_correlation_id, get_logger
     from whiskey_common.responses import create_response
+    from whiskey_common.transactions import transact_write_with_retry
 except ModuleNotFoundError as exc:
     if exc.name != "whiskey_common":
         raise
@@ -29,6 +30,7 @@ except ModuleNotFoundError as exc:
     from whiskey_common.jwt_utils import extract_user_id_from_event
     from whiskey_common.logger import extract_correlation_id, get_logger
     from whiskey_common.responses import create_response
+    from whiskey_common.transactions import transact_write_with_retry
 
 
 PLACES_BASE_URL = "https://places.googleapis.com/v1"
@@ -273,7 +275,7 @@ def reserve_places_budget(
     ]
     client = dynamodb.meta.client
     try:
-        client.transact_write_items(TransactItems=writes)
+        transact_write_with_retry(client, writes)
     except client.exceptions.TransactionCanceledException as exc:
         reasons = exc.response.get("CancellationReasons", [])
         if any(reason.get("Code") == "ConditionalCheckFailed" for reason in reasons):
