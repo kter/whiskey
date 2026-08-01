@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 import {
   clearPendingItemPlaceIds,
   copyStoreToPendingItems,
+  isPlaceSelectedForPendingItems,
+  setPlaceOnPendingItems,
   useDrinkLogBatch,
   type DrinkLogBatchDependencies,
   type DrinkLogBatchItem,
@@ -382,5 +384,51 @@ describe('per-card store helpers', () => {
     expect(pending.placeId).toBe('')
     expect(pending.storeName).toBe('手入力の店')
     expect(saved.placeId).toBe('place-1')
+  })
+
+  it('sets a place on pending cards without changing a saved card', () => {
+    const firstPending = storeItem({ placeId: 'place-old-1' })
+    const secondPending = storeItem({ placeId: 'place-old-2', saveStatus: 'failed' })
+    const saved = storeItem({ placeId: 'place-saved', saveStatus: 'saved' })
+
+    setPlaceOnPendingItems([firstPending, secondPending, saved], 'place-new')
+
+    expect(firstPending.placeId).toBe('place-new')
+    expect(secondPending.placeId).toBe('place-new')
+    expect(saved.placeId).toBe('place-saved')
+  })
+
+  it('clears the place on every pending card when passed an empty place id', () => {
+    const pending = storeItem({ placeId: 'place-1' })
+    const saved = storeItem({ placeId: 'place-saved', saveStatus: 'saved' })
+
+    setPlaceOnPendingItems([pending, saved], '')
+
+    expect(pending.placeId).toBe('')
+    expect(saved.placeId).toBe('place-saved')
+  })
+
+  it('reports a place selected only when every pending card matches it', () => {
+    const first = storeItem({ placeId: 'place-1' })
+    const second = storeItem({ placeId: 'place-1' })
+
+    expect(isPlaceSelectedForPendingItems([first, second], 'place-1')).toBe(true)
+
+    second.placeId = 'place-2'
+    expect(isPlaceSelectedForPendingItems([first, second], 'place-1')).toBe(false)
+  })
+
+  it('does not report a place selected when there are no pending cards', () => {
+    const saved = storeItem({ placeId: 'place-1', saveStatus: 'saved' })
+
+    expect(isPlaceSelectedForPendingItems([saved], 'place-1')).toBe(false)
+  })
+
+  it('treats an empty place id as selected when every pending card has no place', () => {
+    const emptyItems = [storeItem(), storeItem()]
+    const mixedItems = [storeItem(), storeItem({ placeId: 'place-1' })]
+
+    expect(isPlaceSelectedForPendingItems(emptyItems, '')).toBe(true)
+    expect(isPlaceSelectedForPendingItems(mixedItems, '')).toBe(false)
   })
 })

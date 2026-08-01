@@ -3,6 +3,8 @@ import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import {
   clearPendingItemPlaceIds,
   copyStoreToPendingItems,
+  isPlaceSelectedForPendingItems,
+  setPlaceOnPendingItems,
   useDrinkLogBatch,
   MAX_DRINK_LOG_BATCH_SIZE,
   type DrinkLogBatchItem,
@@ -91,6 +93,12 @@ const selectedPlaceFor = (item: DrinkLogBatchItem) => (
 const selectedPlaceAttributions = (item: DrinkLogBatchItem) => selectedPlaceFor(item)?.attributions || []
 
 const clearItemPlaceIds = () => clearPendingItemPlaceIds(items.value)
+
+const isSharedPlaceSelected = (placeId: string) => isPlaceSelectedForPendingItems(items.value, placeId)
+
+const toggleSharedPlace = (placeId: string) => {
+  setPlaceOnPendingItems(items.value, isSharedPlaceSelected(placeId) ? '' : placeId)
+}
 
 const applyFirstStoreToAllCards = () => {
   const firstItem = readyItems.value[0]
@@ -241,7 +249,7 @@ const openLightbox = (src: string, alt: string) => {
         <div class="flex items-center justify-between gap-4">
           <div>
             <h2 class="text-lg font-medium text-amber-200">店を探す</h2>
-            <p class="mt-1 text-xs text-stone-400">近くの店を検索して、写真ごとに店を選べます。</p>
+            <p class="mt-1 text-xs text-stone-400">近くの店を検索して選ぶと未保存の写真すべてに適用されます。写真ごとの変更もできます。</p>
           </div>
           <button type="button" :disabled="requestingLocation" class="rounded-md border border-amber-700 bg-stone-700 px-3 py-2 text-xs text-amber-100 hover:bg-stone-600 disabled:opacity-50" @click="findNearbyPlaces">
             {{ requestingLocation ? '位置情報を取得中…' : '近くの店を探す' }}
@@ -252,12 +260,23 @@ const openLightbox = (src: string, alt: string) => {
         <p v-if="placeError" role="status" class="text-sm text-amber-300">{{ placeError }}</p>
 
         <div v-if="places.length" class="space-y-2">
-          <h3 class="text-sm font-medium text-amber-200">近くの店候補</h3>
-          <div v-for="place in places" :key="place.place_id" class="rounded-md border border-stone-600 bg-stone-700 p-3">
-            <span class="block font-medium text-amber-100">{{ place.display_name }}</span>
-            <span class="block text-xs text-stone-300">{{ place.formatted_address }}</span>
-            <GoogleAttributions :attributions="place.attributions" />
+          <h3 id="nearby-places-label" class="text-sm font-medium text-amber-200">近くの店候補</h3>
+          <div role="group" aria-labelledby="nearby-places-label" class="space-y-2">
+            <div v-for="place in places" :key="place.place_id">
+              <button
+                type="button"
+                :aria-pressed="isSharedPlaceSelected(place.place_id)"
+                class="w-full rounded-md border p-3 text-left transition-colors"
+                :class="isSharedPlaceSelected(place.place_id) ? 'border-amber-500 bg-amber-950/60' : 'border-stone-600 bg-stone-700 hover:border-amber-700 hover:bg-stone-600'"
+                @click="toggleSharedPlace(place.place_id)"
+              >
+                <span class="block font-medium text-amber-100">{{ place.display_name }}</span>
+                <span class="block text-xs text-stone-300">{{ place.formatted_address }}</span>
+              </button>
+              <GoogleAttributions :attributions="place.attributions" />
+            </div>
           </div>
+          <p class="text-xs text-stone-400">店を選ぶと未保存の写真すべてに適用されます。記録に残す店名は各カードで入力してください。</p>
         </div>
 
         <button v-if="readyItems.length >= 2" type="button" class="rounded-md border border-amber-700 bg-stone-700 px-3 py-2 text-xs text-amber-100 hover:bg-stone-600" @click="applyFirstStoreToAllCards">

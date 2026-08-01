@@ -5,7 +5,12 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { computed, defineComponent, reactive, ref } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ImageLightbox from '~/components/ImageLightbox.vue'
-import { copyStoreToPendingItems, type DrinkLogBatchItem } from '~/composables/useDrinkLogBatch'
+import {
+  copyStoreToPendingItems,
+  isPlaceSelectedForPendingItems,
+  setPlaceOnPendingItems,
+  type DrinkLogBatchItem,
+} from '~/composables/useDrinkLogBatch'
 import { buildDrinkLogPayload, candidateIndexAfterBrandEdit, type DrinkLogCandidate, type PlaceCandidate } from '~/composables/useDrinkLogs'
 import LogsNewPage from '~/pages/logs/new.vue'
 import { SERVING_STYLES } from '~/types/whiskey'
@@ -140,6 +145,11 @@ const renderLogPage = (options: {
       places.value.find(place => place.place_id === item.placeId) || null
     )
     const selectedPlaceAttributions = (item: ReturnType<typeof batchItem>) => selectedPlaceFor(item)?.attributions || []
+    // Use the page's real helpers rather than copies, so drift is caught here.
+    const isSharedPlaceSelected = (placeId: string) => isPlaceSelectedForPendingItems(items.value, placeId)
+    const toggleSharedPlace = (placeId: string) => {
+      setPlaceOnPendingItems(items.value, isSharedPlaceSelected(placeId) ? '' : placeId)
+    }
     // Use the page's real helper rather than a copy, so drift is caught here.
     const applyFirstStoreToAllCards = () => {
       const firstItem = readyItems.value[0]
@@ -169,6 +179,8 @@ const renderLogPage = (options: {
       handleBrandInput,
       selectedPlaceFor,
       selectedPlaceAttributions,
+      isSharedPlaceSelected,
+      toggleSharedPlace,
       applyFirstStoreToAllCards,
       findNearbyPlaces: vi.fn(),
       handleProcessingRetry: vi.fn(),
@@ -333,6 +345,95 @@ describe('logs/new form behavior', () => {
     const item = (wrapper.vm as unknown as { items: ReturnType<typeof batchItem>[] }).items[0]!
     expect(item.placeId).toBe('place-2')
     expect(item.storeName).toBe('記録用の店名')
+  })
+
+  it('applies a nearby-place candidate to every unsaved card', async () => {
+    const places: PlaceCandidate[] = [
+      { place_id: 'place-1', display_name: '候補店A', formatted_address: '東京都A', attributions: [] },
+    ]
+    const wrapper = renderLogPage({ places, itemCount: 2 })
+
+    wrapper.findAll('button').find(button => button.text().includes('候補店A'))!.element.click()
+    await wrapper.vm.$nextTick()
+
+    const items = (wrapper.vm as unknown as { items: ReturnType<typeof batchItem>[] }).items
+    expect(items.map(item => item.placeId)).toEqual(['place-1', 'place-1'])
+  })
+
+  it('clears every unsaved place id when the selected candidate is clicked again', async () => {
+    const places: PlaceCandidate[] = [
+      { place_id: 'place-1', display_name: '候補店A', formatted_address: '東京都A', attributions: [] },
+    ]
+    const wrapper = renderLogPage({ places, itemCount: 2 })
+    const candidateButton = wrapper.findAll('button').find(button => button.text().includes('候補店A'))!
+    const items = (wrapper.vm as unknown as { items: ReturnType<typeof batchItem>[] }).items
+
+    candidateButton.element.click()
+    await wrapper.vm.$nextTick()
+    // Assert the selection landed first: '' is also the initial value, so without
+    // this an inert button would satisfy the final assertion.
+    expect(items.map(item => item.placeId)).toEqual(['place-1', 'place-1'])
+
+    candidateButton.element.click()
+    await wrapper.vm.$nextTick()
+
+    expect(items.map(item => item.placeId)).toEqual(['', ''])
+  })
+
+  it('keeps the Google attributions outside the candidate button', () => {
+    const places: PlaceCandidate[] = [
+      { place_id: 'place-1', display_name: '候補店A', formatted_address: '東京都A', attributions: [] },
+    ]
+    const wrapper = renderLogPage({ places })
+
+    // GoogleAttributions renders links, so nesting it inside the button would be
+    // invalid interactive markup.
+    expect(wrapper.find('button google-attributions-stub').exists()).toBe(false)
+    expect(wrapper.find('google-attributions-stub').exists()).toBe(true)
+  })
+
+  it('exposes the shared candidate selection through aria-pressed', async () => {
+    const places: PlaceCandidate[] = [
+      { place_id: 'place-1', display_name: '候補店A', formatted_address: '東京都A', attributions: [] },
+      { place_id: 'place-2', display_name: '候補店B', formatted_address: '東京都B', attributions: [] },
+    ]
+    const wrapper = renderLogPage({ places, itemCount: 2 })
+    const placeButtons = wrapper.findAll('button').filter(button => button.text().includes('候補店'))
+
+    expect(placeButtons.map(button => button.attributes('aria-pressed'))).toEqual(['false', 'false'])
+    placeButtons[0]!.element.click()
+    await wrapper.vm.$nextTick()
+
+    expect(placeButtons.map(button => button.attributes('aria-pressed'))).toEqual(['true', 'false'])
+  })
+
+  it('does not change a saved card when a nearby-place candidate is clicked', async () => {
+    const places: PlaceCandidate[] = [
+      { place_id: 'place-new', display_name: '候補店A', formatted_address: '東京都A', attributions: [] },
+    ]
+    const wrapper = renderLogPage({ places, itemCount: 2 })
+    const items = (wrapper.vm as unknown as { items: ReturnType<typeof batchItem>[] }).items
+    Object.assign(items[1]!, { placeId: 'place-saved', saveStatus: 'saved' })
+
+    wrapper.findAll('button').find(button => button.text().includes('候補店A'))!.element.click()
+    await wrapper.vm.$nextTick()
+
+    expect(items[0]!.placeId).toBe('place-new')
+    expect(items[1]!.placeId).toBe('place-saved')
+  })
+
+  it('never copies a Google display name into the manual store name', async () => {
+    const places: PlaceCandidate[] = [
+      { place_id: 'place-1', display_name: 'Googleの候補店名', formatted_address: '東京都A', attributions: [] },
+    ]
+    const wrapper = renderLogPage({ places, itemCount: 2 })
+    const items = (wrapper.vm as unknown as { items: ReturnType<typeof batchItem>[] }).items
+    items[0]!.storeName = 'ユーザー入力の店名'
+
+    wrapper.findAll('button').find(button => button.text().includes('Googleの候補店名'))!.element.click()
+    await wrapper.vm.$nextTick()
+
+    expect(items.map(item => item.storeName)).toEqual(['ユーザー入力の店名', ''])
   })
 
   it('copies the first card store fields to the other unsaved cards', async () => {

@@ -93,6 +93,19 @@ export const clearPendingItemPlaceIds = (items: DrinkLogBatchItem[]) => {
   })
 }
 
+/** True when every unsaved card already points at this place. */
+export const isPlaceSelectedForPendingItems = (items: DrinkLogBatchItem[], placeId: string): boolean => {
+  const pendingItems = items.filter(item => item.saveStatus !== 'saved')
+  return pendingItems.length > 0 && pendingItems.every(item => item.placeId === placeId)
+}
+
+/** Sets (or clears, when placeId is '') the place on every unsaved card. */
+export const setPlaceOnPendingItems = (items: DrinkLogBatchItem[], placeId: string): void => {
+  items.forEach(item => {
+    if (item.saveStatus !== 'saved') item.placeId = placeId
+  })
+}
+
 const processingError = (cause: unknown) => {
   if (cause instanceof ImageTooLargeError) return '画像を3.5MB以下にできませんでした。別の画像を選択してください。'
   return normalizeDrinkLogError(cause, '画像の準備または解析に失敗しました。')
