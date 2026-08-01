@@ -24,11 +24,12 @@ export interface DrinkLogBatchItem {
   previewUrl: string
   analysisId: string
   candidates: DrinkLogCandidate[]
-  candidateSelection: string
   selectedCandidateIndex: number | null
   brandText: string
   servingStyle: ServingStyle | ''
   rating: number | null
+  storeName: string
+  placeId: string
   notes: string
   error: string
   saveStatus: BatchSaveStatus
@@ -72,6 +73,25 @@ const createLimiter = (limit: number) => {
   }
 }
 
+/**
+ * Copies one card's store onto the other cards. Saved cards are skipped: their
+ * record is already persisted, so mutating them would misrepresent what was stored.
+ */
+export const copyStoreToPendingItems = (items: DrinkLogBatchItem[], source: DrinkLogBatchItem) => {
+  items.forEach(item => {
+    if (item === source || item.saveStatus === 'saved') return
+    item.storeName = source.storeName
+    item.placeId = source.placeId
+  })
+}
+
+/** Drops place references that no longer belong to the current candidate set. */
+export const clearPendingItemPlaceIds = (items: DrinkLogBatchItem[]) => {
+  items.forEach(item => {
+    if (item.saveStatus !== 'saved') item.placeId = ''
+  })
+}
+
 const processingError = (cause: unknown) => {
   if (cause instanceof ImageTooLargeError) return '画像を3.5MB以下にできませんでした。別の画像を選択してください。'
   return normalizeDrinkLogError(cause, '画像の準備または解析に失敗しました。')
@@ -85,11 +105,12 @@ const newItem = (file: File, id: string): DrinkLogBatchItem => ({
   previewUrl: '',
   analysisId: '',
   candidates: [],
-  candidateSelection: '',
   selectedCandidateIndex: null,
   brandText: '',
   servingStyle: '',
   rating: null,
+  storeName: '',
+  placeId: '',
   notes: '',
   error: '',
   saveStatus: 'idle',
@@ -126,7 +147,6 @@ export const useDrinkLogBatch = (provided?: DrinkLogBatchDependencies) => {
     item.candidates = analysis.candidates || []
     if (item.candidates.length === 1) {
       item.selectedCandidateIndex = 0
-      item.candidateSelection = '0'
       item.brandText = item.candidates[0]?.brand_text || ''
     }
     if (analysis.serving_style && SERVING_STYLES.includes(analysis.serving_style as ServingStyle)) {
@@ -140,7 +160,6 @@ export const useDrinkLogBatch = (provided?: DrinkLogBatchDependencies) => {
     item.uploadProgress = 0
     item.analysisId = ''
     item.candidates = []
-    item.candidateSelection = ''
     item.selectedCandidateIndex = null
     item.brandText = ''
     item.servingStyle = ''
@@ -188,7 +207,7 @@ export const useDrinkLogBatch = (provided?: DrinkLogBatchDependencies) => {
     return { accepted: accepted.length, rejected: Math.max(0, files.length - accepted.length) }
   }
 
-  const saveItem = async (item: DrinkLogBatchItem, storeName: string, placeId: string) => {
+  const saveItem = async (item: DrinkLogBatchItem) => {
     if (!item.analysisId || !item.brandText.trim()) {
       item.saveStatus = 'failed'
       // Multiple bottles are deliberately left unselected, so the required
@@ -207,8 +226,8 @@ export const useDrinkLogBatch = (provided?: DrinkLogBatchDependencies) => {
         candidateIndex: item.selectedCandidateIndex,
         brandText: item.brandText,
         servingStyle: item.servingStyle,
-        storeName,
-        placeId,
+        storeName: item.storeName,
+        placeId: item.placeId,
         notes: item.notes,
         rating: item.rating,
       }))
@@ -222,18 +241,18 @@ export const useDrinkLogBatch = (provided?: DrinkLogBatchDependencies) => {
     }
   }
 
-  const retrySave = (item: DrinkLogBatchItem, storeName: string, placeId: string) => {
+  const retrySave = (item: DrinkLogBatchItem) => {
     if (item.saveStatus === 'saving' || item.saveStatus === 'saved') return Promise.resolve(item.createdLog)
     item.saveStatus = 'saving'
     item.saveError = ''
-    return saveWithLimit(() => saveItem(item, storeName, placeId))
+    return saveWithLimit(() => saveItem(item))
   }
 
-  const savePending = async (storeName: string, placeId: string) => {
+  const savePending = async () => {
     const pending = items.value.filter(item => (
       item.phase === 'ready' && ['idle', 'failed'].includes(item.saveStatus)
     ))
-    const results = await Promise.all(pending.map(item => retrySave(item, storeName, placeId)))
+    const results = await Promise.all(pending.map(item => retrySave(item)))
     return results.filter((log): log is DrinkLog => Boolean(log))
   }
 

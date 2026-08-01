@@ -14,7 +14,7 @@ describe('ImageLightbox', () => {
       props: {
         open: false,
         src: 'blob:selected-image',
-        alt: '1杯目の飲酒記録写真',
+        alt: '1杯目のテイスティング写真',
       },
     })
 
@@ -24,9 +24,9 @@ describe('ImageLightbox', () => {
 
     const dialog = wrapper.get('[role="dialog"]')
     const image = dialog.get('img')
-    expect(dialog.attributes('aria-label')).toBe('1杯目の飲酒記録写真')
+    expect(dialog.attributes('aria-label')).toBe('1杯目のテイスティング写真')
     expect(image.attributes('src')).toBe('blob:selected-image')
-    expect(image.attributes('alt')).toBe('1杯目の飲酒記録写真')
+    expect(image.attributes('alt')).toBe('1杯目のテイスティング写真')
 
     wrapper.unmount()
   })

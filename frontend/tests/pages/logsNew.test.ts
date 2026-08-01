@@ -5,7 +5,8 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { computed, defineComponent, reactive, ref } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ImageLightbox from '~/components/ImageLightbox.vue'
-import { buildDrinkLogPayload, candidateIndexAfterBrandEdit } from '~/composables/useDrinkLogs'
+import { copyStoreToPendingItems, type DrinkLogBatchItem } from '~/composables/useDrinkLogBatch'
+import { buildDrinkLogPayload, candidateIndexAfterBrandEdit, type DrinkLogCandidate, type PlaceCandidate } from '~/composables/useDrinkLogs'
 import LogsNewPage from '~/pages/logs/new.vue'
 import { SERVING_STYLES } from '~/types/whiskey'
 
@@ -86,19 +87,20 @@ const source = readFileSync(resolve(process.cwd(), 'pages/logs/new.vue'), 'utf8'
 const template = source.match(/<template>([\s\S]*)<\/template>/)?.[1]
 if (!template) throw new Error('logs/new.vue template not found')
 
-const batchItem = (candidates: unknown[] = []) => ({
-  id: 'photo-1',
+const batchItem = (candidates: DrinkLogCandidate[] = [], index = 0): DrinkLogBatchItem => ({
+  id: `photo-${index + 1}`,
   file: new File(['photo'], 'photo.jpg', { type: 'image/jpeg' }),
   phase: 'ready',
   uploadProgress: 100,
   previewUrl: 'blob:preview',
   analysisId: 'analysis-1',
   candidates,
-  candidateSelection: '',
-  selectedCandidateIndex: null,
-  brandText: '',
+  selectedCandidateIndex: candidates.length === 1 ? 0 : null,
+  brandText: candidates.length === 1 ? candidates[0]?.brand_text || '' : '',
   servingStyle: '',
   rating: null,
+  storeName: '',
+  placeId: '',
   notes: '',
   error: '',
   saveStatus: 'idle',
@@ -106,15 +108,48 @@ const batchItem = (candidates: unknown[] = []) => ({
   createdLog: null,
 })
 
-const renderLogPage = (options: { pageError?: string, placeError?: string, candidates?: unknown[] } = {}) => mount(defineComponent({
+const renderLogPage = (options: {
+  pageError?: string
+  placeError?: string
+  candidates?: DrinkLogCandidate[]
+  places?: PlaceCandidate[]
+  itemCount?: number
+} = {}) => mount(defineComponent({
   setup: () => {
     const lightbox = reactive({ open: false, src: '', alt: '' })
+    const items = ref(Array.from(
+      { length: options.itemCount || 1 },
+      (_, index) => batchItem(options.candidates || [], index),
+    ))
+    const places = ref(options.places || [])
+    const readyItems = computed(() => items.value.filter(item => item.phase === 'ready'))
+    const selectCandidate = (item: ReturnType<typeof batchItem>, index: number) => {
+      const candidate = item.candidates[index]
+      if (!candidate) return
+      item.selectedCandidateIndex = index
+      item.brandText = candidate.brand_text
+    }
+    const handleBrandInput = (item: ReturnType<typeof batchItem>) => {
+      item.selectedCandidateIndex = candidateIndexAfterBrandEdit(
+        item.candidates,
+        item.selectedCandidateIndex,
+        item.brandText,
+      )
+    }
+    const selectedPlaceFor = (item: ReturnType<typeof batchItem>) => (
+      places.value.find(place => place.place_id === item.placeId) || null
+    )
+    const selectedPlaceAttributions = (item: ReturnType<typeof batchItem>) => selectedPlaceFor(item)?.attributions || []
+    // Use the page's real helper rather than a copy, so drift is caught here.
+    const applyFirstStoreToAllCards = () => {
+      const firstItem = readyItems.value[0]
+      if (!firstItem) return
+      copyStoreToPendingItems(readyItems.value, firstItem)
+    }
     return {
-      items: ref([batchItem(options.candidates || [])]),
-      places: ref([]),
-      selectedPlaceId: ref(''),
-      selectedPlace: computed(() => null),
-      storeName: ref(''),
+      items,
+      places,
+      readyItems,
       pageError: ref(options.pageError || ''),
       selectionNotice: ref(''),
       placeError: ref(options.placeError || ''),
@@ -130,8 +165,11 @@ const renderLogPage = (options: { pageError?: string, placeError?: string, candi
       processingLabels: { queued: '処理中', resizing: '処理中', uploading: '処理中', analyzing: '処理中', ready: '解析完了', failed: '失敗' },
       handleFileSelection: vi.fn(),
       handleSubmit: vi.fn(),
-      handleCandidateSelection: vi.fn(),
-      handleBrandInput: vi.fn(),
+      selectCandidate,
+      handleBrandInput,
+      selectedPlaceFor,
+      selectedPlaceAttributions,
+      applyFirstStoreToAllCards,
       findNearbyPlaces: vi.fn(),
       handleProcessingRetry: vi.fn(),
       handleSaveRetry: vi.fn(),
@@ -212,7 +250,7 @@ describe('logs/new form behavior', () => {
   it('shows the shared manual store fallback when location permission is denied', () => {
     const wrapper = renderLogPage({ placeError: '位置情報を取得できませんでした。店名を手入力して記録できます。' })
     expect(wrapper.text()).toContain('店名を手入力して記録できます。')
-    expect(wrapper.find('#store-name').exists()).toBe(true)
+    expect(wrapper.find('input[id^="store-name-"]').exists()).toBe(true)
   })
 
   it.each([
@@ -224,13 +262,24 @@ describe('logs/new form behavior', () => {
     expect(wrapper.find('input[id^="brand-text-"]').exists()).toBe(true)
   })
 
-  it('asks for manual brand input when analysis returns no candidates', () => {
+  it('shows no candidate control and asks for manual brand input when analysis returns no candidates', () => {
     const wrapper = renderLogPage({ candidates: [] })
     expect(wrapper.text()).toContain('銘柄候補を特定できませんでした。')
     expect(wrapper.get('input[id^="brand-text-"]').attributes('required')).toBeDefined()
+    expect(wrapper.find('select[id^="brand-candidate-"]').exists()).toBe(false)
   })
 
-  it('shows catalog and AI candidate matching labels', () => {
+  it('shows one detected brand in the text field without rendering a candidate select', () => {
+    const wrapper = renderLogPage({
+      candidates: [{ brand_text: 'カリラ 12年', confidence: 0.904, match_source: 'catalog' }],
+    })
+
+    expect(wrapper.find('select[id^="brand-candidate-"]').exists()).toBe(false)
+    expect(wrapper.get<HTMLInputElement>('input[id^="brand-text-"]').element.value).toBe('カリラ 12年')
+    expect(wrapper.text()).toContain('AIの読み取り: カリラ 12年（確度 90%・カタログ一致）')
+  })
+
+  it('renders multiple candidates as chips and clears the selection when the brand is edited', async () => {
     const wrapper = renderLogPage({
       candidates: [
         { brand_text: 'カリラ 12年', confidence: 0.9, match_source: 'catalog' },
@@ -238,12 +287,72 @@ describe('logs/new form behavior', () => {
       ],
     })
 
-    const options = wrapper.findAll('option')
-    expect(options[1].text()).toContain('カタログ一致')
-    expect(options[1].text()).not.toContain('AI読取')
-    expect(options[2].text()).toContain('AI読取')
-    expect(options[2].text()).not.toContain('カタログ一致')
+    const chips = wrapper.findAll('button[aria-pressed]')
+    expect(chips).toHaveLength(2)
+    expect(chips[0]!.text()).toBe('カリラ 12年（90%）')
+    expect(chips[1]!.text()).toBe('山崎（80%）')
     expect(wrapper.text()).toContain('複数のボトルを検出しました。')
+
+    const secondChip = chips[1]!
+    const secondChipElement = secondChip.element as HTMLButtonElement
+    secondChipElement.click()
+    await wrapper.vm.$nextTick()
+    const brandInput = wrapper.get<HTMLInputElement>('input[id^="brand-text-"]')
+    expect(brandInput.element.value).toBe('山崎')
+    expect(secondChip.attributes('aria-pressed')).toBe('true')
+
+    brandInput.element.value = '山崎を手入力で修正'
+    brandInput.element.dispatchEvent(new Event('input', { bubbles: true }))
+    await wrapper.vm.$nextTick()
+    expect(secondChip.attributes('aria-pressed')).toBe('false')
+  })
+
+  it('shows AI-read matching text for a single non-catalog candidate', () => {
+    const wrapper = renderLogPage({
+      candidates: [{ brand_text: '山崎', confidence: 0.8, match_source: 'ai' }],
+    })
+
+    expect(wrapper.text()).toContain('AIの読み取り: 山崎（確度 80%・AI読取）')
+  })
+
+  it('updates the store selection and manual store name on each card', async () => {
+    const places: PlaceCandidate[] = [
+      { place_id: 'place-1', display_name: '候補店A', formatted_address: '東京都A', attributions: [] },
+      { place_id: 'place-2', display_name: '候補店B', formatted_address: '東京都B', attributions: [] },
+    ]
+    const wrapper = renderLogPage({ places })
+
+    const placeSelect = wrapper.get<HTMLSelectElement>('#place-photo-1')
+    placeSelect.element.value = 'place-2'
+    placeSelect.element.dispatchEvent(new Event('change', { bubbles: true }))
+    const storeInput = wrapper.get<HTMLInputElement>('#store-name-photo-1')
+    storeInput.element.value = '記録用の店名'
+    storeInput.element.dispatchEvent(new Event('input', { bubbles: true }))
+    await wrapper.vm.$nextTick()
+
+    const item = (wrapper.vm as unknown as { items: ReturnType<typeof batchItem>[] }).items[0]!
+    expect(item.placeId).toBe('place-2')
+    expect(item.storeName).toBe('記録用の店名')
+  })
+
+  it('copies the first card store fields to the other unsaved cards', async () => {
+    const places: PlaceCandidate[] = [
+      { place_id: 'place-1', display_name: '候補店A', formatted_address: '東京都A', attributions: [] },
+    ]
+    const wrapper = renderLogPage({ places, itemCount: 2 })
+    const placeSelect = wrapper.get<HTMLSelectElement>('#place-photo-1')
+    placeSelect.element.value = 'place-1'
+    placeSelect.element.dispatchEvent(new Event('change', { bubbles: true }))
+    const storeInput = wrapper.get<HTMLInputElement>('#store-name-photo-1')
+    storeInput.element.value = '一杯目の店'
+    storeInput.element.dispatchEvent(new Event('input', { bubbles: true }))
+    await wrapper.vm.$nextTick()
+
+    wrapper.findAll('button').find(button => button.text() === '最初の一杯の店を全カードに適用')!.element.click()
+    await wrapper.vm.$nextTick()
+
+    const items = (wrapper.vm as unknown as { items: ReturnType<typeof batchItem>[] }).items
+    expect(items[1]).toEqual(expect.objectContaining({ placeId: 'place-1', storeName: '一杯目の店' }))
   })
 
   it('opens the selected confirmation-card preview in the lightbox', async () => {
@@ -255,7 +364,7 @@ describe('logs/new form behavior', () => {
     const dialog = wrapper.get('[role="dialog"]')
     const image = dialog.get('img')
     expect(image.attributes('src')).toBe('blob:preview')
-    expect(image.attributes('alt')).toBe('1杯目の飲酒記録写真')
+    expect(image.attributes('alt')).toBe('1杯目のテイスティング写真')
     wrapper.unmount()
   })
 
@@ -308,9 +417,14 @@ describe('logs/new form behavior', () => {
     await flushPromises()
 
     expect(pageMocks.searchPlaces).toHaveBeenCalledWith(35.681236, 139.767125)
-    expect(pageMocks.savePending).toHaveBeenCalledWith('', '')
+    expect(pageMocks.savePending).toHaveBeenCalledWith()
     expect(pageMocks.savePending.mock.calls.flat()).not.toContain(35.681236)
     expect(pageMocks.savePending.mock.calls.flat()).not.toContain(139.767125)
+    const item = (wrapper.vm as unknown as { items: ReturnType<typeof batchItem>[] }).items[0]!
+    expect(item.storeName).toBe('')
+    expect(item.placeId).toBe('')
+    expect(item.storeName).not.toContain('35.681236')
+    expect(item.placeId).not.toContain('139.767125')
     wrapper.unmount()
   })
 })

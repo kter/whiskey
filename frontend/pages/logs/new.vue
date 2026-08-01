@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref } from 'vue'
-import { useDrinkLogBatch, MAX_DRINK_LOG_BATCH_SIZE, type DrinkLogBatchItem } from '~/composables/useDrinkLogBatch'
+import {
+  clearPendingItemPlaceIds,
+  copyStoreToPendingItems,
+  useDrinkLogBatch,
+  MAX_DRINK_LOG_BATCH_SIZE,
+  type DrinkLogBatchItem,
+} from '~/composables/useDrinkLogBatch'
 import { candidateIndexAfterBrandEdit, useDrinkLogs, type PlaceCandidate } from '~/composables/useDrinkLogs'
 import { useGeolocation } from '~/composables/useGeolocation'
 import { SERVING_STYLES, type ServingStyle } from '~/types/whiskey'
@@ -21,8 +27,6 @@ const {
 const { disclosure, requesting: requestingLocation, requestPosition } = useGeolocation()
 
 const places = ref<PlaceCandidate[]>([])
-const selectedPlaceId = ref('')
-const storeName = ref('')
 const pageError = ref('')
 const selectionNotice = ref('')
 const placeError = ref('')
@@ -50,7 +54,7 @@ const processingLabels: Record<DrinkLogBatchItem['phase'], string> = {
   failed: '失敗',
 }
 
-const selectedPlace = computed(() => places.value.find(place => place.place_id === selectedPlaceId.value) || null)
+const readyItems = computed(() => items.value.filter(item => item.phase === 'ready'))
 const canSave = computed(() => (
   items.value.some(item => item.phase === 'ready' && item.saveStatus !== 'saved')
   && !isProcessing.value
@@ -67,16 +71,7 @@ const selectCandidate = (item: DrinkLogBatchItem, index: number) => {
   const candidate = item.candidates[index]
   if (!candidate) return
   item.selectedCandidateIndex = index
-  item.candidateSelection = String(index)
   item.brandText = candidate.brand_text
-}
-
-const handleCandidateSelection = (item: DrinkLogBatchItem) => {
-  if (item.candidateSelection === '') {
-    item.selectedCandidateIndex = null
-    return
-  }
-  selectCandidate(item, Number(item.candidateSelection))
 }
 
 const handleBrandInput = (item: DrinkLogBatchItem) => {
@@ -87,8 +82,20 @@ const handleBrandInput = (item: DrinkLogBatchItem) => {
   )
   if (reconciledIndex === null) {
     item.selectedCandidateIndex = null
-    item.candidateSelection = ''
   }
+}
+
+const selectedPlaceFor = (item: DrinkLogBatchItem) => (
+  places.value.find(place => place.place_id === item.placeId) || null
+)
+const selectedPlaceAttributions = (item: DrinkLogBatchItem) => selectedPlaceFor(item)?.attributions || []
+
+const clearItemPlaceIds = () => clearPendingItemPlaceIds(items.value)
+
+const applyFirstStoreToAllCards = () => {
+  const firstItem = readyItems.value[0]
+  if (!firstItem) return
+  copyStoreToPendingItems(readyItems.value, firstItem)
 }
 
 const handleFileSelection = async (event: Event) => {
@@ -128,12 +135,12 @@ const searchNearbyPlaces = async (position: Coordinates, fromExif = false) => {
 
   try {
     places.value = await searchPlaces(position.lat, position.lng)
-    selectedPlaceId.value = ''
+    clearItemPlaceIds()
     if (fromExif) placeNotice.value = '写真の位置情報から近くの店を検索しました。'
     if (!places.value.length) placeError.value = '近くの店候補が見つかりませんでした。店名を手入力してください。'
   } catch (cause) {
     places.value = []
-    selectedPlaceId.value = ''
+    clearItemPlaceIds()
     placeError.value = errorMessage(cause, '近くの店を検索できませんでした。店名は手入力できます。')
   }
 }
@@ -144,7 +151,7 @@ const findNearbyPlaces = async () => {
   const position = await requestPosition()
   if (!position) {
     places.value = []
-    selectedPlaceId.value = ''
+    clearItemPlaceIds()
     placeError.value = '位置情報を取得できませんでした。店名を手入力して記録できます。'
     return
   }
@@ -169,12 +176,12 @@ const finishSave = async (created: Awaited<ReturnType<typeof savePending>>) => {
 
 const handleSubmit = async () => {
   pageError.value = ''
-  await finishSave(await savePending(storeName.value, selectedPlaceId.value))
+  await finishSave(await savePending())
 }
 
 const handleSaveRetry = async (item: DrinkLogBatchItem) => {
   pageError.value = ''
-  const created = await retrySave(item, storeName.value, selectedPlaceId.value)
+  const created = await retrySave(item)
   await finishSave(created ? [created] : [])
 }
 
@@ -189,7 +196,7 @@ const openLightbox = (src: string, alt: string) => {
 <template>
   <div class="mx-auto max-w-3xl px-4 sm:px-0">
     <div class="mb-6">
-      <p class="text-sm font-medium text-amber-400">フォトファースト飲酒ログ</p>
+      <p class="text-sm font-medium text-amber-400">写真ではじめるテイスティング記録</p>
       <h1 class="mt-1 text-3xl font-semibold text-amber-200">今日の一杯を記録</h1>
       <p class="mt-2 text-sm text-stone-300">写真1枚を1杯として、最大10枚をまとめて記録できます。AIの提案はすべて修正できます。</p>
     </div>
@@ -233,8 +240,8 @@ const openLightbox = (src: string, alt: string) => {
       <section v-if="items.length" class="space-y-4 rounded-lg border border-amber-700 bg-stone-800 p-5 shadow-lg">
         <div class="flex items-center justify-between gap-4">
           <div>
-            <h2 class="text-lg font-medium text-amber-200">全ての記録に共通の店</h2>
-            <p class="mt-1 text-xs text-stone-400">選択した店名と place_id を全カードに適用します。</p>
+            <h2 class="text-lg font-medium text-amber-200">店を探す</h2>
+            <p class="mt-1 text-xs text-stone-400">近くの店を検索して、写真ごとに店を選べます。</p>
           </div>
           <button type="button" :disabled="requestingLocation" class="rounded-md border border-amber-700 bg-stone-700 px-3 py-2 text-xs text-amber-100 hover:bg-stone-600 disabled:opacity-50" @click="findNearbyPlaces">
             {{ requestingLocation ? '位置情報を取得中…' : '近くの店を探す' }}
@@ -245,22 +252,17 @@ const openLightbox = (src: string, alt: string) => {
         <p v-if="placeError" role="status" class="text-sm text-amber-300">{{ placeError }}</p>
 
         <div v-if="places.length" class="space-y-2">
-          <label v-for="place in places" :key="place.place_id" class="block cursor-pointer rounded-md border p-3" :class="selectedPlaceId === place.place_id ? 'border-amber-500 bg-amber-950/50' : 'border-stone-600 bg-stone-700'">
-            <span class="flex gap-3">
-              <input v-model="selectedPlaceId" type="radio" name="place" :value="place.place_id" class="mt-1 border-stone-500 bg-stone-800 text-amber-600" />
-              <span class="min-w-0">
-                <span class="block font-medium text-amber-100">{{ place.display_name }}</span>
-                <span class="block text-xs text-stone-300">{{ place.formatted_address }}</span>
-                <GoogleAttributions :attributions="place.attributions" />
-              </span>
-            </span>
-          </label>
-          <button v-if="selectedPlace" type="button" class="text-xs text-stone-300 underline hover:text-amber-200" @click="selectedPlaceId = ''">店候補の選択を解除</button>
+          <h3 class="text-sm font-medium text-amber-200">近くの店候補</h3>
+          <div v-for="place in places" :key="place.place_id" class="rounded-md border border-stone-600 bg-stone-700 p-3">
+            <span class="block font-medium text-amber-100">{{ place.display_name }}</span>
+            <span class="block text-xs text-stone-300">{{ place.formatted_address }}</span>
+            <GoogleAttributions :attributions="place.attributions" />
+          </div>
         </div>
 
-        <label for="store-name" class="block text-sm text-amber-200">記録に残す店名（任意・自由入力）</label>
-        <input id="store-name" v-model="storeName" type="text" maxlength="200" placeholder="例: いつものバー" class="block w-full rounded-md border-amber-700 bg-stone-700 text-amber-100 placeholder:text-stone-400" />
-        <p class="text-xs text-stone-400">Googleの表示名は保存しません。選んだ店の place_id と、ここに入力した名前だけを保存します。</p>
+        <button v-if="readyItems.length >= 2" type="button" class="rounded-md border border-amber-700 bg-stone-700 px-3 py-2 text-xs text-amber-100 hover:bg-stone-600" @click="applyFirstStoreToAllCards">
+          最初の一杯の店を全カードに適用
+        </button>
       </section>
 
       <section v-for="item in items.filter(entry => entry.phase === 'ready')" :key="`card-${item.id}`" class="space-y-5 rounded-lg border border-amber-700 bg-stone-800 p-5 shadow-lg">
@@ -269,9 +271,9 @@ const openLightbox = (src: string, alt: string) => {
             type="button"
             aria-label="写真を拡大表示"
             class="h-28 w-28 shrink-0 cursor-zoom-in rounded-lg"
-            @click="openLightbox(item.previewUrl, `${items.indexOf(item) + 1}杯目の飲酒記録写真`)"
+            @click="openLightbox(item.previewUrl, `${items.indexOf(item) + 1}杯目のテイスティング写真`)"
           >
-            <img :src="item.previewUrl" :alt="`${items.indexOf(item) + 1}杯目の飲酒記録写真`" class="h-28 w-28 rounded-lg bg-stone-900 object-cover" />
+            <img :src="item.previewUrl" :alt="`${items.indexOf(item) + 1}杯目のテイスティング写真`" class="h-28 w-28 rounded-lg bg-stone-900 object-cover" />
           </button>
           <div>
             <h2 class="text-lg font-medium text-amber-200">{{ items.indexOf(item) + 1 }}杯目の確認</h2>
@@ -282,14 +284,24 @@ const openLightbox = (src: string, alt: string) => {
           </div>
         </div>
 
-        <div>
-          <label :for="`brand-candidate-${item.id}`" class="block text-sm font-medium text-amber-200">AIの銘柄候補</label>
-          <select :id="`brand-candidate-${item.id}`" v-model="item.candidateSelection" :disabled="item.saveStatus === 'saved'" class="mt-2 block w-full rounded-md border-amber-700 bg-stone-700 text-amber-100 disabled:opacity-50" @change="handleCandidateSelection(item)">
-            <option value="">候補を使わず手入力</option>
-            <option v-for="(candidate, candidateIndex) in item.candidates" :key="`${candidate.brand_text}-${candidateIndex}`" :value="String(candidateIndex)" class="bg-stone-700 text-amber-100">
-              {{ candidate.brand_text }}（確度 {{ Math.round(candidate.confidence * 100) }}%・{{ candidate.match_source === 'catalog' ? 'カタログ一致' : 'AI読取' }}）
-            </option>
-          </select>
+        <div v-if="item.candidates.length !== 1">
+          <template v-if="item.candidates.length > 1">
+            <p :id="`candidates-label-${item.id}`" class="block text-sm font-medium text-amber-200">AIが検出した銘柄</p>
+            <div role="group" :aria-labelledby="`candidates-label-${item.id}`" class="mt-2 flex flex-wrap gap-2">
+              <button
+                v-for="(candidate, candidateIndex) in item.candidates"
+                :key="`${candidate.brand_text}-${candidateIndex}`"
+                type="button"
+                :disabled="item.saveStatus === 'saved'"
+                :aria-pressed="item.selectedCandidateIndex === candidateIndex"
+                class="rounded-full border px-3 py-1.5 text-sm disabled:opacity-50"
+                :class="item.selectedCandidateIndex === candidateIndex ? 'border-amber-500 bg-amber-700 text-amber-100' : 'border-stone-500 bg-stone-600 text-amber-300'"
+                @click="selectCandidate(item, candidateIndex)"
+              >
+                {{ candidate.brand_text }}（{{ Math.round(candidate.confidence * 100) }}%）
+              </button>
+            </div>
+          </template>
           <p v-if="item.candidates.length > 1" class="mt-2 rounded-md border border-amber-700 bg-amber-950/60 p-3 text-sm text-amber-200">
             複数のボトルを検出しました。記録する銘柄を選んでください。
           </p>
@@ -301,6 +313,9 @@ const openLightbox = (src: string, alt: string) => {
         <div>
           <label :for="`brand-text-${item.id}`" class="block text-sm font-medium text-amber-200">銘柄名 *</label>
           <input :id="`brand-text-${item.id}`" v-model="item.brandText" :disabled="item.saveStatus === 'saved'" required type="text" maxlength="200" placeholder="例: アードベッグ 10年" class="mt-2 block w-full rounded-md border-amber-700 bg-stone-700 text-amber-100 placeholder:text-stone-400 disabled:opacity-50" @input="handleBrandInput(item)" />
+          <p v-if="item.candidates.length === 1 && item.candidates[0]" class="mt-1 text-xs text-stone-400">
+            AIの読み取り: {{ item.candidates[0].brand_text }}（確度 {{ Math.round(item.candidates[0].confidence * 100) }}%・{{ item.candidates[0].match_source === 'catalog' ? 'カタログ一致' : 'AI読取' }}）
+          </p>
           <p class="mt-1 text-xs text-stone-400">候補の文字を編集すると、手入力の銘柄として保存します。</p>
         </div>
 
@@ -323,6 +338,19 @@ const openLightbox = (src: string, alt: string) => {
             <button v-for="score in 5" :key="score" type="button" :disabled="item.saveStatus === 'saved'" :aria-label="`評価 ${score}`" class="p-1 text-2xl disabled:opacity-50" :class="item.rating && score <= item.rating ? 'text-amber-400' : 'text-stone-500'" @click="item.rating = score">★</button>
             <span class="ml-2 text-sm text-amber-300">{{ item.rating ? `${item.rating} / 5` : '評価なし' }}</span>
           </div>
+        </div>
+
+        <div>
+          <label v-if="places.length" :for="`place-${item.id}`" class="block text-sm font-medium text-amber-200">店（任意）</label>
+          <select v-if="places.length" :id="`place-${item.id}`" v-model="item.placeId" :disabled="item.saveStatus === 'saved'" class="mt-2 block w-full rounded-md border-amber-700 bg-stone-700 text-amber-100 disabled:opacity-50">
+            <option value="">店を選ばない</option>
+            <option v-for="place in places" :key="place.place_id" :value="place.place_id" class="bg-stone-700 text-amber-100">{{ place.display_name }}</option>
+          </select>
+          <GoogleAttributions v-if="selectedPlaceFor(item)" :attributions="selectedPlaceAttributions(item)" />
+
+          <label :for="`store-name-${item.id}`" class="mt-4 block text-sm font-medium text-amber-200">記録に残す店名（任意）</label>
+          <input :id="`store-name-${item.id}`" v-model="item.storeName" :disabled="item.saveStatus === 'saved'" type="text" maxlength="200" placeholder="例: いつものバー" class="mt-2 block w-full rounded-md border-amber-700 bg-stone-700 text-amber-100 placeholder:text-stone-400 disabled:opacity-50" />
+          <p class="mt-1 text-xs text-stone-400">Googleの表示名は保存しません。選んだ店の place_id と、ここに入力した名前だけを保存します。</p>
         </div>
 
         <div>

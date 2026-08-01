@@ -10,7 +10,7 @@ This is a photo-first whiskey drink-log application built with a cost-optimized 
 - **Infrastructure**: AWS CDK (Lambda, API Gateway, S3, CloudFront, Cognito)
 - **Authentication**: AWS Cognito with Google OAuth（フロントは **ID トークン**を送信）
 - **Search**: Multi-language (English/Japanese) whiskey search
-- **Drink Log** 🆕: 写真を撮るだけの飲酒ログ（画像→S3、Bedrock で銘柄/飲み方判別、GPS + Google Places で店名推定、タイムライン）
+- **Drink Log** 🆕: 写真を撮るだけのテイスティング記録（画像→S3、Bedrock で銘柄/飲み方判別、GPS + Google Places で店名推定、履歴表示）
 - **Data**: Rakuten API から Amazon Bedrock（`jp.anthropic.claude-sonnet-4-6`）で抽出したウイスキーデータ
 - **Deployment**: CDK は手動（`infra/scripts/deploy.sh`）、CI はテスト + フロントデプロイ（`main` push、dev のみ）
 - **Cost Savings**: サーバーレス化 + 原子カウンタ/スロットリングで Bedrock・Places・画像ストレージの費用に上界
@@ -101,7 +101,7 @@ curl "https://api.dev.whiskeybar.site/api/whiskeys/search/?q=%E3%83%9C%E3%82%A6%
 - **VPC なし**: 未使用の VPC は削除済み。Lambda は常に VPC 外で実行（NAT Gateway/ALB/EC2/ECS/RDS は不使用）
 - **Lambda**: Serverless compute platform for API（実行時のみ課金）
   - `whiskey-list-dev` / `whiskey-search-dev`: 一覧・多言語検索（手動フィルタ）
-  - `drink-logs-dev`: 飲酒ログ CRUD・presigned URL・画像サニタイズ
+  - `drink-logs-dev`: テイスティング記録 CRUD・presigned URL・画像サニタイズ
   - `drink-log-analyze-dev`: Bedrock で銘柄/飲み方判別（Converse）
   - `drink-log-places-dev`: Google Places 検索・表示時解決
   - `drink-log-reconciler-dev`: 孤児画像/未収束レコードの日次収束
@@ -110,7 +110,7 @@ curl "https://api.dev.whiskeybar.site/api/whiskeys/search/?q=%E3%83%9C%E3%82%A6%
 - **CloudFront**: CDN for global content delivery（転送量従量）
 - **DynamoDB**: NoSQL database - Pay per request（アクセス従量）
   - `WhiskeySearch-dev`: Optimized search with English/Japanese names
-  - `DrinkLogs-dev`: 飲酒ログ（写真・銘柄・店・飲み方。GSI `UserDatetimeIndex`）
+  - `DrinkLogs-dev`: テイスティング記録（写真・銘柄・店・飲み方。GSI `UserDatetimeIndex`）
   - `AppState-dev`: 濫用/コスト防御の原子カウンタ（PK `pk`、TTL 有効）
   - ~~`Users-dev`~~: 廃止（プロフィールは Cognito 属性の読み取り専用表示）
   - ~~`Whiskeys-dev`~~: 廃止（`WhiskeySearch-dev` に統合）

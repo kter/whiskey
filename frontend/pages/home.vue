@@ -7,7 +7,7 @@ const { isAuthenticated } = useAuth()
 <template>
   <div class="mx-auto max-w-3xl px-4 py-10 text-center">
     <p class="mb-3 text-sm font-medium tracking-[0.2em] text-amber-400">
-      フォトファースト飲酒ログ
+      写真ではじめるテイスティング記録
     </p>
     <h1 class="mb-6 text-4xl font-bold text-amber-200 sm:text-5xl">
       今日の一杯を記録

@@ -29,9 +29,9 @@ curl --get --data-urlencode 'q=山崎' \
   http://localhost:8000/api/whiskeys/search
 ```
 
-## 飲酒ログをローカルで動かす
+## テイスティング記録をローカルで動かす
 
-飲酒ログも通常の起動手順で利用できます。
+テイスティング記録も通常の起動手順で利用できます。
 `docker compose up -d`を直接実行する場合は、MinIOのバケット作成が完了してから初期化してください。
 
 ```bash
@@ -93,7 +93,7 @@ make local-down
 
 `make api` は既定で `MOCK_AUTH=1` です。アダプタが固定ユーザー `local-test-user` の ID-token 相当 claims（`aud=local-client`、`token_use=id`）を API Gateway イベントへ注入します。Bearer token は不要です。
 
-飲酒ログ API は固定ユーザーの記録として利用できます。
+テイスティング記録 API は固定ユーザーの記録として利用できます。
 
 フロントエンドのローカル設定例です。
 

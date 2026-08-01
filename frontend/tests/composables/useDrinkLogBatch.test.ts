@@ -1,5 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { useDrinkLogBatch, type DrinkLogBatchDependencies } from '~/composables/useDrinkLogBatch'
+import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
+import {
+  clearPendingItemPlaceIds,
+  copyStoreToPendingItems,
+  useDrinkLogBatch,
+  type DrinkLogBatchDependencies,
+  type DrinkLogBatchItem,
+} from '~/composables/useDrinkLogBatch'
 import type { CreateDrinkLogPayload, DrinkLog, DrinkLogAnalysis } from '~/composables/useDrinkLogs'
 
 const makeLog = (index: number): DrinkLog => ({
@@ -46,7 +52,11 @@ describe('useDrinkLogBatch', () => {
     const files = Array.from({ length: 4 }, (_, index) => new File(['photo'], `${index}.jpg`, { type: 'image/jpeg' }))
 
     await batch.processFiles(files)
-    const created = await batch.savePending('共通店', 'place-1')
+    batch.items.value.forEach(item => {
+      item.storeName = '共通店'
+      item.placeId = 'place-1'
+    })
+    const created = await batch.savePending()
 
     expect(dependencies.resizeImage).toHaveBeenCalledTimes(4)
     expect(dependencies.getUploadUrl).toHaveBeenCalledTimes(4)
@@ -58,6 +68,35 @@ describe('useDrinkLogBatch', () => {
     })))
     expect(created).toHaveLength(4)
     expect(batch.allSaved.value).toBe(true)
+  })
+
+  it('saves each item with its own store name and place id', async () => {
+    const dependencies = makeDependencies()
+    const batch = useDrinkLogBatch(dependencies)
+    await batch.processFiles([
+      new File(['first'], 'first.jpg'),
+      new File(['second'], 'second.jpg'),
+    ])
+    Object.assign(batch.items.value[0]!, { storeName: '一軒目', placeId: 'place-first' })
+    Object.assign(batch.items.value[1]!, { storeName: '二軒目', placeId: 'place-second' })
+
+    await batch.savePending()
+
+    expect(dependencies.createLog).toHaveBeenCalledTimes(2)
+    expect(dependencies.createLog.mock.calls.map(([payload]) => payload.store)).toEqual([
+      { name: '一軒目', place_id: 'place-first' },
+      { name: '二軒目', place_id: 'place-second' },
+    ])
+  })
+
+  it('omits store from the payload when both item store fields are empty', async () => {
+    const dependencies = makeDependencies()
+    const batch = useDrinkLogBatch(dependencies)
+    await batch.processFiles([new File(['photo'], 'no-store.jpg')])
+
+    await batch.savePending()
+
+    expect(dependencies.createLog.mock.calls[0]?.[0]).not.toHaveProperty('store')
   })
 
   it('saves degraded analysis with a manually entered brand', async () => {
@@ -72,7 +111,7 @@ describe('useDrinkLogBatch', () => {
     await batch.processFiles([new File(['photo'], 'manual.jpg')])
     batch.items.value[0]!.brandText = '手入力銘柄'
 
-    await batch.savePending('', '')
+    await batch.savePending()
 
     expect(dependencies.createLog).toHaveBeenCalledWith({
       analysis_id: 'analysis-degraded',
@@ -99,7 +138,8 @@ describe('useDrinkLogBatch', () => {
     const item = batch.items.value[0]!
     expect(item.candidates).toHaveLength(2)
     expect(item.selectedCandidateIndex).toBeNull()
-    expect(item.candidateSelection).toBe('')
+    expect(item).not.toHaveProperty('candidateSelection')
+    expectTypeOf<'candidateSelection' extends keyof DrinkLogBatchItem ? true : false>().toEqualTypeOf<false>()
     expect(item.brandText).toBe('')
   })
 
@@ -138,7 +178,7 @@ describe('useDrinkLogBatch', () => {
     const files = Array.from({ length: 7 }, (_, index) => new File(['photo'], `${index}.jpg`))
 
     await batch.processFiles(files)
-    await batch.savePending('', '')
+    await batch.savePending()
 
     expect(processingMaximum).toBe(2)
     expect(saveMaximum).toBe(2)
@@ -156,13 +196,13 @@ describe('useDrinkLogBatch', () => {
       new File(['photo'], 'two.jpg'),
     ])
 
-    const firstAttempt = await batch.savePending('', '')
+    const firstAttempt = await batch.savePending()
 
     expect(firstAttempt).toHaveLength(1)
     expect(batch.items.value.map(item => item.saveStatus).sort()).toEqual(['failed', 'saved'])
     expect(batch.items.value.find(item => item.saveStatus === 'failed')?.saveError).toContain('本日の上限')
 
-    const retry = await batch.savePending('', '')
+    const retry = await batch.savePending()
 
     expect(retry).toHaveLength(1)
     expect(dependencies.createLog).toHaveBeenCalledTimes(3)
@@ -178,7 +218,7 @@ describe('useDrinkLogBatch', () => {
     const batch = useDrinkLogBatch(dependencies)
     await batch.processFiles([new File(['photo'], 'one.jpg')])
 
-    await Promise.all([batch.savePending('', ''), batch.savePending('', '')])
+    await Promise.all([batch.savePending(), batch.savePending()])
 
     expect(dependencies.createLog).toHaveBeenCalledTimes(1)
   })
@@ -192,7 +232,7 @@ describe('useDrinkLogBatch', () => {
 
     expect(batch.items.value.map(item => item.phase).sort()).toEqual(['failed', 'ready'])
     expect(batch.items.value.find(item => item.phase === 'failed')?.error).toBe('解析失敗')
-    await batch.savePending('', '')
+    await batch.savePending()
     expect(dependencies.createLog).toHaveBeenCalledTimes(1)
 
     const failed = batch.items.value.find(item => item.phase === 'failed')
@@ -214,6 +254,8 @@ describe('useDrinkLogBatch', () => {
     await batch.processFiles([new File(['p'], 'a.jpg', { type: 'image/jpeg' })])
     const item = batch.items.value[0]
     expect(item.phase).toBe('failed')
+    item.storeName = '再解析前に選んだ店'
+    item.placeId = 'place-before-retry'
 
     // Two synchronous retry clicks in the same frame must trigger only one reprocess.
     await Promise.all([batch.retryProcessing(item), batch.retryProcessing(item)])
@@ -221,6 +263,8 @@ describe('useDrinkLogBatch', () => {
     expect(dependencies.resizeImage).toHaveBeenCalledTimes(2) // 1 initial + 1 retry, not 3
     expect(analyzeCalls).toBe(2)
     expect(item.phase).toBe('ready')
+    expect(item.storeName).toBe('再解析前に選んだ店')
+    expect(item.placeId).toBe('place-before-retry')
   })
 })
 
@@ -241,7 +285,7 @@ describe('useDrinkLogBatch save validation', () => {
     await batch.processFiles([new File(['photo'], 'multi.jpg')])
     const item = batch.items.value[0]!
 
-    await batch.savePending('', '')
+    await batch.savePending()
 
     expect(item.saveError).toBe('検出された銘柄から1つ選んでください。')
   })
@@ -258,8 +302,49 @@ describe('useDrinkLogBatch save validation', () => {
     await batch.processFiles([new File(['photo'], 'none.jpg')])
     const item = batch.items.value[0]!
 
-    await batch.savePending('', '')
+    await batch.savePending()
 
     expect(item.saveError).toBe('銘柄名を入力してください。')
+  })
+})
+
+describe('per-card store helpers', () => {
+  const storeItem = (overrides: Partial<DrinkLogBatchItem> = {}) => ({
+    storeName: '',
+    placeId: '',
+    saveStatus: 'idle' as DrinkLogBatchItem['saveStatus'],
+    ...overrides,
+  }) as DrinkLogBatchItem
+
+  it('copies the source store onto the other pending cards', () => {
+    const source = storeItem({ storeName: 'いつものバー', placeId: 'place-1' })
+    const other = storeItem()
+    const items = [source, other]
+
+    copyStoreToPendingItems(items, source)
+
+    expect(other.storeName).toBe('いつものバー')
+    expect(other.placeId).toBe('place-1')
+  })
+
+  it('never overwrites a card that is already saved', () => {
+    const source = storeItem({ storeName: '2軒目', placeId: 'place-2' })
+    const saved = storeItem({ storeName: '1軒目', placeId: 'place-1', saveStatus: 'saved' })
+
+    copyStoreToPendingItems([source, saved], source)
+
+    expect(saved.storeName).toBe('1軒目')
+    expect(saved.placeId).toBe('place-1')
+  })
+
+  it('clears place ids on pending cards only, and keeps the typed store name', () => {
+    const pending = storeItem({ storeName: '手入力の店', placeId: 'stale-place' })
+    const saved = storeItem({ storeName: '保存済みの店', placeId: 'place-1', saveStatus: 'saved' })
+
+    clearPendingItemPlaceIds([pending, saved])
+
+    expect(pending.placeId).toBe('')
+    expect(pending.storeName).toBe('手入力の店')
+    expect(saved.placeId).toBe('place-1')
   })
 })

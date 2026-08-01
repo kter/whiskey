@@ -22,7 +22,7 @@ useHead({ title: 'プライバシーポリシー | Whiskey Log' })
       <section>
         <h2 class="text-xl font-medium text-amber-200">3. 画像の保存と一時保持</h2>
         <p class="mt-2">アップロード直後の生画像は、処理のためS3の<code class="rounded bg-stone-800 px-1.5 py-0.5 text-amber-200">tmp/</code>領域に一時保持され、2日後に失効処理の対象になります。物理削除は非同期で行われるため、失効時刻と実際の削除時刻は一致しない場合があります。</p>
-        <p class="mt-2">保存した飲酒ログ画像はS3の<code class="rounded bg-stone-800 px-1.5 py-0.5 text-amber-200">logs/</code>領域へプライベート保存し、認証・認可を確認したうえで期限付きのpresigned URLを発行して表示します。</p>
+        <p class="mt-2">保存したテイスティング記録の画像はS3の<code class="rounded bg-stone-800 px-1.5 py-0.5 text-amber-200">logs/</code>領域へプライベート保存し、認証・認可を確認したうえで期限付きのpresigned URLを発行して表示します。</p>
       </section>
 
       <section>
