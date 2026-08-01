@@ -11,7 +11,7 @@ AWS CDK (TypeScript) を使用したウィスキーアプリケーションの�
 - **Lambda**: whiskeys-search/list、drink-logs、drink-log-analyze、drink-log-places、drink-log-reconciler（VPC 外実行、VPC なし）
 - **Cognito**: ユーザープール + アプリクライアント（Google OAuth）
 - **S3**:
-  - 飲酒ログ画像バケット（presigned URL、`tmp/` は2日ライフサイクル、CORS 設定済み）
+  - テイスティング記録の画像バケット（presigned URL、`tmp/` は2日ライフサイクル、CORS 設定済み）
   - Nuxt.js SPA 用 Web ホスティングバケット
 - **CloudFront**: SPA 配信用 CDN（ResponseHeadersPolicy / HSTS）
 - **DynamoDB**:

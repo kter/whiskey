@@ -119,7 +119,7 @@ onBeforeUnmount(() => sentinelObserver?.disconnect())
     <header class="flex flex-wrap items-end justify-between gap-4">
       <div>
         <p class="text-sm font-medium text-amber-400">あなたの一杯</p>
-        <h1 class="mt-1 text-3xl font-semibold text-amber-200">飲酒タイムライン</h1>
+        <h1 class="mt-1 text-3xl font-semibold text-amber-200">テイスティング履歴</h1>
       </div>
       <NuxtLink to="/logs/new" class="rounded-md border border-amber-700 bg-amber-800 px-4 py-2 font-medium text-amber-100 hover:bg-amber-700">
         一杯を記録

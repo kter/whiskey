@@ -1,7 +1,7 @@
 # Whiskey Log
 
-**写真を撮るだけの飲酒ログ**に一本化したウイスキー記録アプリケーション。
-画像から銘柄と飲み方をAIが判別し、位置情報から店名候補を提案して、タイムラインで振り返れる。
+**写真を撮るだけのテイスティング記録**に一本化したウイスキー記録アプリケーション。
+画像から銘柄と飲み方をAIが判別し、位置情報から店名候補を提案して、履歴で振り返れる。
 銘柄の英語・日本語検索も備えた、費用最適化されたサーバーレス構成。
 
 ## 🏗️ アーキテクチャ
@@ -30,8 +30,8 @@
 
 ### 主要機能
 - **多言語ウイスキー検索**: 楽天市場API + Amazon Bedrock で抽出したデータを英語/日本語で検索
-- **フォトファースト飲酒ログ**: 写真アップロード → Bedrock で銘柄・飲み方を自動判別 →
-  GPS + Google Places で店名候補を提案 → タイムラインで閲覧・編集・削除
+- **写真ではじめるテイスティング記録**: 写真アップロード → Bedrock で銘柄・飲み方を自動判別 →
+  GPS + Google Places で店名候補を提案 → 履歴で閲覧・編集・削除
 - **認証**: AWS Cognito（メール/パスワード + Google OAuth）
 
 ### ドメイン構成
@@ -57,7 +57,7 @@
 | テーブル | 用途 | 主なキー / GSI |
 |----------|------|----------------|
 | `WhiskeySearch-{env}` | ウイスキー検索データ（英語/日本語名） | PK `id` / `NameIndex` |
-| `DrinkLogs-{env}` | 飲酒ログ（写真・銘柄・店・飲み方） | PK `id` / `UserDatetimeIndex`(user_id,datetime) |
+| `DrinkLogs-{env}` | テイスティング記録（写真・銘柄・店・飲み方） | PK `id` / `UserDatetimeIndex`(user_id,datetime) |
 | `AppState-{env}` | 濫用/コスト防御の原子カウンタ | PK `pk`（TTL 有効） |
 
 > `Users` テーブルは廃止（プロフィールは Cognito 属性の読み取り専用表示）。
@@ -79,7 +79,7 @@
 |------|------|
 | `whiskey-search-{env}` | 多言語検索（手動フィルタ + ページネーション） |
 | `whiskey-list-{env}` | ウイスキー一覧 |
-| `drink-logs-{env}` | 飲酒ログ CRUD・presigned URL・画像サニタイズ |
+| `drink-logs-{env}` | テイスティング記録 CRUD・presigned URL・画像サニタイズ |
 | `drink-log-analyze-{env}` | Bedrock で銘柄/飲み方判別（Converse） |
 | `drink-log-places-{env}` | Google Places 検索・表示時解決 |
 | `drink-log-reconciler-{env}` | 孤児画像・未収束レコードの日次収束 |
@@ -89,7 +89,7 @@
 - **AWS Cognito + Amplify**（SRP / Google OAuth code flow、`USER_PASSWORD_AUTH` 無効、ユーザー存在秘匿）
 - **トークン**: API Gateway の Cognito オーソライザー検証に合わせ、フロントは **ID トークン**を送信
   （`aud` == クライアントID、`token_use == 'id'` を多層で検証）
-- 公開読み取り（銘柄一覧・検索）は認証不要、飲酒ログは要認証
+- 公開読み取り（銘柄一覧・検索）は認証不要、テイスティング記録は要認証
 
 ## 🚀 デプロイ
 
@@ -149,7 +149,7 @@ NUXT_PUBLIC_ENVIRONMENT=dev
 
 ```
 whiskey/
-├── frontend/            # Nuxt.js SPA（pages/logs で飲酒ログ、composables で API クライアント）
+├── frontend/            # Nuxt.js SPA（pages/logs でテイスティング記録、composables で API クライアント）
 ├── lambda/              # Python Lambda 群
 │   ├── whiskeys-search/ whiskeys-list/
 │   ├── drink-logs/      # CRUD + reconciler.py
