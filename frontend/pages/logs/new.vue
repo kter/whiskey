@@ -270,8 +270,14 @@ const openLightbox = (src: string, alt: string) => {
                 :class="isSharedPlaceSelected(place.place_id) ? 'border-amber-500 bg-amber-950/60' : 'border-stone-600 bg-stone-700 hover:border-amber-700 hover:bg-stone-600'"
                 @click="toggleSharedPlace(place.place_id)"
               >
-                <span class="block font-medium text-amber-100">{{ place.display_name }}</span>
-                <span class="block text-xs text-stone-300">{{ place.formatted_address }}</span>
+                <span class="flex items-center gap-2">
+                  <!-- The mark carries the selected state on its own: colour alone is
+                       unreliable, and dark-mode extensions flatten it away entirely. -->
+                  <span aria-hidden="true" class="shrink-0 text-sm" :class="isSharedPlaceSelected(place.place_id) ? 'text-amber-300' : 'text-stone-500'">{{ isSharedPlaceSelected(place.place_id) ? '✓' : '○' }}</span>
+                  <span class="block font-medium text-amber-100">{{ place.display_name }}</span>
+                  <span v-if="isSharedPlaceSelected(place.place_id)" class="ml-auto shrink-0 rounded border border-amber-500 px-2 py-0.5 text-xs text-amber-200">選択中</span>
+                </span>
+                <span class="mt-1 block pl-6 text-xs text-stone-300">{{ place.formatted_address }}</span>
               </button>
               <GoogleAttributions :attributions="place.attributions" />
             </div>

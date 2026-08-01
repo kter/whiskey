@@ -407,6 +407,25 @@ describe('logs/new form behavior', () => {
     expect(placeButtons.map(button => button.attributes('aria-pressed'))).toEqual(['true', 'false'])
   })
 
+  it('marks the selected candidate without relying on colour alone', async () => {
+    const places: PlaceCandidate[] = [
+      { place_id: 'place-1', display_name: '候補店A', formatted_address: '東京都A', attributions: [] },
+      { place_id: 'place-2', display_name: '候補店B', formatted_address: '東京都B', attributions: [] },
+    ]
+    const wrapper = renderLogPage({ places, itemCount: 2 })
+    const placeButtons = wrapper.findAll('button').filter(button => button.text().includes('候補店'))
+
+    expect(placeButtons.filter(button => button.text().includes('選択中'))).toHaveLength(0)
+    placeButtons[0]!.element.click()
+    await wrapper.vm.$nextTick()
+
+    // Dark-mode extensions flatten the selected background, so the state has to be
+    // readable from the text/mark rather than the colour.
+    expect(placeButtons[0]!.text()).toContain('選択中')
+    expect(placeButtons[0]!.text()).toContain('✓')
+    expect(placeButtons[1]!.text()).not.toContain('選択中')
+  })
+
   it('does not change a saved card when a nearby-place candidate is clicked', async () => {
     const places: PlaceCandidate[] = [
       { place_id: 'place-new', display_name: '候補店A', formatted_address: '東京都A', attributions: [] },
