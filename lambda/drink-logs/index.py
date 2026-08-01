@@ -51,7 +51,7 @@ CONTENT_TYPES = {
     "image/webp": ("webp", "webp"),
 }
 UPDATE_FIELDS = {"brand_text", "store", "notes", "rating", "serving_style"}
-CREATE_FIELDS = {"analysis_id", "candidate_index"} | UPDATE_FIELDS
+CREATE_FIELDS = {"analysis_id", "candidate_index", "datetime"} | UPDATE_FIELDS
 # Strip internal bookkeeping and raw bucket-key structure from API responses.
 # Clients receive a presigned `image_url` instead of the raw S3 keys; the quota
 # and delete-lifecycle fields are server-side reconciliation state only.
@@ -72,6 +72,9 @@ PRESIGNED_GET_SECONDS = 900
 NAMESPACE_DRINKLOG = uuid.UUID("7df1920f-5929-51ee-9860-164c1d4bc388")
 UUID_TEXT = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}"
 ANALYSIS_ID_RE = re.compile(rf"^(?:ai-result:([^:]+):)?({UUID_TEXT})$")
+RFC3339_WITH_OFFSET_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$"
+)
 
 
 class ValidationError(ValueError):
@@ -112,7 +115,28 @@ def _utc_now() -> datetime:
 
 
 def _rfc3339(value: datetime) -> str:
-    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    return (
+        value.astimezone(timezone.utc)
+        .isoformat(timespec="milliseconds")
+        .replace("+00:00", "Z")
+    )
+
+
+def _validate_create_datetime(value: Any) -> str | None:
+    if not isinstance(value, str) or not RFC3339_WITH_OFFSET_RE.fullmatch(value):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.utcoffset() is None:
+        return None
+    normalized = parsed.astimezone(timezone.utc)
+    if normalized < datetime(2000, 1, 1, tzinfo=timezone.utc):
+        return None
+    if normalized > _utc_now() + timedelta(minutes=5):
+        return None
+    return _rfc3339(normalized)
 
 
 def _request_id(event: Mapping[str, Any], context: Any) -> str:
@@ -181,6 +205,14 @@ def validate_create_input(data: Mapping[str, Any]) -> dict[str, Any]:
     ):
         errors["candidate_index"] = "Must be a non-negative integer"
 
+    validated_datetime = None
+    if "datetime" in data:
+        validated_datetime = _validate_create_datetime(data["datetime"])
+        if validated_datetime is None:
+            errors["datetime"] = (
+                "Must be RFC3339 with an offset or Z and between 2000-01-01 and 5 minutes from now"
+            )
+
     mutable_input = {field: data[field] for field in UPDATE_FIELDS if field in data}
     validated_mutable: dict[str, Any] = {}
     if mutable_input:
@@ -193,6 +225,8 @@ def validate_create_input(data: Mapping[str, Any]) -> dict[str, Any]:
     validated = {"analysis_id": analysis_id, **validated_mutable}
     if "candidate_index" in data:
         validated["candidate_index"] = candidate_index
+    if validated_datetime is not None:
+        validated["datetime"] = validated_datetime
     return validated
 
 
@@ -582,7 +616,7 @@ def _prepare_initial_record(
         "id": derive_drink_log_id(user_id, upload_uuid),
         "user_id": user_id,
         "status": "pending",
-        "datetime": now,
+        "datetime": (overrides or {}).get("datetime", now),
         "tmp_s3_key": s3_key,
         "tmp_etag": etag,
         "content_type": content_type,

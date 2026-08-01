@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
+import { ApiError } from '~/composables/useApi'
 import {
   clearPendingItemPlaceIds,
   copyStoreToPendingItems,
@@ -24,6 +25,7 @@ const makeDependencies = () => {
   let uploadSequence = 0
   let createSequence = 0
   return {
+    readExifCapturedAt: vi.fn(async (_file: File): Promise<string | null> => null),
     resizeImage: vi.fn(async () => ({ blob: new Blob(['jpeg'], { type: 'image/jpeg' }), contentType: 'image/jpeg' })),
     getUploadUrl: vi.fn(async (_contentType: string) => ({ upload_url: 'https://upload.test', fields: {}, s3_key: `photo-${++uploadSequence}` })),
     uploadToS3: vi.fn(async (_url, _fields, _blob, onProgress) => onProgress?.(100)),
@@ -99,6 +101,57 @@ describe('useDrinkLogBatch', () => {
     await batch.savePending()
 
     expect(dependencies.createLog.mock.calls[0]?.[0]).not.toHaveProperty('store')
+  })
+
+  it('reads capture time from the original file and includes it when saving', async () => {
+    const dependencies = makeDependencies()
+    dependencies.readExifCapturedAt.mockResolvedValue('2026-08-01T21:30:00+09:00')
+    const batch = useDrinkLogBatch(dependencies)
+    const original = new File(['original-with-exif'], 'captured.jpg', { type: 'image/jpeg' })
+
+    await batch.processFiles([original])
+    await batch.savePending()
+
+    expect(dependencies.readExifCapturedAt).toHaveBeenCalledWith(original)
+    expect(dependencies.createLog).toHaveBeenCalledWith(expect.objectContaining({
+      datetime: '2026-08-01T21:30:00+09:00',
+    }))
+  })
+
+  it('retries once without the capture time when the server rejects it', async () => {
+    const dependencies = makeDependencies()
+    dependencies.readExifCapturedAt.mockResolvedValue('2126-08-01T21:30:00+09:00')
+    // A device clock running ahead of the server produces a 400 that resending
+    // the same payload could never clear.
+    dependencies.createLog.mockRejectedValueOnce(
+      new ApiError('Validation failed', 400, { error: 'Validation failed', fields: { datetime: 'Must be RFC3339' } }),
+    )
+    const batch = useDrinkLogBatch(dependencies)
+
+    await batch.processFiles([new File(['photo'], 'skewed.jpg', { type: 'image/jpeg' })])
+    await batch.savePending()
+
+    expect(dependencies.createLog).toHaveBeenCalledTimes(2)
+    expect(dependencies.createLog.mock.calls[0]?.[0]).toHaveProperty('datetime')
+    expect(dependencies.createLog.mock.calls[1]?.[0]).not.toHaveProperty('datetime')
+    expect(batch.items.value[0]?.saveStatus).toBe('saved')
+    expect(batch.items.value[0]?.capturedAt).toBeNull()
+  })
+
+  it('does not retry a save failure unrelated to the capture time', async () => {
+    const dependencies = makeDependencies()
+    dependencies.readExifCapturedAt.mockResolvedValue('2026-08-01T21:30:00+09:00')
+    dependencies.createLog.mockRejectedValueOnce(
+      new ApiError('Validation failed', 400, { error: 'Validation failed', fields: { brand_text: 'Field is required' } }),
+    )
+    const batch = useDrinkLogBatch(dependencies)
+
+    await batch.processFiles([new File(['photo'], 'invalid.jpg', { type: 'image/jpeg' })])
+    await batch.savePending()
+
+    expect(dependencies.createLog).toHaveBeenCalledTimes(1)
+    expect(batch.items.value[0]?.saveStatus).toBe('failed')
+    expect(batch.items.value[0]?.capturedAt).toBe('2026-08-01T21:30:00+09:00')
   })
 
   it('saves degraded analysis with a manually entered brand', async () => {

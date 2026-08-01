@@ -46,4 +46,12 @@ describe('log detail editing and deletion', () => {
     expect(source).toContain('lightbox.src = log.value.image_url')
     expect(source).toContain('<ImageLightbox v-model:open="lightbox.open"')
   })
+
+  it('omits the record-information toggle and status field', () => {
+    expect(source).not.toContain('<summary class="cursor-pointer text-stone-300">記録情報</summary>')
+    expect(source).not.toContain('<dt class="text-xs uppercase tracking-wide text-stone-400">状態</dt>')
+    expect(source).not.toContain('log.created_at')
+    expect(source).not.toContain('log.updated_at')
+    expect(source).not.toContain('JSON.stringify(log.ai')
+  })
 })

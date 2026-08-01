@@ -98,6 +98,13 @@ Resolves an owned log's optional Place ID for display without persisting a Googl
 
 Creates a drink log and moves the sanitized image from `tmp/` to `logs/`.
 
+The request may include `datetime` as an RFC 3339 timestamp with an explicit
+UTC offset or `Z` (for example, `2026-08-01T21:30:00+09:00`). It must not be
+earlier than `2000-01-01T00:00:00Z` or later than five minutes after the server's
+current time. The server normalizes an accepted value to UTC; when omitted, the
+server's processing time is used. `datetime` is create-only and is not accepted
+by `PUT /api/drink-logs/{id}`.
+
 ### `GET /api/drink-logs?limit=20&next_token=...&brand=...&store=...&place_id=...`
 
 Returns the authenticated user's timeline. `brand`, `store`, and `place_id` are optional filters.

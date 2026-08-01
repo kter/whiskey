@@ -12,6 +12,7 @@ import {
 import { candidateIndexAfterBrandEdit, useDrinkLogs, type PlaceCandidate } from '~/composables/useDrinkLogs'
 import { useGeolocation } from '~/composables/useGeolocation'
 import { SERVING_STYLES, type ServingStyle } from '~/types/whiskey'
+import { formatLocalLogDate, formatLocalLogTime } from '~/utils/drinkLogs'
 import { readExifGps, type Coordinates } from '~/utils/exifLocation'
 
 const { searchPlaces, upsertLogs } = useDrinkLogs()
@@ -279,7 +280,7 @@ const openLightbox = (src: string, alt: string) => {
                 </span>
                 <span class="mt-1 block pl-6 text-xs text-stone-300">{{ place.formatted_address }}</span>
               </button>
-              <GoogleAttributions :attributions="place.attributions" />
+              <GoogleAttributions :attributions="place.attributions" :query="place.display_name" />
             </div>
           </div>
           <p class="text-xs text-stone-400">店を選ぶと未保存の写真すべてに適用されます。記録に残す店名は各カードで入力してください。</p>
@@ -302,7 +303,10 @@ const openLightbox = (src: string, alt: string) => {
           </button>
           <div>
             <h2 class="text-lg font-medium text-amber-200">{{ items.indexOf(item) + 1 }}杯目の確認</h2>
-            <p class="mt-1 text-xs text-stone-400">記録日時: 今（保存時刻）</p>
+            <p v-if="item.capturedAt" class="mt-1 text-xs text-stone-400">
+              撮影日時: {{ formatLocalLogDate(item.capturedAt) }} {{ formatLocalLogTime(item.capturedAt) }}
+            </p>
+            <p v-else class="mt-1 text-xs text-stone-400">記録日時: 保存時刻</p>
             <p v-if="item.saveStatus === 'saving'" class="mt-2 text-sm text-amber-300">保存中…</p>
             <p v-else-if="item.saveStatus === 'saved'" class="mt-2 text-sm text-emerald-300">保存完了</p>
             <p v-else-if="item.saveStatus === 'failed'" class="mt-2 text-sm text-red-200">保存失敗</p>
@@ -371,7 +375,11 @@ const openLightbox = (src: string, alt: string) => {
             <option value="">店を選ばない</option>
             <option v-for="place in places" :key="place.place_id" :value="place.place_id" class="bg-stone-700 text-amber-100">{{ place.display_name }}</option>
           </select>
-          <GoogleAttributions v-if="selectedPlaceFor(item)" :attributions="selectedPlaceAttributions(item)" />
+          <GoogleAttributions
+            v-if="selectedPlaceFor(item)"
+            :attributions="selectedPlaceAttributions(item)"
+            :query="selectedPlaceFor(item)?.display_name"
+          />
 
           <label :for="`store-name-${item.id}`" class="mt-4 block text-sm font-medium text-amber-200">記録に残す店名（任意）</label>
           <input :id="`store-name-${item.id}`" v-model="item.storeName" :disabled="item.saveStatus === 'saved'" type="text" maxlength="200" placeholder="例: いつものバー" class="mt-2 block w-full rounded-md border-amber-700 bg-stone-700 text-amber-100 placeholder:text-stone-400 disabled:opacity-50" />

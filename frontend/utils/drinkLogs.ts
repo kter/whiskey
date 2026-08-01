@@ -50,3 +50,11 @@ export const servingStyleLabel = (style?: string) => ({
   SODA: 'ハイボール',
   COCKTAIL: 'カクテル',
 }[style || ''] || style || '指定なし')
+
+/**
+ * Stand-in names shown when there is no real store name to display: no place at
+ * all, a place_id we deliberately never resolved, or a Places lookup that failed
+ * (`PLACEHOLDER_NAME` in lambda/drink-log-analyze/places.py). None of them are
+ * meaningful as a Google Maps search query.
+ */
+export const STORE_NAME_PLACEHOLDERS = ['場所登録済み', '場所未登録', '店舗情報を取得できません']

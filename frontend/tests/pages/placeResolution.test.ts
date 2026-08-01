@@ -85,11 +85,56 @@ describe('visible Places resolution and attribution', () => {
     expect(wrapper.text()).toContain('Google Bar')
     expect(wrapper.text()).toContain('Google Maps')
     expect(wrapper.text()).toContain('Provider')
+    expect(wrapper.get('a').attributes('href')).toBe(
+      'https://www.google.com/maps/search/?api=1&query=Google%20Bar',
+    )
 
     for (const page of ['pages/logs/index.vue', 'pages/logs/[id].vue']) {
       const pageSource = readFileSync(resolve(process.cwd(), page), 'utf8')
       expect(pageSource).toContain('<DrinkLogStoreDisplay')
       expect(pageSource).toContain(':resolved-place=')
     }
+  })
+
+  it.each([
+    [{ name: '', place_id: 'place-1' }, '場所登録済み'],
+    [{ name: '' }, '場所未登録'],
+  ])('does not search for the %s placeholder', (store, placeholder) => {
+    const wrapper = mount(DrinkLogStoreDisplay, {
+      props: {
+        log: { ...record(1), store },
+        resolvedPlace: {
+          log_id: 'log-1',
+          display_name: '',
+          name_source: 'google',
+          attributions: [],
+        },
+      },
+      global: { components: { GoogleAttributions } },
+    })
+
+    expect(wrapper.text()).toContain(placeholder)
+    expect(wrapper.find('a').exists()).toBe(false)
+  })
+
+  it('does not search for the Places resolution failure placeholder', () => {
+    // PLACEHOLDER_NAME in lambda/drink-log-analyze/places.py: returned with
+    // name_source "google" when the lookup fails, so it reaches the display
+    // through the same path as a real resolved name.
+    const wrapper = mount(DrinkLogStoreDisplay, {
+      props: {
+        log: { ...record(1), store: { name: '', place_id: 'place-1' } },
+        resolvedPlace: {
+          log_id: 'log-1',
+          display_name: '店舗情報を取得できません',
+          name_source: 'google',
+          attributions: [],
+        },
+      },
+      global: { components: { GoogleAttributions } },
+    })
+
+    expect(wrapper.text()).toContain('店舗情報を取得できません')
+    expect(wrapper.find('a').exists()).toBe(false)
   })
 })

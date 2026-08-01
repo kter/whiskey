@@ -203,27 +203,12 @@ onMounted(async () => {
               <dt class="text-xs uppercase tracking-wide text-stone-400">飲み方</dt>
               <dd class="mt-1 text-amber-100">{{ servingStyleLabel(log.serving_style) }}</dd>
             </div>
-            <div>
-              <dt class="text-xs uppercase tracking-wide text-stone-400">状態</dt>
-              <dd class="mt-1 text-amber-100">{{ log.status }}</dd>
-            </div>
           </dl>
 
           <section class="mt-7">
             <h2 class="text-sm font-medium text-amber-200">ノート</h2>
             <p class="mt-2 whitespace-pre-wrap text-stone-200">{{ log.notes || 'ノートはありません。' }}</p>
           </section>
-
-          <details class="mt-7 rounded-md bg-stone-900/60 p-4 text-xs text-stone-400">
-            <summary class="cursor-pointer text-stone-300">記録情報</summary>
-            <dl class="mt-3 space-y-2 break-all">
-              <div><dt class="inline text-stone-500">記録ID: </dt><dd class="inline">{{ log.id }}</dd></div>
-              <div><dt class="inline text-stone-500">ユーザーID: </dt><dd class="inline">{{ log.user_id }}</dd></div>
-              <div><dt class="inline text-stone-500">作成日時: </dt><dd class="inline">{{ log.created_at || '不明' }}</dd></div>
-              <div><dt class="inline text-stone-500">更新日時: </dt><dd class="inline">{{ log.updated_at || '不明' }}</dd></div>
-              <div v-if="log.ai"><dt class="text-stone-500">AI解析:</dt><dd class="mt-1 whitespace-pre-wrap">{{ JSON.stringify(log.ai, null, 2) }}</dd></div>
-            </dl>
-          </details>
 
           <p v-if="actionError" role="alert" class="mt-6 rounded-md border border-red-800 bg-red-900/50 p-3 text-sm text-red-200">{{ actionError }}</p>
           <div v-if="isOwner" class="mt-7 flex justify-end gap-3">

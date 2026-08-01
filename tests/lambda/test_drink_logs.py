@@ -399,7 +399,7 @@ def test_create_validation_accepts_optional_candidate_and_reuses_update_rules():
                 "notes": "x" * 2001,
                 "rating": 0,
                 "serving_style": "INVALID",
-                "datetime": "2020-01-01T00:00:00Z",
+                "datetime": "2020-01-01T00:00:00",
             }
         )
     assert set(exc.value.fields) == {
@@ -411,6 +411,116 @@ def test_create_validation_accepts_optional_candidate_and_reuses_update_rules():
         "serving_style",
         "store.name",
     }
+
+
+def test_create_datetime_is_normalized_without_replacing_audit_timestamps(monkeypatch):
+    fixed_now = datetime.now(timezone.utc).replace(microsecond=123456)
+    captured_utc = fixed_now.replace(microsecond=0) - timedelta(hours=1)
+    captured_with_offset = captured_utc.astimezone(
+        timezone(timedelta(hours=9))
+    ).isoformat()
+    monkeypatch.setattr(drink_logs, "_utc_now", lambda: fixed_now)
+
+    with mock_aws():
+        dynamodb, s3, drinklogs, _app_state, analysis, _upload_uuid = (
+            _moto_create_dependencies()
+        )
+        record, created = drink_logs.create_drink_log(
+            dynamodb,
+            s3,
+            "DrinkLogs-test",
+            "AppState-test",
+            "images-test",
+            "user-1",
+            drink_logs.validate_create_input(
+                {
+                    "analysis_id": analysis["pk"],
+                    "candidate_index": 0,
+                    "datetime": captured_with_offset,
+                }
+            ),
+        )
+
+        expected_now = drink_logs._rfc3339(fixed_now)
+        expected_captured = drink_logs._rfc3339(captured_utc)
+        stored = drinklogs.get_item(Key={"id": record["id"]})["Item"]
+        assert created is True
+        assert record["datetime"] == expected_captured
+        assert stored["datetime"] == expected_captured
+        assert record["created_at"] == expected_now
+        assert record["updated_at"] == expected_now
+
+
+def test_create_datetime_normalizes_to_the_literal_sort_key_format(monkeypatch):
+    """The GSI sort key is compared lexicographically, so the shape is the contract.
+
+    Asserting against _rfc3339 would move with the implementation and let a
+    format change through unnoticed.
+    """
+    monkeypatch.setattr(
+        drink_logs,
+        "_utc_now",
+        lambda: datetime(2026, 8, 1, 12, 30, tzinfo=timezone.utc),
+    )
+
+    validated = drink_logs.validate_create_input(
+        {
+            "analysis_id": "12345678-1234-4234-8234-123456789abc",
+            "datetime": "2026-08-01T12:00:00+09:00",
+        }
+    )
+
+    assert validated["datetime"] == "2026-08-01T03:00:00.000Z"
+
+
+def test_create_datetime_defaults_to_server_time(monkeypatch):
+    fixed_now = datetime.now(timezone.utc).replace(microsecond=654321)
+    monkeypatch.setattr(drink_logs, "_utc_now", lambda: fixed_now)
+
+    with mock_aws():
+        dynamodb, s3, _drinklogs, _app_state, analysis, _upload_uuid = (
+            _moto_create_dependencies()
+        )
+        record, _created = drink_logs.create_drink_log(
+            dynamodb,
+            s3,
+            "DrinkLogs-test",
+            "AppState-test",
+            "images-test",
+            "user-1",
+            drink_logs.validate_create_input(
+                {"analysis_id": analysis["pk"], "candidate_index": 0}
+            ),
+        )
+
+        assert record["datetime"] == drink_logs._rfc3339(fixed_now)
+
+
+@pytest.mark.parametrize(
+    "datetime_value",
+    [
+        "2026-08-01T21:30:00",
+        "1999-12-31T23:59:59Z",
+        "future",
+    ],
+)
+def test_create_datetime_rejects_naive_and_out_of_range_values(
+    monkeypatch, datetime_value
+):
+    fixed_now = datetime(2026, 8, 1, 12, 30, tzinfo=timezone.utc)
+    monkeypatch.setattr(drink_logs, "_utc_now", lambda: fixed_now)
+    if datetime_value == "future":
+        datetime_value = drink_logs._rfc3339(fixed_now + timedelta(hours=1))
+
+    with pytest.raises(drink_logs.ValidationError) as exc:
+        drink_logs.validate_create_input(
+            {
+                "analysis_id": "12345678-1234-4234-8234-123456789abc",
+                "datetime": datetime_value,
+            }
+        )
+
+    assert "datetime" in exc.value.fields
 
 
 def test_empty_candidates_can_create_complete_manual_brand():
@@ -1158,6 +1268,29 @@ def test_update_is_whitelisted_and_owner_status_are_atomic():
     assert calls[0]["ConditionExpression"] == "#owner = :caller AND #status = :complete"
     assert "#store.#name = :store_name" in calls[0]["UpdateExpression"]
     assert "#store.#place_id" not in calls[0]["UpdateExpression"]
+
+
+def test_put_rejects_datetime_as_an_immutable_field(monkeypatch):
+    event = _post_event(
+        "/api/drink-logs/log-1",
+        {"datetime": "2026-08-01T12:30:00Z"},
+    )
+    event.update(
+        httpMethod="PUT",
+        pathParameters={"id": "log-1"},
+    )
+    dynamodb = FakeDynamoDB({"DrinkLogs-test": StaticTable()})
+    monkeypatch.setattr(drink_logs, "get_dynamodb_resource", lambda: dynamodb)
+    monkeypatch.setattr(drink_logs, "get_s3_client", PresignS3)
+
+    response = drink_logs.lambda_handler(
+        event, SimpleNamespace(aws_request_id="aws-request-1")
+    )
+
+    assert response["statusCode"] == 400
+    assert json.loads(response["body"])["fields"] == {
+        "datetime": "Field is not accepted"
+    }
 
 
 def test_batch_get_retries_unprocessed_keys_and_fails_closed():

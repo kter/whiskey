@@ -1,5 +1,11 @@
 <script setup lang="ts">
-defineProps<{ attributions: unknown[] }>()
+import { computed } from 'vue'
+
+const props = defineProps<{ attributions: unknown[], query?: string }>()
+
+const googleMapsUrl = computed(() => props.query?.trim()
+  ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(props.query)}`
+  : '')
 
 const attributionView = (attribution: unknown) => {
   if (typeof attribution === 'string') return { label: attribution, url: '' }
@@ -18,7 +24,15 @@ const attributionView = (attribution: unknown) => {
 
 <template>
   <span class="mt-1 block text-[11px] leading-relaxed text-stone-400">
-    <span translate="no" class="mr-2 whitespace-nowrap font-sans">Google Maps</span>
+    <a
+      v-if="googleMapsUrl"
+      :href="googleMapsUrl"
+      target="_blank"
+      rel="noopener noreferrer"
+      translate="no"
+      class="mr-2 whitespace-nowrap font-sans underline hover:text-amber-200"
+    >Google Maps</a>
+    <span v-else translate="no" class="mr-2 whitespace-nowrap font-sans">Google Maps</span>
     <template v-for="(attribution, index) in attributions" :key="index">
       <a
         v-if="attributionView(attribution).url"
