@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, type ComponentPublicInstance } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ApiError } from '~/composables/useApi'
 import {
   buildUpdateDrinkLogPayload,
@@ -8,7 +8,7 @@ import {
   type DrinkLogEditValues,
 } from '~/composables/useDrinkLogs'
 import { useAuth } from '~/composables/useAuth'
-import { useVisiblePlaceResolver } from '~/composables/useVisiblePlaceResolver'
+import { needsPlaceResolution, useVisiblePlaceResolver } from '~/composables/useVisiblePlaceResolver'
 import { SERVING_STYLES, type ServingStyle } from '~/types/whiskey'
 import { formatLocalLogDate, formatLocalLogTime, servingStyleLabel } from '~/utils/drinkLogs'
 
@@ -17,7 +17,7 @@ const router = useRouter()
 const logId = computed(() => String(route.params.id || ''))
 const { currentUserId, waitForAuthReady } = useAuth()
 const { getLog, updateLog, deleteLog, upsertLog, removeLog } = useDrinkLogs()
-const { resolvedPlaces, register: registerPlace } = useVisiblePlaceResolver()
+const { resolvedPlaces, enqueue: enqueuePlaces } = useVisiblePlaceResolver()
 
 const log = ref<DrinkLog | null>(null)
 const initialLoading = ref(true)
@@ -66,8 +66,14 @@ const copyLogToForm = (record: DrinkLog) => {
   form.notes = record.notes || ''
 }
 
-const registerStore = (target: Element | ComponentPublicInstance | null) => {
-  if (log.value) registerPlace(target, log.value)
+/**
+ * Resolve straight away rather than waiting to scroll the row into view. This
+ * page shows exactly one record, so deferring saves no Places call, and the
+ * viewport trigger never fires at all while the tab is hidden.
+ */
+const resolveStore = (record: DrinkLog) => {
+  if (!needsPlaceResolution(record)) return
+  enqueuePlaces([{ log_id: record.id, place_id: record.store.place_id as string }])
 }
 
 const handleRefreshedImage = (refreshed: DrinkLog) => {
@@ -139,6 +145,7 @@ onMounted(async () => {
     log.value = record
     upsertLog(record)
     copyLogToForm(record)
+    resolveStore(record)
   } catch (cause) {
     loadError.value = cause instanceof ApiError && cause.status === 404
       ? '記録が見つかりません。削除されたか、表示する権限がありません。'
@@ -191,11 +198,7 @@ onMounted(async () => {
               <dt class="text-xs uppercase tracking-wide text-stone-400">日時</dt>
               <dd class="mt-1 text-amber-100"><time :datetime="log.datetime">{{ formatLocalLogDate(log.datetime) }} {{ formatLocalLogTime(log.datetime) }}</time></dd>
             </div>
-            <div
-              :ref="registerStore"
-              :data-log-id="log.id"
-              :data-place-id="log.store.place_id || undefined"
-            >
+            <div :data-log-id="log.id" :data-place-id="log.store.place_id || undefined">
               <dt class="text-xs uppercase tracking-wide text-stone-400">場所</dt>
               <dd class="mt-1 text-amber-100"><DrinkLogStoreDisplay :log="log" :resolved-place="resolvedPlaces[log.id]" /></dd>
             </div>
