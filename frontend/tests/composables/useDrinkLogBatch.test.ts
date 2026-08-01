@@ -155,33 +155,69 @@ describe('useDrinkLogBatch', () => {
     expect(dependencies.resizeImage).toHaveBeenCalledTimes(10)
   })
 
-  it('keeps processing and save concurrency at two or fewer', async () => {
+  it('keeps two items in flight during processing', async () => {
     const dependencies = makeDependencies()
     let processingActive = 0
     let processingMaximum = 0
-    dependencies.uploadToS3.mockImplementation(async () => {
+    const releases: Array<() => void> = []
+    dependencies.analyze.mockImplementation(async (s3Key: string) => {
       processingActive += 1
       processingMaximum = Math.max(processingMaximum, processingActive)
-      await new Promise(resolve => setTimeout(resolve, 5))
+      await new Promise<void>(resolve => releases.push(resolve))
       processingActive -= 1
+      return {
+        analysis_id: `analysis-${s3Key}`,
+        candidates: [{ brand_text: `Brand ${s3Key}`, confidence: 0.9 }],
+        model_id: 'test-model',
+        confidence: 0.9,
+      }
     })
+    const batch = useDrinkLogBatch(dependencies)
+    const processing = batch.processFiles(Array.from(
+      { length: 3 },
+      (_, index) => new File(['photo'], `${index}.jpg`),
+    ))
+
+    await vi.waitFor(() => expect(dependencies.analyze).toHaveBeenCalledTimes(2))
+    expect(processingMaximum).toBe(2)
+    releases.shift()?.()
+    await vi.waitFor(() => expect(dependencies.analyze).toHaveBeenCalledTimes(3))
+    releases.splice(0).forEach(release => release())
+    await processing
+
+    expect(processingMaximum).toBe(2)
+  })
+
+  it('serializes saves so only one createLog is in flight', async () => {
+    const dependencies = makeDependencies()
     let saveActive = 0
     let saveMaximum = 0
+    const releases: Array<() => void> = []
     dependencies.createLog.mockImplementation(async () => {
       saveActive += 1
       saveMaximum = Math.max(saveMaximum, saveActive)
-      await new Promise(resolve => setTimeout(resolve, 5))
+      await new Promise<void>(resolve => releases.push(resolve))
       saveActive -= 1
       return makeLog(Date.now() + saveActive)
     })
     const batch = useDrinkLogBatch(dependencies)
-    const files = Array.from({ length: 7 }, (_, index) => new File(['photo'], `${index}.jpg`))
+    const files = Array.from({ length: 3 }, (_, index) => new File(['photo'], `${index}.jpg`))
 
     await batch.processFiles(files)
-    await batch.savePending()
+    const saving = batch.savePending()
 
-    expect(processingMaximum).toBe(2)
-    expect(saveMaximum).toBe(2)
+    await vi.waitFor(() => expect(dependencies.createLog).toHaveBeenCalledTimes(1))
+    expect(saveActive).toBe(1)
+    releases.shift()?.()
+    await vi.waitFor(() => expect(dependencies.createLog).toHaveBeenCalledTimes(2))
+    expect(saveActive).toBe(1)
+    releases.shift()?.()
+    await vi.waitFor(() => expect(dependencies.createLog).toHaveBeenCalledTimes(3))
+    expect(saveActive).toBe(1)
+    releases.shift()?.()
+    await saving
+
+    expect(saveMaximum).toBe(1)
   })
 
   it('isolates failures and retries only unsaved items', async () => {

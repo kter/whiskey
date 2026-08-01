@@ -8,6 +8,7 @@ import re
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -24,6 +25,7 @@ try:
     from whiskey_common.logger import extract_correlation_id, get_logger
     from whiskey_common.normalize import normalize_text
     from whiskey_common.responses import create_response
+    from whiskey_common.transactions import transact_write_with_retry
 except ModuleNotFoundError as exc:
     if exc.name != "whiskey_common":
         raise
@@ -36,6 +38,7 @@ except ModuleNotFoundError as exc:
     from whiskey_common.logger import extract_correlation_id, get_logger
     from whiskey_common.normalize import normalize_text
     from whiskey_common.responses import create_response
+    from whiskey_common.transactions import transact_write_with_retry
 
 
 SERVING_STYLES = {"NEAT", "ROCKS", "WATER", "SODA", "COCKTAIL"}
@@ -185,6 +188,7 @@ def _reserve_analysis_budget(
     *,
     user_request: bool,
     now_dt: datetime | None = None,
+    remaining_ms: Callable[[], int] | None = None,
 ) -> None:
     current = now_dt or _utc_now()
     date = current.strftime("%Y-%m-%d")
@@ -227,7 +231,7 @@ def _reserve_analysis_budget(
         labels.extend(("daily", "monthly"))
     client = dynamodb.meta.client
     try:
-        client.transact_write_items(TransactItems=writes)
+        transact_write_with_retry(client, writes, remaining_ms=remaining_ms)
     except client.exceptions.TransactionCanceledException as exc:
         reasons = exc.response.get("CancellationReasons", [])
         for index, label in enumerate(labels):
@@ -629,6 +633,7 @@ def analyze_upload(
         app_state_table_name,
         user_id,
         user_request=True,
+        remaining_ms=lambda: _remaining_budget_ms(context, started),
     )
     analysis: dict[str, Any] | None = None
     for _attempt in range(2):
@@ -639,6 +644,7 @@ def analyze_upload(
             app_state_table_name,
             user_id,
             user_request=False,
+            remaining_ms=lambda: _remaining_budget_ms(context, started),
         )
         analysis = _invoke_model(model_id, normalized, context, started)
         if analysis is None or analysis:

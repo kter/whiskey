@@ -15,12 +15,14 @@ from botocore.exceptions import ClientError
 try:
     from whiskey_common.clients import get_dynamodb_resource, get_s3_client
     from whiskey_common.logger import get_logger
+    from whiskey_common.transactions import transact_write_with_retry
 except ModuleNotFoundError as exc:
     if exc.name != "whiskey_common":
         raise
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "common" / "python"))
     from whiskey_common.clients import get_dynamodb_resource, get_s3_client
     from whiskey_common.logger import get_logger
+    from whiskey_common.transactions import transact_write_with_retry
 
 
 NAMESPACE_DRINKLOG = uuid.UUID("7df1920f-5929-51ee-9860-164c1d4bc388")
@@ -237,7 +239,7 @@ def _finalize_deleting(
         )
     client = dynamodb.meta.client
     try:
-        client.transact_write_items(TransactItems=transaction)
+        transact_write_with_retry(client, transaction)
         return True
     except client.exceptions.TransactionCanceledException:
         if _get_record(dynamodb.Table(drinklogs_table_name), item["id"]) is None:

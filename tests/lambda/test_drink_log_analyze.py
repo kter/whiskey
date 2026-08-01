@@ -890,8 +890,13 @@ def test_handler_budget_gives_sonnet_twenty_seconds_and_keeps_four_second_safety
 
 def test_monthly_analysis_limit_is_a_503_circuit_breaker():
     class MonthlyLimitClient(RecordingClient):
+        def __init__(self):
+            super().__init__()
+            self.calls = 0
+
         def transact_write_items(self, **kwargs):
             del kwargs
+            self.calls += 1
             raise TransactionCanceled(
                 [{"Code": "None"}, {"Code": "ConditionalCheckFailed"}]
             )
@@ -908,6 +913,40 @@ def test_monthly_analysis_limit_is_a_503_circuit_breaker():
         )
 
     assert exc.value.status_code == 503
+    assert dynamodb.meta.client.calls == 1
+
+
+def test_analysis_budget_retries_a_transaction_conflict(monkeypatch):
+    class ConflictOnceClient(RecordingClient):
+        def transact_write_items(self, **kwargs):
+            self.transactions.append(kwargs["TransactItems"])
+            if len(self.transactions) == 1:
+                raise TransactionCanceled([{"Code": "TransactionConflict"}])
+
+    dynamodb = FakeDynamoDB()
+    dynamodb.meta.client = ConflictOnceClient()
+    retry = analyze.transact_write_with_retry
+    monkeypatch.setattr(
+        analyze,
+        "transact_write_with_retry",
+        lambda client, items, **kwargs: retry(
+            client,
+            items,
+            sleep=lambda _delay: None,
+            jitter=lambda: 1.0,
+            **kwargs,
+        ),
+    )
+
+    analyze._reserve_analysis_budget(
+        dynamodb,
+        "AppState-test",
+        "user-1",
+        user_request=True,
+        remaining_ms=lambda: 1_000,
+    )
+
+    assert len(dynamodb.meta.client.transactions) == 2
 
 
 def test_low_budget_skips_the_catalog_scan_and_still_returns_200(monkeypatch):
