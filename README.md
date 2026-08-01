@@ -122,6 +122,7 @@ python scripts/local/seed_whiskeys.py --target dev                           # �
 
 Docker のローカルスタック（DynamoDB Local + MinIO）+ FastAPI アダプタで、AWS に触れず全機能を動かせる。
 詳細は [`docs/LOCAL_DEV.md`](docs/LOCAL_DEV.md)。
+LLMの銘柄認識評価と継続監視の運用は [`docs/LLM_QUALITY.md`](docs/LLM_QUALITY.md) を参照。
 
 ```bash
 docker compose up -d          # DynamoDB Local(:8001) + MinIO(:9000/9001)

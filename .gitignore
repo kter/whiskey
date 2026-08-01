@@ -176,7 +176,13 @@ debug_response*.txt
 
 # Brand-recognition evaluation artifacts
 scripts/eval/synthetic/
+scripts/eval/images-real/
 brand-eval-results-*.json
+!scripts/eval/manifest.real.json
+!scripts/eval/manifest.schema.json
+!scripts/eval/manifest.example.json
+!scripts/eval/results/
+!scripts/eval/results/*.json
 
 # CDK
 infra/cdk.out/

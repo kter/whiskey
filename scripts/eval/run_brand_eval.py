@@ -63,13 +63,16 @@ CASE_REQUIRED_FIELDS = {
     "expected_whiskey_id",
     "expected_canonical_name",
 }
-CASE_ALLOWED_FIELDS = CASE_REQUIRED_FIELDS | {"notes"}
+CASE_ALLOWED_FIELDS = CASE_REQUIRED_FIELDS | {"notes", "needs_review"}
+DRAFT_CONDITION = "bottle_front"
+DRAFT_NOTES = "要確認: 撮影条件を実際の写真に合わせて修正すること"
 EVAL_USER_RE = re.compile(r"^[A-Za-z0-9._:@+-]+$")
 CLIENT_CONFIG = Config(
     connect_timeout=5,
     read_timeout=40,
     retries={"mode": "standard", "total_max_attempts": 2},
 )
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 
 class ManifestError(ValueError):
@@ -165,6 +168,8 @@ def validate_manifest_data(data: Any) -> dict[str, Any]:
             )
         if "notes" in case and not isinstance(case["notes"], str):
             raise ManifestError(f"{location}.notes must be a string")
+        if "needs_review" in case and not isinstance(case["needs_review"], bool):
+            raise ManifestError(f"{location}.needs_review must be a boolean")
     return data
 
 
@@ -175,7 +180,19 @@ def load_manifest(path: Path) -> dict[str, Any]:
             data = json.load(manifest_file)
     except json.JSONDecodeError as exc:
         raise ManifestError(f"manifest is not valid JSON: {exc}") from exc
-    return validate_manifest_data(data)
+    manifest = validate_manifest_data(data)
+    pending = [
+        index
+        for index, case in enumerate(manifest["cases"])
+        if case.get("needs_review") is True
+    ]
+    if pending:
+        indices = ", ".join(str(index) for index in pending)
+        raise ManifestError(
+            "manifest contains cases with needs_review=true; "
+            f"review and set them to false before scoring (cases: {indices})"
+        )
+    return manifest
 
 
 def _sniff_image_format(prefix: bytes) -> str | None:
@@ -622,6 +639,35 @@ def save_json_atomic(path: Path, document: Mapping[str, Any]) -> None:
     temporary.replace(path)
 
 
+def ensure_manifest_output_available(path: Path, *, force: bool) -> None:
+    """Reject an existing draft target unless replacement was explicit."""
+    if path.exists() and not force:
+        raise ValueError(
+            f"manifest output already exists and may contain reviewed labels: {path}; "
+            "use --force to replace it"
+        )
+
+
+def save_manifest_draft_atomic(
+    path: Path,
+    document: Mapping[str, Any],
+    *,
+    force: bool,
+) -> None:
+    """Write a draft without silently replacing possible reviewed labels."""
+    ensure_manifest_output_available(path, force=force)
+    save_json_atomic(path, document)
+
+
+def repository_relative_path(path: Path) -> str:
+    """Return a public-safe repository-relative path, or only the basename."""
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(REPOSITORY_ROOT).as_posix()
+    except ValueError:
+        return path.name
+
+
 def build_result_document(
     *,
     manifest_path: Path,
@@ -633,12 +679,14 @@ def build_result_document(
     interrupted: bool,
     interruption_reason: str | None,
     started_at: str,
+    mode: str = "evaluation",
 ) -> dict[str, Any]:
     """Build the machine-readable result and resume document."""
     successful = successful_case_indices(records)
     return {
         "result_version": RESULT_VERSION,
-        "manifest": str(manifest_path.resolve()),
+        "mode": mode,
+        "manifest": repository_relative_path(manifest_path),
         "manifest_sha256": digest,
         "target": "dev",
         "eval_user": eval_user,
@@ -857,6 +905,7 @@ def execute_evaluation(
     audience: str,
     output_path: Path,
     previous_records: Sequence[Mapping[str, Any]] = (),
+    mode: str = "evaluation",
 ) -> dict[str, Any]:
     """Execute selected cases, checkpoint each result, and stop on non-200."""
     validate_image_files(manifest, manifest_path, selected_indices)
@@ -928,6 +977,7 @@ def execute_evaluation(
             interrupted=interrupted,
             interruption_reason=interruption_reason,
             started_at=started_at,
+            mode=mode,
         )
         save_json_atomic(output_path, document)
         if interrupted:
@@ -943,9 +993,101 @@ def execute_evaluation(
         interrupted=interrupted,
         interruption_reason=interruption_reason,
         started_at=started_at,
+        mode=mode,
     )
     save_json_atomic(output_path, document)
     return document
+
+
+def build_draft_seed_manifest(image_directory: Path, manifest_path: Path) -> dict[str, Any]:
+    """Build unscored placeholder cases for every supported image in a directory."""
+    if not image_directory.is_dir():
+        raise ValueError(f"manifest draft input is not a directory: {image_directory}")
+    images = sorted(
+        (
+            path
+            for path in image_directory.rglob("*")
+            if path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS
+        ),
+        key=lambda path: str(path).casefold(),
+    )
+    if not images:
+        raise ValueError("manifest draft input contains no supported images")
+
+    manifest_directory = manifest_path.parent.resolve()
+    cases: list[dict[str, Any]] = []
+    for image_path in images:
+        try:
+            relative = image_path.resolve().relative_to(manifest_directory)
+        except ValueError as exc:
+            raise ValueError(
+                "--emit-manifest must be in an ancestor directory of every image"
+            ) from exc
+        cases.append(
+            {
+                "image": relative.as_posix(),
+                "condition": DRAFT_CONDITION,
+                "expected_whiskey_id": None,
+                "expected_canonical_name": None,
+            }
+        )
+    return {"version": 1, "cases": cases}
+
+
+def _draft_expected_values(response: Any) -> tuple[str | None, str | None]:
+    candidates = response.get("candidates", []) if isinstance(response, Mapping) else []
+    if not isinstance(candidates, list) or not candidates:
+        return None, None
+    top = candidates[0]
+    if not isinstance(top, Mapping):
+        return None, None
+    whiskey_id = _candidate_id(top)
+    canonical_name = next(
+        (
+            value.strip()
+            for key in ("name_ja", "brand_text", "name_en")
+            if isinstance((value := top.get(key)), str) and value.strip()
+        ),
+        None,
+    )
+    if whiskey_id is not None and canonical_name is None:
+        raise ValueError("top candidate has whiskey_id but no brand name")
+    return whiskey_id, canonical_name
+
+
+def build_draft_manifest(
+    seed_manifest: Mapping[str, Any],
+    records: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Convert successful analyze responses into a review-required manifest."""
+    records_by_index = {
+        record.get("case_index"): record
+        for record in records
+        if isinstance(record.get("case_index"), int)
+    }
+    cases: list[dict[str, Any]] = []
+    for case_index, seed_case in enumerate(seed_manifest["cases"]):
+        record = records_by_index.get(case_index)
+        if (
+            not isinstance(record, Mapping)
+            or record.get("status_code") != 200
+            or not isinstance(record.get("response"), Mapping)
+        ):
+            raise ValueError(
+                f"cannot emit manifest because case {case_index} has no successful response"
+            )
+        whiskey_id, canonical_name = _draft_expected_values(record["response"])
+        cases.append(
+            {
+                "image": seed_case["image"],
+                "condition": DRAFT_CONDITION,
+                "expected_whiskey_id": whiskey_id,
+                "expected_canonical_name": canonical_name,
+                "needs_review": True,
+                "notes": DRAFT_NOTES,
+            }
+        )
+    return validate_manifest_data({"version": 1, "cases": cases})
 
 
 def default_result_path() -> Path:
@@ -957,7 +1099,11 @@ def default_result_path() -> Path:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Evaluate whiskey brand recognition")
-    parser.add_argument("manifest", type=Path)
+    parser.add_argument(
+        "input",
+        type=Path,
+        help="manifest path, or an image directory with --emit-manifest",
+    )
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--target", choices=("dev",))
     mode.add_argument("--dry-run", action="store_true")
@@ -971,6 +1117,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--yes", action="store_true", help="skip the cost confirmation prompt")
     parser.add_argument("--json", dest="json_path", type=Path)
     parser.add_argument("--resume", type=Path, help="resume from a prior JSON result")
+    parser.add_argument(
+        "--emit-manifest",
+        type=Path,
+        help="write a review-required manifest draft from an image directory",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="replace an existing --emit-manifest output",
+    )
     return parser.parse_args(argv)
 
 
@@ -1015,13 +1171,94 @@ def main(argv: list[str] | None = None) -> int:
     """Run local validation or the guarded dev evaluation."""
     args = parse_args(argv)
     try:
-        manifest = load_manifest(args.manifest)
+        if args.emit_manifest is not None:
+            if args.dry_run:
+                raise ValueError("--emit-manifest requires --target dev")
+            if args.emit_manifest.resolve() == (
+                args.json_path.resolve() if args.json_path else None
+            ):
+                raise ValueError("--json and --emit-manifest must use different paths")
+            if not EVAL_USER_RE.fullmatch(args.eval_user):
+                raise ValueError("--eval-user may not contain slashes or whitespace")
+            ensure_manifest_output_available(args.emit_manifest, force=args.force)
+
+            seed_manifest = build_draft_seed_manifest(args.input, args.emit_manifest)
+            digest = manifest_digest(seed_manifest)
+            previous_records: list[dict[str, Any]] = []
+            if args.resume:
+                previous_records = load_resume_results(args.resume, digest)
+            selected_indices = select_case_indices(
+                len(seed_manifest["cases"]),
+                successful_case_indices(previous_records),
+                args.max_cases,
+            )
+            if not selected_indices:
+                draft = build_draft_manifest(seed_manifest, previous_records)
+                save_manifest_draft_atomic(
+                    args.emit_manifest,
+                    draft,
+                    force=args.force,
+                )
+                print(f"Manifest draft: {args.emit_manifest}")
+                return 0
+            validate_image_files(seed_manifest, args.emit_manifest, selected_indices)
+            s3_client, lambda_client, app_state_table, bucket = create_dev_clients(
+                args.profile
+            )
+            audience = resolve_cognito_audience(lambda_client, args.aud)
+            global_daily_usage: int | None = None
+            try:
+                global_daily_usage = read_global_daily_usage(app_state_table)
+            except (BotoCoreError, ClientError, ValueError) as exc:
+                print(f"Global daily counter unavailable: {exc}", file=sys.stderr)
+            if not args.yes and not _confirm_execution(
+                len(selected_indices), global_daily_usage
+            ):
+                print("Evaluation cancelled.")
+                return 1
+            if args.yes:
+                _print_cost_estimate(len(selected_indices), global_daily_usage)
+
+            output_path = args.json_path or args.resume or default_result_path()
+            document = execute_evaluation(
+                manifest=seed_manifest,
+                manifest_path=args.emit_manifest,
+                selected_indices=selected_indices,
+                eval_user=args.eval_user,
+                bucket=bucket,
+                s3_client=s3_client,
+                lambda_client=lambda_client,
+                audience=audience,
+                output_path=output_path,
+                previous_records=previous_records,
+                mode="manifest_draft",
+            )
+            print(f"\nJSON result: {output_path}")
+            if document["interrupted"]:
+                print(f"Stopped: {document['interruption_reason']}", file=sys.stderr)
+                return 2
+            if document["remaining_case_count"] > 0:
+                print(
+                    f"Manifest draft pending: {document['remaining_case_count']} case(s) "
+                    f"remain; resume with --resume {output_path}"
+                )
+                return 0
+            draft = build_draft_manifest(seed_manifest, document["results"])
+            save_manifest_draft_atomic(
+                args.emit_manifest,
+                draft,
+                force=args.force,
+            )
+            print(f"Manifest draft: {args.emit_manifest}")
+            return 0
+
+        manifest = load_manifest(args.input)
         if args.dry_run:
             if args.resume:
                 raise ValueError("--resume is only valid with --target dev")
             if args.aud is not None:
                 raise ValueError("--aud is only valid with --target dev")
-            validate_image_files(manifest, args.manifest)
+            validate_image_files(manifest, args.input)
             print_manifest_report(manifest)
             if args.json_path:
                 save_json_atomic(
@@ -1052,7 +1289,7 @@ def main(argv: list[str] | None = None) -> int:
             print("All cases already have successful results.")
             print_metrics_report(calculate_metrics(previous_records))
             return 0
-        validate_image_files(manifest, args.manifest, selected_indices)
+        validate_image_files(manifest, args.input, selected_indices)
         s3_client, lambda_client, app_state_table, bucket = create_dev_clients(args.profile)
         audience = resolve_cognito_audience(lambda_client, args.aud)
         global_daily_usage: int | None = None
@@ -1070,11 +1307,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.yes:
             _print_cost_estimate(len(selected_indices), global_daily_usage)
 
-        validate_image_files(manifest, args.manifest, selected_indices)
+        validate_image_files(manifest, args.input, selected_indices)
         output_path = args.json_path or args.resume or default_result_path()
         document = execute_evaluation(
             manifest=manifest,
-            manifest_path=args.manifest,
+            manifest_path=args.input,
             selected_indices=selected_indices,
             eval_user=args.eval_user,
             bucket=bucket,

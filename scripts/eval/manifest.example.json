@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "image": "images/yamazaki12_front.jpg",
+      "condition": "bottle_front",
+      "expected_whiskey_id": "yamazaki-12",
+      "expected_canonical_name": "山崎 12年",
+      "notes": "同梱画像は形式確認用の合成プレースホルダー。実評価前に、正面からラベル全体が読める実写真へ置き換える"
+    },
+    {
+      "image": "images/caol_ila12_angle.jpg",
+      "condition": "bottle_angle",
+      "expected_whiskey_id": "caol-ila-12",
+      "expected_canonical_name": "カリラ 12年",
+      "notes": "同梱画像は形式確認用の合成プレースホルダー。実評価前に、斜めから撮影しラベル文字に遠近変形がある実写真へ置き換える"
+    },
+    {
+      "image": "images/glenfiddich12_condensation.jpg",
+      "condition": "reflection_or_condensation",
+      "expected_whiskey_id": "glenfiddich-12",
+      "expected_canonical_name": "グレンフィディック 12年",
+      "notes": "同梱画像は形式確認用の合成プレースホルダー。実評価前に、ボトル表面の反射や結露で一部が読みにくい実写真へ置き換える"
+    },
+    {
+      "image": "images/lagavulin16_occluded.jpg",
+      "condition": "partially_occluded",
+      "expected_whiskey_id": "lagavulin-16",
+      "expected_canonical_name": "ラガヴーリン 16年",
+      "notes": "同梱画像は形式確認用の合成プレースホルダー。実評価前に、手やグラスでラベルの一部が隠れている実写真へ置き換える"
+    },
+    {
+      "image": "images/macallan12_box.jpg",
+      "condition": "box_only",
+      "expected_whiskey_id": "macallan-12-double-cask",
+      "expected_canonical_name": "ザ・マッカラン ダブルカスク 12年",
+      "notes": "同梱画像は形式確認用の合成プレースホルダー。実評価前に、ボトルが写らず外箱だけが写っている実写真へ置き換える"
+    },
+    {
+      "image": "images/laphroaig10_miniature.jpg",
+      "condition": "miniature",
+      "expected_whiskey_id": "laphroaig-10",
+      "expected_canonical_name": "ラフロイグ 10年",
+      "notes": "同梱画像は形式確認用の合成プレースホルダー。実評価前に、ラベル文字が小さいミニチュアボトルの実写真へ置き換える"
+    },
+    {
+      "image": "images/unidentified_glass.jpg",
+      "condition": "glass_only",
+      "expected_whiskey_id": null,
+      "expected_canonical_name": null,
+      "notes": "同梱画像は形式確認用の合成プレースホルダー。実評価前にグラスだけの実写真へ置き換える。正しい挙動は銘柄を確定しないこと"
+    },
+    {
+      "image": "images/yamazaki_and_hakushu.jpg",
+      "condition": "multiple_bottles",
+      "expected_whiskey_id": "yamazaki-12",
+      "expected_canonical_name": "山崎 12年",
+      "notes": "同梱画像は形式確認用の合成プレースホルダー。実評価前に複数本が写り、中央で最も大きい山崎を正解とする実写真へ置き換える"
+    },
+    {
+      "image": "images/bowmore12_low_resolution.jpg",
+      "condition": "low_resolution",
+      "expected_whiskey_id": "bowmore-12",
+      "expected_canonical_name": "ボウモア 12年",
+      "notes": "同梱画像は形式確認用の合成プレースホルダー。実評価前に、縮小や圧縮で細かい文字が潰れた実写真へ置き換える"
+    },
+    {
+      "image": "images/talisker10_back.jpg",
+      "condition": "back_label_only",
+      "expected_whiskey_id": "talisker-10",
+      "expected_canonical_name": "タリスカー 10年",
+      "notes": "同梱画像は形式確認用の合成プレースホルダー。実評価前に、背面ラベルだけが写った実写真へ置き換える"
+    }
+  ]
+}
