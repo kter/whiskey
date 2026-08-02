@@ -60,16 +60,59 @@ PROMPT = (
     "判別できなければ whiskeys は空配列にし、推測しないでください。"
     "複数のボトルが写っている場合は全て列挙してください（最大5件）。"
     "ラベルに書かれていないカスク種別や熟成年数などの情報を補完しないでください。"
+    "brand_ja と brand_en は蒸留所またはブランドの名前だけにしてください。"
+    "熟成年数・カスク・限定表記・シングルモルト等の種別語は含めないでください。"
+    "ラベルで最も大きい文字ではなく、蒸留所またはブランドを特定してください。"
     "ハイボールは serving_style を SODA にしてください。"
     "次のキーだけを持つ厳密な JSON を返してください: "
     '{"whiskeys":[{"name_ja":"カリラ 12年","name_en":"Caol Ila 12 Year Old",'
-    '"confidence":0.95}],"serving_style":"NEAT|ROCKS|WATER|SODA|COCKTAIL",'
+    '"brand_ja":"カリラ","brand_en":"Caol Ila","confidence":0.95}],'
+    '"serving_style":"NEAT|ROCKS|WATER|SODA|COCKTAIL",'
     '"glass_type":""}. '
     "confidence は0以上1以下にしてください。Markdownや説明は含めないでください。"
 )
 
 _MASTER_CACHE_LOCK = threading.Lock()
 _MASTER_CACHE: dict[str, Any] | None = None
+
+
+def _load_brand_catalog() -> tuple[dict[str, Any], ...]:
+    """Load the brand layer shipped with the analysis Lambda."""
+    path = Path(__file__).with_name("brands.json")
+    with path.open(encoding="utf-8") as source_file:
+        document = json.load(source_file)
+    if not isinstance(document, dict):
+        raise RuntimeError("brands.json must use catalog version 1")
+    brands = document.get("brands")
+    if document.get("version") != 1 or not isinstance(brands, list):
+        raise RuntimeError("brands.json must use catalog version 1")
+
+    records: list[dict[str, Any]] = []
+    for brand in brands:
+        if not isinstance(brand, dict):
+            raise RuntimeError("brands.json contains an invalid brand")
+        names = [brand.get("brand_ja"), brand.get("brand_en")]
+        aliases = brand.get("aliases")
+        if isinstance(aliases, list):
+            names.extend(aliases)
+        normalized_names = tuple(
+            dict.fromkeys(
+                normalized
+                for name in names
+                if isinstance(name, str) and (normalized := normalize_text(name))
+            )
+        )
+        if (
+            not isinstance(brand.get("brand_key"), str)
+            or not isinstance(brand.get("distillery_ja"), str)
+            or not normalized_names
+        ):
+            raise RuntimeError("brands.json contains an invalid brand")
+        records.append({**brand, "_normalized_names": normalized_names})
+    return tuple(records)
+
+
+BRAND_CATALOG = _load_brand_catalog()
 
 
 class ValidationError(ValueError):
@@ -273,7 +316,13 @@ def _validate_model_output(payload: Any) -> dict[str, Any] | None:
         return None
     whiskeys: list[dict[str, Any]] = []
     for whiskey in raw_whiskeys:
-        if not isinstance(whiskey, dict) or set(whiskey) != {"name_ja", "name_en", "confidence"}:
+        required_keys = {"name_ja", "name_en", "confidence"}
+        allowed_keys = required_keys | {"brand_ja", "brand_en"}
+        if (
+            not isinstance(whiskey, dict)
+            or not required_keys <= set(whiskey)
+            or not set(whiskey) <= allowed_keys
+        ):
             return None
         name_ja = whiskey.get("name_ja")
         name_en = whiskey.get("name_en")
@@ -287,9 +336,19 @@ def _validate_model_output(payload: Any) -> dict[str, Any] | None:
             or confidence is None
         ):
             return None
-        whiskeys.append(
-            {"name_ja": name_ja, "name_en": name_en, "confidence": confidence}
-        )
+        validated_whiskey = {
+            "name_ja": name_ja,
+            "name_en": name_en,
+            "confidence": confidence,
+        }
+        for brand_field in ("brand_ja", "brand_en"):
+            if brand_field in whiskey:
+                brand_name = whiskey[brand_field]
+                if not isinstance(brand_name, str) or len(brand_name) > 200:
+                    return None
+                if brand_name.strip():
+                    validated_whiskey[brand_field] = brand_name
+        whiskeys.append(validated_whiskey)
     serving_raw = payload.get("serving_style")
     if not isinstance(serving_raw, str):
         return None
@@ -574,6 +633,21 @@ def _catalog_match(
     return exact_matches[0] if len(exact_matches) == 1 else None
 
 
+def _brand_catalog_match(whiskey: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    normalized_names = {
+        normalized
+        for field in ("brand_ja", "brand_en")
+        if isinstance(name := whiskey.get(field), str)
+        and (normalized := normalize_text(name))
+    }
+    matches = [
+        brand
+        for brand in BRAND_CATALOG
+        if normalized_names.intersection(brand["_normalized_names"])
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
 def _build_candidates(
     snapshot: Mapping[str, Any],
     analysis: Mapping[str, Any],
@@ -581,6 +655,7 @@ def _build_candidates(
     candidates: list[dict[str, Any]] = []
     for whiskey in analysis.get("whiskeys", []):
         matched = _catalog_match(snapshot, whiskey)
+        brand_matched = _brand_catalog_match(whiskey)
         candidate = {
             "brand_text": whiskey["name_ja"],
             "name_ja": whiskey["name_ja"],
@@ -590,6 +665,13 @@ def _build_candidates(
         }
         if matched is not None and (whiskey_id := _whiskey_id(matched)):
             candidate["whiskey_id"] = whiskey_id
+        for brand_field in ("brand_ja", "brand_en"):
+            if whiskey.get(brand_field):
+                candidate[brand_field] = whiskey[brand_field]
+        if brand_matched is not None:
+            candidate["brand_key"] = brand_matched["brand_key"]
+            if brand_matched["distillery_ja"]:
+                candidate["distillery_ja"] = brand_matched["distillery_ja"]
         candidates.append(candidate)
     return candidates
 

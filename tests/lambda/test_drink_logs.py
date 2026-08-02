@@ -617,6 +617,67 @@ def test_candidate_only_brand_derivation_regression(candidate_index, brand_sourc
         assert record.get("whiskey_id") == whiskey_id
 
 
+def test_candidate_with_brand_metadata_can_be_consumed():
+    candidate = {
+        "brand_text": "厚岸 立春",
+        "name_ja": "厚岸 立春",
+        "name_en": "Akkeshi Risshun",
+        "brand_ja": "厚岸",
+        "brand_en": "Akkeshi",
+        "brand_key": "akkeshi",
+        "distillery_ja": "厚岸蒸溜所",
+        "confidence": Decimal("0.91"),
+        "match_source": "ai",
+    }
+    with mock_aws():
+        dynamodb, s3, _drinklogs, _app_state, analysis, _upload_uuid = (
+            _moto_create_dependencies(candidates=[candidate])
+        )
+
+        record, created = drink_logs.create_drink_log(
+            dynamodb,
+            s3,
+            "DrinkLogs-test",
+            "AppState-test",
+            "images-test",
+            "user-1",
+            drink_logs.validate_create_input(
+                {"analysis_id": analysis["pk"], "candidate_index": 0}
+            ),
+        )
+
+        assert created is True
+        assert record["brand_text"] == "厚岸 立春"
+        assert record["brand_source"] == "ai"
+
+
+def test_legacy_candidate_without_brand_metadata_can_still_be_consumed():
+    legacy_candidate = {
+        "brand_text": "Lagavulin",
+        "confidence": Decimal("0.4"),
+    }
+    with mock_aws():
+        dynamodb, s3, _drinklogs, _app_state, analysis, _upload_uuid = (
+            _moto_create_dependencies(candidates=[legacy_candidate])
+        )
+
+        record, created = drink_logs.create_drink_log(
+            dynamodb,
+            s3,
+            "DrinkLogs-test",
+            "AppState-test",
+            "images-test",
+            "user-1",
+            drink_logs.validate_create_input(
+                {"analysis_id": analysis["pk"], "candidate_index": 0}
+            ),
+        )
+
+        assert created is True
+        assert record["brand_text"] == "Lagavulin"
+        assert record["brand_source"] == "ai"
+
+
 def test_create_confirmation_overrides_are_written_to_completed_record():
     with mock_aws():
         dynamodb, s3, _drinklogs, _app_state, analysis, _upload_uuid = (
