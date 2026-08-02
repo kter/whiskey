@@ -64,6 +64,13 @@
           ],
           "minLength": 1
         },
+        "expected_brand_key": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
         "notes": {
           "type": "string"
         },
