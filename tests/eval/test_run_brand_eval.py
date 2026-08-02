@@ -88,6 +88,14 @@ def test_calculate_metrics_uses_top_candidate_partition_and_separate_denominator
 
     assert overall == {
         "cases": 5,
+        "brand_evaluable_cases": 0,
+        "brand_excluded_cases": 5,
+        "brand_confirmed_correct": 0,
+        "brand_confirmed_correct_rate": None,
+        "brand_confirmed_wrong": 0,
+        "brand_confirmed_wrong_rate": None,
+        "brand_not_confirmed": 0,
+        "brand_not_confirmed_rate": None,
         "retrievable_cases": 4,
         "unanswerable_cases": 1,
         "confirmed_correct": 1,
@@ -113,6 +121,103 @@ def test_calculate_metrics_uses_top_candidate_partition_and_separate_denominator
     }
     assert metrics["by_condition"]["bottle_front"]["top3_correct"] == 2
     assert metrics["by_condition"]["bottle_angle"]["rejections"] == 1
+
+
+def test_brand_score_classifies_correct_wrong_and_not_confirmed():
+    case = _case("bottle_front", "expression")
+    case["expected_brand_key"] = "expected-brand"
+    records = [
+        _record(0, case, [{"brand_key": "expected-brand"}]),
+        _record(1, case, [{"brand_key": "different-brand"}]),
+        _record(2, case, [{"brand_text": "unresolved"}]),
+    ]
+
+    correct, wrong, not_confirmed = map(brand_eval.score_evaluation, records)
+
+    assert correct["brand_confirmed_correct"] is True
+    assert correct["brand_confirmed_wrong"] is False
+    assert correct["brand_not_confirmed"] is False
+    assert correct["actual_brand_key"] == "expected-brand"
+    assert wrong["brand_confirmed_correct"] is False
+    assert wrong["brand_confirmed_wrong"] is True
+    assert wrong["brand_not_confirmed"] is False
+    assert wrong["actual_brand_key"] == "different-brand"
+    assert not_confirmed["brand_confirmed_correct"] is False
+    assert not_confirmed["brand_confirmed_wrong"] is False
+    assert not_confirmed["brand_not_confirmed"] is True
+    assert not_confirmed["actual_brand_key"] is None
+    aggregate = brand_eval.calculate_metrics(records)["overall"]
+    assert aggregate["brand_confirmed_correct"] == 1
+    assert aggregate["brand_confirmed_wrong"] == 1
+    assert aggregate["brand_not_confirmed"] == 1
+    assert aggregate["brand_confirmed_correct_rate"] == pytest.approx(1 / 3)
+    assert aggregate["brand_confirmed_wrong_rate"] == pytest.approx(1 / 3)
+    assert aggregate["brand_not_confirmed_rate"] == pytest.approx(1 / 3)
+
+
+def test_null_expected_brand_key_is_excluded_from_brand_denominator():
+    known = _case("bottle_front", "known-expression")
+    known["expected_brand_key"] = "known-brand"
+    unknown = _case("bottle_front", None)
+    unknown["expected_brand_key"] = None
+    records = [
+        _record(0, known, [{"brand_key": "known-brand"}]),
+        _record(1, unknown, [{"brand_key": "any-brand"}]),
+    ]
+
+    overall = brand_eval.calculate_metrics(records)["overall"]
+
+    assert overall["cases"] == 2
+    assert overall["brand_evaluable_cases"] == 1
+    assert overall["brand_excluded_cases"] == 1
+    assert overall["brand_confirmed_correct"] == 1
+    assert overall["brand_confirmed_correct_rate"] == pytest.approx(1.0)
+    assert overall["brand_confirmed_wrong"] == 0
+    assert overall["brand_not_confirmed"] == 0
+    by_condition = brand_eval.calculate_metrics(records)["by_condition"]["bottle_front"]
+    assert by_condition["brand_evaluable_cases"] == 1
+    assert by_condition["brand_excluded_cases"] == 1
+
+
+def test_existing_expression_score_values_are_unchanged_when_brand_is_scored():
+    assert brand_eval.RESULT_VERSION == 1
+    case = _case("bottle_front", "expression-id")
+    case["expected_brand_key"] = "brand-a"
+    score = brand_eval.score_evaluation(
+        _record(
+            0,
+            case,
+            [
+                {"whiskey_id": "wrong-id", "brand_key": "brand-a"},
+                {"whiskey_id": "expression-id"},
+            ],
+        )
+    )
+
+    assert {
+        key: score[key]
+        for key in (
+            "confirmed_correct",
+            "confirmed_wrong",
+            "not_confirmed",
+            "top1_correct",
+            "top3_correct",
+            "false_confirmation",
+            "rejected",
+            "no_candidates",
+            "actual_whiskey_id",
+        )
+    } == {
+        "confirmed_correct": False,
+        "confirmed_wrong": True,
+        "not_confirmed": False,
+        "top1_correct": False,
+        "top3_correct": True,
+        "false_confirmation": True,
+        "rejected": False,
+        "no_candidates": False,
+        "actual_whiskey_id": "wrong-id",
+    }
 
 
 def test_unresolved_top_candidate_with_resolved_second_candidate_is_not_confirmed():
@@ -235,12 +340,194 @@ def test_manifest_validation_accepts_uppercase_image_extension():
     assert brand_eval.validate_manifest_data(manifest) == manifest
 
 
+def test_manifest_validation_accepts_expected_brand_key():
+    case = _case("bottle_front", "a")
+    case["expected_brand_key"] = "brand-a"
+    manifest = {"version": 1, "cases": [case]}
+
+    assert brand_eval.validate_manifest_data(manifest) == manifest
+    case["expected_brand_key"] = None
+    assert brand_eval.validate_manifest_data(manifest) == manifest
+
+
+@pytest.mark.parametrize("invalid", [123, True, ""])
+def test_manifest_validation_rejects_invalid_expected_brand_key(invalid):
+    case = _case("bottle_front", "a")
+    case["expected_brand_key"] = invalid
+
+    with pytest.raises(brand_eval.ManifestError, match="expected_brand_key"):
+        brand_eval.validate_manifest_data({"version": 1, "cases": [case]})
+
+
+def test_manifest_schema_accepts_expected_brand_key_and_rejects_wrong_type():
+    jsonschema = pytest.importorskip("jsonschema")
+    schema_path = Path(brand_eval.__file__).with_name("manifest.schema.json")
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    validator = jsonschema.Draft202012Validator(schema)
+    case = _case("bottle_front", "a")
+    case["expected_brand_key"] = "brand-a"
+
+    validator.validate({"version": 1, "cases": [case]})
+    case["expected_brand_key"] = None
+    validator.validate({"version": 1, "cases": [case]})
+    case["expected_brand_key"] = 123
+    with pytest.raises(jsonschema.ValidationError):
+        validator.validate({"version": 1, "cases": [case]})
+
+
 def test_manifest_validation_rejects_non_boolean_needs_review():
     case = _case("bottle_front", "a")
     case["needs_review"] = "false"
 
     with pytest.raises(brand_eval.ManifestError, match="needs_review must be a boolean"):
         brand_eval.validate_manifest_data({"version": 1, "cases": [case]})
+
+
+def test_propose_brand_keys_sets_only_unique_matches_and_marks_others():
+    brands = [
+        {
+            "brand_key": "alpha",
+            "brand_ja": "アルファ",
+            "brand_en": "Alpha",
+            "distillery_ja": "アルファ蒸留所",
+            "distillery_en": "Alpha Distillery",
+            "aliases": ["ALPHA"],
+        },
+        {
+            "brand_key": "shared-one",
+            "brand_ja": "共有一",
+            "aliases": ["Shared"],
+        },
+        {
+            "brand_key": "shared-two",
+            "brand_ja": "共有二",
+            "aliases": ["Shared"],
+        },
+    ]
+    unique = _case("bottle_front", None, "images/unique.jpg")
+    unique.update(
+        {
+            "expected_canonical_name": "Alpha 12 Year Old",
+            "notes": "reviewed note",
+        }
+    )
+    ambiguous = _case("bottle_front", None, "images/ambiguous.jpg")
+    ambiguous.update(
+        {
+            "expected_canonical_name": "Shared Reserve",
+            "notes": "keep this",
+        }
+    )
+    unmatched = _case("bottle_front", None, "images/unmatched.jpg")
+    unmatched["expected_canonical_name"] = "No Catalog Match"
+
+    proposed = brand_eval.propose_brand_keys(
+        {"version": 1, "cases": [unique, ambiguous, unmatched]},
+        brands,
+    )
+
+    assert proposed["cases"][0]["expected_brand_key"] == "alpha"
+    assert proposed["cases"][0]["notes"] == "reviewed note"
+    assert proposed["cases"][1]["expected_brand_key"] is None
+    assert proposed["cases"][1]["notes"] == (
+        f"keep this\n{brand_eval.BRAND_REVIEW_NOTE}"
+    )
+    assert proposed["cases"][2]["expected_brand_key"] is None
+    assert proposed["cases"][2]["notes"] == brand_eval.BRAND_REVIEW_NOTE
+
+
+def test_propose_brand_keys_rebuilds_reviewed_values_including_to_null():
+    """The proposer replaces the whole column; it does not fill gaps.
+
+    A value a human already confirmed is recomputed, and reverts to null when the
+    catalog no longer resolves it uniquely. Pinning this keeps the destructive
+    behaviour visible rather than incidental.
+    """
+    brands = [
+        {"brand_key": "shared_one", "brand_ja": "共有一", "aliases": ["Shared"]},
+        {"brand_key": "shared_two", "brand_ja": "共有二", "aliases": ["Shared"]},
+    ]
+    reviewed = _case("bottle_front", None, "images/reviewed.jpg")
+    reviewed.update(
+        {
+            "expected_canonical_name": "Shared Reserve",
+            "expected_brand_key": "confirmed_by_a_human",
+        }
+    )
+
+    proposed = brand_eval.propose_brand_keys({"version": 1, "cases": [reviewed]}, brands)
+
+    assert proposed["cases"][0]["expected_brand_key"] is None
+    assert brand_eval.BRAND_REVIEW_NOTE in proposed["cases"][0]["notes"]
+
+
+def test_zero_brand_denominator_renders_as_not_applicable():
+    """An empty denominator must never be printed as 0.0%."""
+    assert brand_eval.format_rate(0, 0, None) == "該当なし"
+    assert brand_eval.format_rate(0, 3, 0.0) != "該当なし"
+
+
+def test_propose_brand_keys_cli_requires_force_and_never_calls_aws(
+    tmp_path, monkeypatch, capsys
+):
+    manifest_path = tmp_path / "manifest.json"
+    case = _case("bottle_front", None)
+    case["expected_canonical_name"] = "Alpha Special"
+    original = json.dumps({"version": 1, "cases": [case]}).encode("utf-8")
+    manifest_path.write_bytes(original)
+    brands_path = tmp_path / "brands.json"
+    brands_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "brands": [
+                    {
+                        "brand_key": "alpha",
+                        "brand_ja": "アルファ",
+                        "brand_en": "Alpha",
+                        "aliases": [],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(brand_eval, "BRANDS_PATH", brands_path)
+    monkeypatch.setattr(
+        brand_eval.boto3,
+        "Session",
+        lambda **_kwargs: pytest.fail("AWS session must not be created"),
+    )
+
+    assert brand_eval.main(["--propose-brand-keys", str(manifest_path)]) == 1
+    assert manifest_path.read_bytes() == original
+    assert "use --force" in capsys.readouterr().err
+
+    assert brand_eval.main(
+        ["--propose-brand-keys", str(manifest_path), "--force"]
+    ) == 0
+    proposed = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert proposed["cases"][0]["expected_brand_key"] == "alpha"
+    output = capsys.readouterr().out
+    assert "0" in output
+    assert "Alpha Special" in output
+    assert "alpha" in output
+
+
+def test_metrics_report_prints_brand_rates_overall_and_by_condition(capsys):
+    case = _case("bottle_front", "expression")
+    case["expected_brand_key"] = "alpha"
+    metrics = brand_eval.calculate_metrics(
+        [_record(0, case, [{"brand_key": "alpha", "whiskey_id": "expression"}])]
+    )
+
+    brand_eval.print_metrics_report(metrics)
+
+    output = capsys.readouterr().out
+    assert "Brand metrics (primary) - Overall" in output
+    assert "Brand metrics (primary) - By condition" in output
+    assert "Brand excluded" in output
+    assert "1/1 (100.0%)" in output
 
 
 def test_draft_manifest_matches_schema_and_marks_every_case_for_review(tmp_path):

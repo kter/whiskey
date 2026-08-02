@@ -14,6 +14,7 @@ import mimetypes
 import os
 import re
 import sys
+import unicodedata
 import uuid
 from collections import Counter
 from datetime import datetime, timezone
@@ -63,9 +64,14 @@ CASE_REQUIRED_FIELDS = {
     "expected_whiskey_id",
     "expected_canonical_name",
 }
-CASE_ALLOWED_FIELDS = CASE_REQUIRED_FIELDS | {"notes", "needs_review"}
+CASE_ALLOWED_FIELDS = CASE_REQUIRED_FIELDS | {
+    "expected_brand_key",
+    "notes",
+    "needs_review",
+}
 DRAFT_CONDITION = "bottle_front"
 DRAFT_NOTES = "要確認: 撮影条件を実際の写真に合わせて修正すること"
+BRAND_REVIEW_NOTE = "要確認: ブランドを特定できませんでした"
 EVAL_USER_RE = re.compile(r"^[A-Za-z0-9._:@+-]+$")
 CLIENT_CONFIG = Config(
     connect_timeout=5,
@@ -73,6 +79,7 @@ CLIENT_CONFIG = Config(
     retries={"mode": "standard", "total_max_attempts": 2},
 )
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+BRANDS_PATH = REPOSITORY_ROOT / "scripts/catalog/brands.json"
 
 
 class ManifestError(ValueError):
@@ -165,6 +172,13 @@ def validate_manifest_data(data: Any) -> dict[str, Any]:
         if whiskey_id is not None and canonical_name is None:
             raise ManifestError(
                 f"{location}.expected_canonical_name is required for a catalog whiskey"
+            )
+        brand_key = case.get("expected_brand_key")
+        if brand_key is not None and (
+            not isinstance(brand_key, str) or not brand_key.strip()
+        ):
+            raise ManifestError(
+                f"{location}.expected_brand_key must be a non-empty string or null"
             )
         if "notes" in case and not isinstance(case["notes"], str):
             raise ManifestError(f"{location}.notes must be a string")
@@ -270,6 +284,13 @@ def _candidate_id(candidate: Any) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
+def _candidate_brand_key(candidate: Any) -> str | None:
+    if not isinstance(candidate, Mapping):
+        return None
+    value = candidate.get("brand_key")
+    return value if isinstance(value, str) and value else None
+
+
 def score_evaluation(record: Mapping[str, Any]) -> dict[str, Any]:
     """Score one response using a top-candidate confirmation partition."""
     case = record["case"]
@@ -278,7 +299,9 @@ def score_evaluation(record: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(candidates, list):
         candidates = []
     expected_id = case["expected_whiskey_id"]
+    expected_brand_key = case.get("expected_brand_key")
     top_id = _candidate_id(candidates[0]) if candidates else None
+    actual_brand_key = _candidate_brand_key(candidates[0]) if candidates else None
     confirmed = top_id is not None
     confirmed_correct = confirmed and top_id == expected_id
     confirmed_wrong = confirmed and top_id != expected_id
@@ -291,7 +314,20 @@ def score_evaluation(record: Mapping[str, Any]) -> dict[str, Any]:
     rejected = not any(_candidate_id(candidate) is not None for candidate in candidates)
     no_candidates = not candidates
     top = candidates[0] if candidates and isinstance(candidates[0], Mapping) else {}
+    # Gate the verdicts on having a truth value at all. The aggregator already
+    # excludes these cases, but a per-case reader (the way false_confirmation_cases
+    # reads its flag) would otherwise report "we don't know" as "the model was wrong".
+    brand_evaluable = expected_brand_key is not None
     return {
+        "brand_evaluable": brand_evaluable,
+        "brand_confirmed_correct": (
+            brand_evaluable and actual_brand_key is not None and actual_brand_key == expected_brand_key
+        ),
+        "brand_confirmed_wrong": (
+            brand_evaluable and actual_brand_key is not None and actual_brand_key != expected_brand_key
+        ),
+        "brand_not_confirmed": brand_evaluable and actual_brand_key is None,
+        "actual_brand_key": actual_brand_key,
         "confirmed_correct": confirmed_correct,
         "confirmed_wrong": confirmed_wrong,
         "not_confirmed": not_confirmed,
@@ -337,6 +373,22 @@ def _aggregate_records(records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     ]
     retrievable_total = len(retrievable)
     unanswerable_total = len(unanswerable)
+    brand_evaluable = [
+        score
+        for score, record in zip(scores, scored_records)
+        if record["case"].get("expected_brand_key") is not None
+    ]
+    brand_evaluable_total = len(brand_evaluable)
+    brand_excluded_total = total - brand_evaluable_total
+    brand_confirmed_correct = sum(
+        score["brand_confirmed_correct"] for score in brand_evaluable
+    )
+    brand_confirmed_wrong = sum(
+        score["brand_confirmed_wrong"] for score in brand_evaluable
+    )
+    brand_not_confirmed = sum(
+        score["brand_not_confirmed"] for score in brand_evaluable
+    )
     top1 = sum(score["top1_correct"] for score in retrievable)
     top3 = sum(score["top3_correct"] for score in retrievable)
     confirmed_correct = sum(score["confirmed_correct"] for score in scores)
@@ -351,6 +403,20 @@ def _aggregate_records(records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     correct_abstentions = sum(score["not_confirmed"] for score in unanswerable)
     return {
         "cases": total,
+        "brand_evaluable_cases": brand_evaluable_total,
+        "brand_excluded_cases": brand_excluded_total,
+        "brand_confirmed_correct": brand_confirmed_correct,
+        "brand_confirmed_correct_rate": _rate(
+            brand_confirmed_correct, brand_evaluable_total
+        ),
+        "brand_confirmed_wrong": brand_confirmed_wrong,
+        "brand_confirmed_wrong_rate": _rate(
+            brand_confirmed_wrong, brand_evaluable_total
+        ),
+        "brand_not_confirmed": brand_not_confirmed,
+        "brand_not_confirmed_rate": _rate(
+            brand_not_confirmed, brand_evaluable_total
+        ),
         "retrievable_cases": retrievable_total,
         "unanswerable_cases": unanswerable_total,
         "confirmed_correct": confirmed_correct,
@@ -485,8 +551,51 @@ def _metric_row(label: str, aggregate: Mapping[str, Any]) -> list[str]:
     ]
 
 
+def _brand_metric_row(label: str, aggregate: Mapping[str, Any]) -> list[str]:
+    evaluable = aggregate["brand_evaluable_cases"]
+    return [
+        label,
+        str(aggregate["cases"]),
+        str(evaluable),
+        str(aggregate["brand_excluded_cases"]),
+        format_rate(
+            aggregate["brand_confirmed_correct"],
+            evaluable,
+            aggregate["brand_confirmed_correct_rate"],
+        ),
+        format_rate(
+            aggregate["brand_confirmed_wrong"],
+            evaluable,
+            aggregate["brand_confirmed_wrong_rate"],
+        ),
+        format_rate(
+            aggregate["brand_not_confirmed"],
+            evaluable,
+            aggregate["brand_not_confirmed_rate"],
+        ),
+    ]
+
+
 def print_metrics_report(metrics: Mapping[str, Any]) -> None:
     """Print overall metrics, condition metrics, and false confirmations."""
+    brand_headers = (
+        "Scope",
+        "Cases",
+        "Brand denominator",
+        "Brand excluded",
+        "Brand correct",
+        "Brand wrong",
+        "Brand not confirmed",
+    )
+    print("\nBrand metrics (primary) - Overall")
+    print(_format_table(brand_headers, [_brand_metric_row("ALL", metrics["overall"])]))
+    print("\nBrand metrics (primary) - By condition")
+    brand_condition_rows = [
+        _brand_metric_row(condition, aggregate)
+        for condition, aggregate in metrics["by_condition"].items()
+    ]
+    print(_format_table(brand_headers, brand_condition_rows))
+
     headers = (
         "Scope",
         "Cases",
@@ -501,9 +610,9 @@ def print_metrics_report(metrics: Mapping[str, Any]) -> None:
         "Rejection (diagnostic)",
         "No candidates (diagnostic)",
     )
-    print("\nOverall")
+    print("\nExpression metrics (secondary) - Overall")
     print(_format_table(headers, [_metric_row("ALL", metrics["overall"])]))
-    print("\nBy condition")
+    print("\nExpression metrics (secondary) - By condition")
     condition_rows = [
         _metric_row(condition, aggregate)
         for condition, aggregate in metrics["by_condition"].items()
@@ -657,6 +766,127 @@ def save_manifest_draft_atomic(
     """Write a draft without silently replacing possible reviewed labels."""
     ensure_manifest_output_available(path, force=force)
     save_json_atomic(path, document)
+
+
+def normalize_brand_label(value: str) -> str:
+    """Normalize a catalog or manifest label for local partial matching."""
+    normalized = unicodedata.normalize("NFKC", value).casefold()
+    return "".join(character for character in normalized if character.isalnum())
+
+
+def load_brand_catalog(path: Path | None = None) -> list[dict[str, Any]]:
+    """Load the local version 1 brand catalog without using AWS."""
+    catalog_path = path or BRANDS_PATH
+    with catalog_path.open(encoding="utf-8") as catalog_file:
+        document = json.load(catalog_file)
+    if not isinstance(document, dict) or document.get("version") != 1:
+        raise ValueError("brands catalog must be a version 1 JSON object")
+    brands = document.get("brands")
+    if not isinstance(brands, list):
+        raise ValueError("brands catalog must contain a brands array")
+    for index, brand in enumerate(brands):
+        if not isinstance(brand, dict):
+            raise ValueError(f"brands[{index}] must be an object")
+        brand_key = brand.get("brand_key")
+        if not isinstance(brand_key, str) or not brand_key.strip():
+            raise ValueError(f"brands[{index}].brand_key must be a non-empty string")
+    return brands
+
+
+def _brand_match_keys(
+    canonical_name: Any,
+    brands: Sequence[Mapping[str, Any]],
+) -> set[str]:
+    if not isinstance(canonical_name, str):
+        return set()
+    normalized_canonical_name = normalize_brand_label(canonical_name)
+    if not normalized_canonical_name:
+        return set()
+
+    matches: set[str] = set()
+    for brand in brands:
+        raw_names = [
+            brand.get("brand_ja"),
+            brand.get("brand_en"),
+            brand.get("distillery_ja"),
+            brand.get("distillery_en"),
+        ]
+        aliases = brand.get("aliases", [])
+        if isinstance(aliases, list):
+            raw_names.extend(aliases)
+        for raw_name in raw_names:
+            if not isinstance(raw_name, str):
+                continue
+            normalized_name = normalize_brand_label(raw_name)
+            if normalized_name and (
+                normalized_name in normalized_canonical_name
+                or normalized_canonical_name in normalized_name
+            ):
+                matches.add(brand["brand_key"])
+                break
+    return matches
+
+
+def _append_brand_review_note(case: dict[str, Any]) -> None:
+    notes = case.get("notes", "")
+    if BRAND_REVIEW_NOTE in notes:
+        return
+    separator = "" if not notes or notes.endswith("\n") else "\n"
+    case["notes"] = f"{notes}{separator}{BRAND_REVIEW_NOTE}"
+
+
+def propose_brand_keys(
+    manifest: Mapping[str, Any],
+    brands: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Return a manifest with only uniquely matched brand keys proposed."""
+    proposed = {
+        "version": manifest["version"],
+        "cases": [dict(case) for case in manifest["cases"]],
+    }
+    for case in proposed["cases"]:
+        matches = _brand_match_keys(case.get("expected_canonical_name"), brands)
+        if len(matches) == 1:
+            case["expected_brand_key"] = next(iter(matches))
+        else:
+            case["expected_brand_key"] = None
+            _append_brand_review_note(case)
+    return validate_manifest_data(proposed)
+
+
+def print_brand_key_proposals(manifest: Mapping[str, Any]) -> None:
+    """Print every proposed brand label for human review."""
+    rows = [
+        [
+            str(index),
+            str(case.get("expected_canonical_name") or "-"),
+            str(case.get("expected_brand_key") or "未決定"),
+        ]
+        for index, case in enumerate(manifest["cases"])
+    ]
+    print(_format_table(("Case", "Canonical name", "brand_key"), rows))
+
+
+def propose_brand_keys_file(
+    manifest_path: Path,
+    *,
+    force: bool,
+    brands_path: Path | None = None,
+) -> dict[str, Any]:
+    """Propose labels into an existing manifest using only local JSON files."""
+    ensure_manifest_output_available(manifest_path, force=force)
+    try:
+        with manifest_path.open(encoding="utf-8") as manifest_file:
+            raw_manifest = json.load(manifest_file)
+    except json.JSONDecodeError as exc:
+        raise ManifestError(f"manifest is not valid JSON: {exc}") from exc
+    manifest = validate_manifest_data(raw_manifest)
+    proposed = propose_brand_keys(
+        manifest,
+        load_brand_catalog(brands_path),
+    )
+    save_json_atomic(manifest_path, proposed)
+    return proposed
 
 
 def repository_relative_path(path: Path) -> str:
@@ -1101,12 +1331,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate whiskey brand recognition")
     parser.add_argument(
         "input",
+        nargs="?",
         type=Path,
         help="manifest path, or an image directory with --emit-manifest",
     )
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--target", choices=("dev",))
     mode.add_argument("--dry-run", action="store_true")
+    mode.add_argument(
+        "--propose-brand-keys",
+        type=Path,
+        metavar="MANIFEST",
+        help="locally propose expected_brand_key values into a manifest",
+    )
     parser.add_argument("--profile", help="explicit AWS profile required for --target dev")
     parser.add_argument(
         "--aud",
@@ -1125,7 +1362,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--force",
         action="store_true",
-        help="replace an existing --emit-manifest output",
+        help="replace an existing manifest output",
     )
     return parser.parse_args(argv)
 
@@ -1171,6 +1408,20 @@ def main(argv: list[str] | None = None) -> int:
     """Run local validation or the guarded dev evaluation."""
     args = parse_args(argv)
     try:
+        if args.propose_brand_keys is not None:
+            if args.input is not None:
+                raise ValueError(
+                    "the positional input is not used with --propose-brand-keys"
+                )
+            proposed = propose_brand_keys_file(
+                args.propose_brand_keys,
+                force=args.force,
+            )
+            print_brand_key_proposals(proposed)
+            return 0
+
+        if args.input is None:
+            raise ValueError("a manifest path or image directory is required")
         if args.emit_manifest is not None:
             if args.dry_run:
                 raise ValueError("--emit-manifest requires --target dev")

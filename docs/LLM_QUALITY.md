@@ -24,8 +24,18 @@ IAMステートメントは`infra/lib/bedrock-models.ts`の`bedrockInvokeStateme
 
 ## 測定する指標
 
-`scripts/eval/run_brand_eval.py`の既存`score_evaluation`と集計結果をそのまま使います。
-新しい指標は追加しません。
+主指標はブランド / 蒸留所層、副次指標はエクスプレッション層です。
+ボトルの商品名や熟成年数、カスク違いなどのエクスプレッションは無限に増え続けるため、カタログを完成させることはできません。
+そのためエクスプレッションIDだけで採点すると、モデルの読字力よりカタログの網羅性を強く測ってしまいます。
+
+ブランド層では、マニフェストの`expected_brand_key`と先頭候補の`brand_key`を比較します。
+
+* Brand confirmed correct / Brand confirmed wrong / Brand not confirmed（主指標）
+  * 先頭候補のブランドが正解 / 不正解 / ブランドなしのどれだったかを分割します。
+  * 正解率、誤確定率、未確定率を全体と撮影条件ごとに出します。
+  * `expected_brand_key: null`は「正解不明」なのでブランド指標の分母から除外し、除外件数を別に表示します。
+
+エクスプレッション層はカタログ命中率を見る副次指標として、既存のキーと計算を維持します。
 
 * Confirmed correct / Confirmed wrong / Not confirmed
   * 先頭候補が正解ID / 不正解ID / IDなしのどれだったかを全ケースで分割します。
@@ -40,7 +50,8 @@ IAMステートメントは`infra/lib/bedrock-models.ts`の`bedrockInvokeStateme
 * Rejection rate / No candidates rate
   * どの候補にもIDがないケースと、候補自体が空だったケースを分けた診断値です。
 
-全体と撮影条件ごとの集計に加えて、誤確定したケースの画像名 / 正解 / 実際の候補も結果JSONに残ります。
+ブランド層とエクスプレッション層のどちらも、全体と撮影条件ごとに集計します。
+エクスプレッションを誤確定したケースの画像名 / 正解 / 実際の候補も結果JSONに残ります。
 HTTPエラーなどで採点できなかった件数はattempted / scored / error casesで確認します。
 
 ## 実写真の準備
@@ -92,6 +103,23 @@ AWS_PROFILE=dev python scripts/eval/run_brand_eval.py scripts/eval/images-real \
 写真を見て`expected_canonical_name` / `expected_whiskey_id` / `condition` / `notes`を直し、確認済みのケースだけ`needs_review: false`に変更します。
 1件でもtrueが残っていると採点は始まりません。
 既存の`--emit-manifest`出力はレビュー済みラベルを保護するため上書きされません。意図的に下書きを作り直す場合だけ`--force`を追加してください。
+
+`expected_canonical_name`のレビュー後、ローカルの`scripts/catalog/brands.json`から`expected_brand_key`の提案を作ります。
+この処理はAWSを呼びません。
+既存マニフェストを更新するため、レビュー済みラベルの誤消去を防ぐ`--force`が必須です。
+
+```bash
+python scripts/eval/run_brand_eval.py \
+  --propose-brand-keys scripts/eval/manifest.real.json --force
+```
+
+正規化後の銘柄名が`brand_ja` / `brand_en` / `distillery_ja` / `distillery_en` / `aliases`のどれかと部分一致し、候補が1ブランドだけなら`expected_brand_key`を書き込みます。
+一致なし、または複数ブランドに一致したケースは`null`にして、`notes`へ`要確認: ブランドを特定できませんでした`を追記します。
+この処理は`expected_brand_key`列を**全ケース作り直します**。既に人が確認した値も対象で、カタログの変化で曖昧になれば`null`へ戻ります。一部だけを埋める用途には使えません。
+標準出力のケース一覧と写真を照合し、提案値と未決定ケースを人が確認してください。
+
+採点時はマニフェストに保存された`expected_brand_key`だけを正解として使い、カタログから再導出しません。
+したがって、後からカタログを変更しても同じマニフェストの正解は変わりません。
 
 確認後はローカル検査を通します。
 
