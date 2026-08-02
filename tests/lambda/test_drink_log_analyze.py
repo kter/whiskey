@@ -581,16 +581,29 @@ def test_unmatched_brand_omits_catalog_brand_keys():
     assert "distillery_ja" not in candidate
 
 
-def test_brand_without_distillery_keeps_brand_key_and_omits_distillery():
-    whiskey = _whiskey("マクリームーア", "Machrie Moor", 0.9)
-    whiskey.update(brand_ja="マクリームーア", brand_en="Machrie Moor")
+def test_brand_without_distillery_keeps_brand_key_and_omits_distillery(monkeypatch):
+    # Synthetic rather than a real catalog row: whether any given brand has a
+    # known distillery is data that changes, but the guard must not.
+    monkeypatch.setattr(
+        analyze,
+        "BRAND_CATALOG",
+        (
+            {
+                "brand_key": "unverified_brand",
+                "distillery_ja": "",
+                "_normalized_names": (analyze.normalize_text("Unverified Brand"),),
+            },
+        ),
+    )
+    whiskey = _whiskey("蒸溜所不明ウイスキー", "Unverified Brand Whisky", 0.9)
+    whiskey.update(brand_en="unverified brand")
 
     candidate = analyze._build_candidates(
         _snapshot([CAOL_ILA_ITEM]),
         _analysis([whiskey]),
     )[0]
 
-    assert candidate["brand_key"] == "macrie_moor"
+    assert candidate["brand_key"] == "unverified_brand"
     assert "distillery_ja" not in candidate
 
 

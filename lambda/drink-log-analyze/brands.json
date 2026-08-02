@@ -292,7 +292,12 @@
         "アラン",
         "Arran",
         "Isle of Arran",
-        "アラン蒸留所"
+        "アラン蒸留所",
+        "マクリームーア",
+        "マクリムーア",
+        "マクリー・ムーア",
+        "Machrie Moor",
+        "Macrie Moor"
       ],
       "distillery_ja": "アラン蒸留所",
       "distillery_en": "Isle of Arran Distillers",
@@ -850,22 +855,6 @@
       "distillery_en": "Niigata Kameda Distillery",
       "region": "Japan",
       "country": "Japan"
-    },
-    {
-      "brand_key": "macrie_moor",
-      "brand_ja": "マクリームーア",
-      "brand_en": "Macrie Moor",
-      "aliases": [
-        "マクリームーア",
-        "マクリムーア",
-        "マクリー・ムーア",
-        "Macrie Moor",
-        "Machrie Moor"
-      ],
-      "distillery_ja": "",
-      "distillery_en": "",
-      "region": "",
-      "country": ""
     }
   ]
 }
