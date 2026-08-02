@@ -535,6 +535,160 @@ def test_brand_alias_match_is_independent_from_expression_match():
     assert candidates[0]["distillery_ja"] == "厚岸蒸溜所"
 
 
+@pytest.mark.parametrize(
+    ("brand_field", "brand_name"),
+    [
+        ("brand_ja", "遊佐蒸溜所"),
+        ("brand_en", "The Yuza Distillery"),
+    ],
+)
+def test_distillery_label_resolves_to_yuza(brand_field, brand_name):
+    whiskey = _whiskey("遊佐 シングルモルト", "Yuza Single Malt")
+    whiskey[brand_field] = brand_name
+
+    candidate = analyze._build_candidates(
+        _snapshot([CAOL_ILA_ITEM]),
+        _analysis([whiskey]),
+    )[0]
+
+    assert candidate["brand_key"] == "yuza"
+
+
+@pytest.mark.parametrize("model_brand", ["厚岸", "厚岸蒸留所"])
+def test_catalog_distillery_suffix_and_kanji_variation_resolve_to_akkeshi(
+    model_brand,
+):
+    akkeshi = next(
+        brand for brand in analyze.BRAND_CATALOG if brand["brand_key"] == "akkeshi"
+    )
+    assert analyze.normalize_text("厚岸蒸溜所") in akkeshi["_normalized_names"]
+
+    whiskey = _whiskey("厚岸 シングルモルト", "Akkeshi Single Malt")
+    whiskey["brand_ja"] = model_brand
+
+    candidate = analyze._build_candidates(
+        _snapshot([CAOL_ILA_ITEM]),
+        _analysis([whiskey]),
+    )[0]
+
+    assert candidate["brand_key"] == "akkeshi"
+
+
+@pytest.mark.parametrize(
+    ("brand_field", "brand_name"),
+    [
+        ("brand_ja", "ミドルトン蒸溜所"),
+        ("brand_en", "Midleton Distillery"),
+        ("brand_en", "Midleton"),
+        ("brand_ja", "ニッカウヰスキー"),
+        ("brand_en", "Nikka Whisky"),
+    ],
+)
+def test_shared_distillery_name_does_not_attach_arbitrary_brand_key(
+    brand_field, brand_name
+):
+    whiskey = _whiskey("共有蒸溜所のウイスキー", "Shared Distillery Whisky")
+    whiskey[brand_field] = brand_name
+
+    candidate = analyze._build_candidates(
+        _snapshot([CAOL_ILA_ITEM]),
+        _analysis([whiskey]),
+    )[0]
+
+    assert "brand_key" not in candidate
+
+
+@pytest.mark.parametrize(
+    ("brand_name", "expected_brand_key"),
+    [
+        ("Bruichladdich Distillery", "bruichladdich"),
+        ("Buffalo Trace Distillery", "buffalo_trace"),
+    ],
+)
+def test_brand_named_for_shared_distillery_takes_precedence(
+    brand_name, expected_brand_key
+):
+    whiskey = _whiskey("同名ブランドのウイスキー", "Same-name Brand Whisky")
+    whiskey["brand_en"] = brand_name
+
+    candidate = analyze._build_candidates(
+        _snapshot([CAOL_ILA_ITEM]),
+        _analysis([whiskey]),
+    )[0]
+
+    assert candidate["brand_key"] == expected_brand_key
+
+
+@pytest.mark.parametrize(
+    ("brand_field", "brand_name"),
+    [
+        ("brand_ja", "蒸溜所"),
+        ("brand_en", "The "),
+        ("brand_en", "Distillery"),
+    ],
+)
+def test_affix_only_brand_name_does_not_attach_brand_key(brand_field, brand_name):
+    whiskey = _whiskey("接辞のみのウイスキー", "Affix-only Whisky")
+    whiskey[brand_field] = brand_name
+
+    candidate = analyze._build_candidates(
+        _snapshot([CAOL_ILA_ITEM]),
+        _analysis([whiskey]),
+    )[0]
+
+    assert "brand_key" not in candidate
+
+
+def test_real_brand_catalog_normalized_names_never_include_empty_string():
+    assert all(
+        "" not in brand["_normalized_names"] for brand in analyze.BRAND_CATALOG
+    )
+
+
+@pytest.mark.parametrize(
+    ("brand_field", "brand_name"),
+    [
+        ("brand_en", "Yuza Distillery Co."),
+        ("brand_ja", "遊佐蒸溜所です"),
+    ],
+)
+def test_distillery_affixes_are_removed_only_at_anchors(brand_field, brand_name):
+    whiskey = _whiskey("遊佐ではないウイスキー", "Not Yuza Whisky")
+    whiskey[brand_field] = brand_name
+
+    candidate = analyze._build_candidates(
+        _snapshot([CAOL_ILA_ITEM]),
+        _analysis([whiskey]),
+    )[0]
+
+    assert "brand_key" not in candidate
+
+
+def test_normalized_brand_name_variants_remove_only_complete_affixes():
+    assert analyze.normalize_text("yuza") in analyze._normalized_brand_name_variants(
+        "The Yuza Distillery"
+    )
+    assert analyze.normalize_text("遊佐") in analyze._normalized_brand_name_variants(
+        "遊佐蒸溜所"
+    )
+    assert "" not in analyze._normalized_brand_name_variants("蒸溜所")
+    assert analyze._normalized_brand_name_variants("Theakston") == (
+        analyze.normalize_text("Theakston"),
+    )
+
+
+def test_brand_with_the_prefix_resolves_to_glenlivet():
+    whiskey = _whiskey("ザ・グレンリベット", "The Glenlivet")
+    whiskey["brand_en"] = "The Glenlivet"
+
+    candidate = analyze._build_candidates(
+        _snapshot([CAOL_ILA_ITEM]),
+        _analysis([whiskey]),
+    )[0]
+
+    assert candidate["brand_key"] == "glenlivet"
+
+
 def test_handler_accepts_brand_fields_and_returns_them_on_candidate(monkeypatch):
     key = f"tmp/user-1/{uuid.uuid4()}.png"
     dynamodb = FakeDynamoDB(whiskeys=WhiskeyTable(items=[]))
@@ -619,6 +773,25 @@ def test_packaged_brand_catalog_matches_curated_source():
     )
 
     assert packaged == curated
+
+
+def test_real_brand_catalog_has_no_normalized_name_collisions():
+    owners = {}
+    for brand in analyze.BRAND_CATALOG:
+        for normalized_name in brand["_normalized_names"]:
+            owners.setdefault(normalized_name, set()).add(brand["brand_key"])
+    collisions = {
+        normalized_name: sorted(brand_keys)
+        for normalized_name, brand_keys in owners.items()
+        if len(brand_keys) > 1
+    }
+    details = ", ".join(
+        f"{normalized_name}: {brand_keys}"
+        for normalized_name, brand_keys in sorted(collisions.items())
+    )
+
+    assert not collisions, f"Normalized brand-name collisions: {details}"
+    assert len(analyze.BRAND_CATALOG) == 60
 
 
 def test_duplicate_exact_catalog_names_do_not_attach_an_arbitrary_id():
