@@ -75,6 +75,31 @@ PROMPT = (
 _MASTER_CACHE_LOCK = threading.Lock()
 _MASTER_CACHE: dict[str, Any] | None = None
 
+_BRAND_PREFIX_RE = re.compile(r"^the\s+", re.IGNORECASE)
+_BRAND_SUFFIX_RE = re.compile(
+    r"(?:蒸溜所|蒸留所|蒸溜|蒸留|\s+(?:distillery|distillers))$",
+    re.IGNORECASE,
+)
+
+
+def _normalized_brand_name_variants(name: str) -> tuple[str, ...]:
+    """Return normalized brand names with distillery affixes removed."""
+    variants = [name]
+    without_prefix = _BRAND_PREFIX_RE.sub("", name)
+    if without_prefix != name:
+        variants.append(without_prefix)
+    for variant in tuple(variants):
+        without_suffix = _BRAND_SUFFIX_RE.sub("", variant)
+        if without_suffix != variant:
+            variants.append(without_suffix)
+    return tuple(
+        dict.fromkeys(
+            normalized
+            for variant in variants
+            if (normalized := normalize_text(variant))
+        )
+    )
+
 
 def _load_brand_catalog() -> tuple[dict[str, Any], ...]:
     """Load the brand layer shipped with the analysis Lambda."""
@@ -91,15 +116,31 @@ def _load_brand_catalog() -> tuple[dict[str, Any], ...]:
     for brand in brands:
         if not isinstance(brand, dict):
             raise RuntimeError("brands.json contains an invalid brand")
-        names = [brand.get("brand_ja"), brand.get("brand_en")]
+        names = [
+            brand.get("brand_ja"),
+            brand.get("brand_en"),
+        ]
         aliases = brand.get("aliases")
         if isinstance(aliases, list):
             names.extend(aliases)
+        distillery_names = [
+            brand.get("distillery_ja"),
+            brand.get("distillery_en"),
+        ]
         normalized_names = tuple(
             dict.fromkeys(
                 normalized
                 for name in names
-                if isinstance(name, str) and (normalized := normalize_text(name))
+                if isinstance(name, str)
+                for normalized in _normalized_brand_name_variants(name)
+            )
+        )
+        normalized_distillery_names = tuple(
+            dict.fromkeys(
+                normalized
+                for name in distillery_names
+                if isinstance(name, str)
+                for normalized in _normalized_brand_name_variants(name)
             )
         )
         if (
@@ -108,8 +149,55 @@ def _load_brand_catalog() -> tuple[dict[str, Any], ...]:
             or not normalized_names
         ):
             raise RuntimeError("brands.json contains an invalid brand")
-        records.append({**brand, "_normalized_names": normalized_names})
-    return tuple(records)
+        records.append(
+            {
+                **brand,
+                "_normalized_names": normalized_names,
+                "_normalized_distillery_names": normalized_distillery_names,
+            }
+        )
+
+    brand_name_owners: dict[str, set[str]] = {}
+    distillery_name_owners: dict[str, set[str]] = {}
+    for record in records:
+        for normalized_name in record["_normalized_names"]:
+            brand_name_owners.setdefault(normalized_name, set()).add(record["brand_key"])
+        for normalized_name in record["_normalized_distillery_names"]:
+            distillery_name_owners.setdefault(normalized_name, set()).add(
+                record["brand_key"]
+            )
+
+    # Intentionally omit distillery names shared by multiple brands: a distillery
+    # alone cannot identify one brand. Real examples include Midleton shared by
+    # jameson/redbreast and Nikka Whisky shared by nikka/taketsuru. A shared name
+    # is retained only when it is also the current brand's own unique name.
+    return tuple(
+        {
+            **{
+                key: value
+                for key, value in record.items()
+                if key != "_normalized_distillery_names"
+            },
+            "_normalized_names": tuple(
+                dict.fromkeys(
+                    (
+                        *record["_normalized_names"],
+                        *(
+                            name
+                            for name in record["_normalized_distillery_names"]
+                            if brand_name_owners.get(name) == {record["brand_key"]}
+                            or (
+                                name not in brand_name_owners
+                                and distillery_name_owners[name]
+                                == {record["brand_key"]}
+                            )
+                        ),
+                    )
+                )
+            ),
+        }
+        for record in records
+    )
 
 
 BRAND_CATALOG = _load_brand_catalog()
@@ -638,7 +726,7 @@ def _brand_catalog_match(whiskey: Mapping[str, Any]) -> Mapping[str, Any] | None
         normalized
         for field in ("brand_ja", "brand_en")
         if isinstance(name := whiskey.get(field), str)
-        and (normalized := normalize_text(name))
+        for normalized in _normalized_brand_name_variants(name)
     }
     matches = [
         brand
