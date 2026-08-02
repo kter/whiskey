@@ -149,6 +149,8 @@ tmp/
 !scripts/catalog/brands.json
 !scripts/catalog/expressions.json
 !scripts/catalog/bottlers.json
+# Analysis Lambda runtime copy; a test keeps it identical to the curated source.
+!lambda/drink-log-analyze/brands.json
 # 楽天由来の生成物はコミットしない。当リポジトリは public であり、楽天ウェブサービス
 # 利用規約 第10条(1)(9)「取得した情報を不特定または多数の者と共有可能な場所に
 # 保存すること」に抵触するため。レビューはローカルで行う。

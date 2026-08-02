@@ -5,6 +5,10 @@ export interface DrinkLogCandidate {
   brand_text: string
   name_ja?: string
   name_en?: string
+  brand_ja?: string
+  brand_en?: string
+  brand_key?: string
+  distillery_ja?: string
   confidence: number
   whiskey_id?: string
   match_source?: string

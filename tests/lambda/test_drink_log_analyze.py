@@ -2,6 +2,7 @@ import io
 import json
 import uuid
 from decimal import Decimal
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -206,6 +207,16 @@ def _model_json(whiskeys, serving_style="NEAT", glass_type="tumbler"):
         {
             "name_ja": whiskey["name_ja"],
             "name_en": whiskey.get("name_en", ""),
+            **(
+                {"brand_ja": whiskey["brand_ja"]}
+                if "brand_ja" in whiskey
+                else {}
+            ),
+            **(
+                {"brand_en": whiskey["brand_en"]}
+                if "brand_en" in whiskey
+                else {}
+            ),
             "confidence": float(whiskey.get("confidence", 0.9)),
         }
         for whiskey in whiskeys
@@ -281,6 +292,11 @@ def test_prompt_requires_llm_first_multi_bottle_non_inventing_output():
     assert "複数のボトル" in analyze.PROMPT
     assert "全て列挙" in analyze.PROMPT
     assert "補完しない" in analyze.PROMPT
+    assert "brand_ja" in analyze.PROMPT
+    assert "brand_en" in analyze.PROMPT
+    assert "蒸留所またはブランドの名前だけ" in analyze.PROMPT
+    assert "熟成年数・カスク・限定表記・シングルモルト等の種別語" in analyze.PROMPT
+    assert "最も大きい文字ではなく" in analyze.PROMPT
     assert "brand_candidates" not in analyze.PROMPT
     assert "label_text" not in analyze.PROMPT
 
@@ -292,6 +308,8 @@ def test_model_output_validation_uses_new_schema_and_decimal_confidence():
                 {
                     "name_ja": "カリラ 12年",
                     "name_en": "Caol Ila 12 Year Old",
+                    "brand_ja": "カリラ",
+                    "brand_en": "Caol Ila",
                     "confidence": 0.95,
                 }
             ],
@@ -303,6 +321,86 @@ def test_model_output_validation_uses_new_schema_and_decimal_confidence():
     assert result["serving_style"] == "SODA"
     assert result["whiskeys"][0]["confidence"] == Decimal("0.95")
     assert isinstance(result["whiskeys"][0]["confidence"], Decimal)
+    assert result["whiskeys"][0]["brand_ja"] == "カリラ"
+    assert result["whiskeys"][0]["brand_en"] == "Caol Ila"
+
+
+def test_model_output_without_brand_fields_still_validates():
+    payload = {
+        "whiskeys": [
+            {
+                "name_ja": "カリラ 12年",
+                "name_en": "Caol Ila 12 Year Old",
+                "confidence": 0.95,
+            }
+        ],
+        "serving_style": "NEAT",
+        "glass_type": "",
+    }
+
+    assert analyze._validate_model_output(payload) is not None
+
+
+def test_empty_brand_fields_degrade_to_legacy_candidate_shape():
+    payload = {
+        "whiskeys": [
+            {
+                "name_ja": "カリラ 12年",
+                "name_en": "Caol Ila 12 Year Old",
+                "brand_ja": "",
+                "brand_en": "",
+                "confidence": 0.95,
+            }
+        ],
+        "serving_style": "NEAT",
+        "glass_type": "",
+    }
+
+    result = analyze._validate_model_output(payload)
+
+    assert set(result["whiskeys"][0]) == {"name_ja", "name_en", "confidence"}
+
+
+def test_model_output_rejects_unknown_whiskey_key():
+    payload = {
+        "whiskeys": [
+            {
+                "name_ja": "カリラ 12年",
+                "name_en": "Caol Ila 12 Year Old",
+                "confidence": 0.95,
+                "edition": "unknown key",
+            }
+        ],
+        "serving_style": "NEAT",
+        "glass_type": "",
+    }
+
+    assert analyze._validate_model_output(payload) is None
+
+
+@pytest.mark.parametrize(
+    ("brand_field", "brand_value"),
+    [
+        ("brand_ja", 123),
+        ("brand_en", "a" * 201),
+    ],
+)
+def test_model_output_rejects_invalid_brand_field_type_or_length(
+    brand_field, brand_value
+):
+    whiskey = {
+        "name_ja": "カリラ 12年",
+        "name_en": "Caol Ila 12 Year Old",
+        "confidence": 0.95,
+        brand_field: brand_value,
+    }
+    payload = {
+        "whiskeys": [whiskey],
+        "serving_style": "NEAT",
+        "glass_type": "",
+    }
+
+    assert analyze._validate_model_output(payload) is None
 
 
 @pytest.mark.parametrize(
@@ -420,6 +518,109 @@ def test_unknown_whiskey_still_produces_recordable_ai_candidate():
     ]
 
 
+def test_brand_alias_match_is_independent_from_expression_match():
+    whiskey = _whiskey("厚岸 立春", "Akkeshi Risshun", 0.91)
+    whiskey.update(brand_ja="アッケシ", brand_en="Akkeshi")
+
+    candidates = analyze._build_candidates(
+        _snapshot([CAOL_ILA_ITEM]),
+        _analysis([whiskey]),
+    )
+
+    assert candidates[0]["match_source"] == "ai"
+    assert "whiskey_id" not in candidates[0]
+    assert candidates[0]["brand_ja"] == "アッケシ"
+    assert candidates[0]["brand_en"] == "Akkeshi"
+    assert candidates[0]["brand_key"] == "akkeshi"
+    assert candidates[0]["distillery_ja"] == "厚岸蒸溜所"
+
+
+def test_handler_accepts_brand_fields_and_returns_them_on_candidate(monkeypatch):
+    key = f"tmp/user-1/{uuid.uuid4()}.png"
+    dynamodb = FakeDynamoDB(whiskeys=WhiskeyTable(items=[]))
+    bedrock = Bedrock(
+        [
+            _model_json(
+                [
+                    {
+                        "name_ja": "厚岸 立春",
+                        "name_en": "Akkeshi Risshun",
+                        "brand_ja": "アッケシ",
+                        "brand_en": "Akkeshi",
+                        "confidence": 0.91,
+                    }
+                ]
+            )
+        ]
+    )
+    _wire_handler(monkeypatch, dynamodb, MemoryS3(key, _png_bytes()), bedrock)
+
+    response = analyze.lambda_handler(_event(key), Context())
+    candidate = json.loads(response["body"])["candidates"][0]
+
+    assert response["statusCode"] == 200
+    assert candidate["brand_ja"] == "アッケシ"
+    assert candidate["brand_en"] == "Akkeshi"
+    assert candidate["brand_key"] == "akkeshi"
+    assert candidate["distillery_ja"] == "厚岸蒸溜所"
+    assert "whiskey_id" not in candidate
+
+
+def test_unmatched_brand_omits_catalog_brand_keys():
+    whiskey = _whiskey("未登録ウイスキー", "Unlisted Whisky", 0.7)
+    whiskey.update(brand_ja="未登録ブランド", brand_en="Unlisted Brand")
+
+    candidate = analyze._build_candidates(
+        _snapshot([CAOL_ILA_ITEM]),
+        _analysis([whiskey]),
+    )[0]
+
+    assert candidate["brand_ja"] == "未登録ブランド"
+    assert candidate["brand_en"] == "Unlisted Brand"
+    assert "brand_key" not in candidate
+    assert "distillery_ja" not in candidate
+
+
+def test_brand_without_distillery_keeps_brand_key_and_omits_distillery(monkeypatch):
+    # Synthetic rather than a real catalog row: whether any given brand has a
+    # known distillery is data that changes, but the guard must not.
+    monkeypatch.setattr(
+        analyze,
+        "BRAND_CATALOG",
+        (
+            {
+                "brand_key": "unverified_brand",
+                "distillery_ja": "",
+                "_normalized_names": (analyze.normalize_text("Unverified Brand"),),
+            },
+        ),
+    )
+    whiskey = _whiskey("蒸溜所不明ウイスキー", "Unverified Brand Whisky", 0.9)
+    whiskey.update(brand_en="unverified brand")
+
+    candidate = analyze._build_candidates(
+        _snapshot([CAOL_ILA_ITEM]),
+        _analysis([whiskey]),
+    )[0]
+
+    assert candidate["brand_key"] == "unverified_brand"
+    assert "distillery_ja" not in candidate
+
+
+def test_packaged_brand_catalog_matches_curated_source():
+    root = Path(__file__).resolve().parents[2]
+    packaged = json.loads(
+        (root / "lambda" / "drink-log-analyze" / "brands.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    curated = json.loads(
+        (root / "scripts" / "catalog" / "brands.json").read_text(encoding="utf-8")
+    )
+
+    assert packaged == curated
+
+
 def test_duplicate_exact_catalog_names_do_not_attach_an_arbitrary_id():
     snapshot = _snapshot(
         [
@@ -435,6 +636,36 @@ def test_duplicate_exact_catalog_names_do_not_attach_an_arbitrary_id():
 
     assert candidate["match_source"] == "ai"
     assert "whiskey_id" not in candidate
+
+
+def test_duplicate_normalized_brand_names_do_not_attach_arbitrary_keys(monkeypatch):
+    normalized_name = analyze.normalize_text("Same Brand")
+    monkeypatch.setattr(
+        analyze,
+        "BRAND_CATALOG",
+        (
+            {
+                "brand_key": "duplicate_brand_1",
+                "distillery_ja": "第一蒸溜所",
+                "_normalized_names": (normalized_name,),
+            },
+            {
+                "brand_key": "duplicate_brand_2",
+                "distillery_ja": "第二蒸溜所",
+                "_normalized_names": (analyze.normalize_text("ＳＡＭＥＢＲＡＮＤ"),),
+            },
+        ),
+    )
+    whiskey = _whiskey("同名ウイスキー", "Same Brand Whisky")
+    whiskey.update(brand_en="same brand")
+
+    candidate = analyze._build_candidates(
+        _snapshot([CAOL_ILA_ITEM]),
+        _analysis([whiskey]),
+    )[0]
+
+    assert "brand_key" not in candidate
+    assert "distillery_ja" not in candidate
 
 
 def test_incomplete_snapshot_never_attaches_catalog_id():
