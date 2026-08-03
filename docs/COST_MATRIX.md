@@ -4,22 +4,34 @@ Phase 4 着手前チェックポイント③の確定成果物。タスク06（�
 
 ## 確定モデル（チェックポイント②）
 
-> **2026-07-27 更新**: 既定モデルを Claude Sonnet 4.6 に変更した。
-> Nova 2 Lite / Haiku 4.5 では銘柄名の音写が実用に耐えないため（実写真27枚で検証。
-> カリラ→`カオルイラ`/`カオル・アイラ`、桜尾→`桜正宗`）。
-> **費用の前提が変わっているので「1回あたり原価」以降を必ず読むこと。**
+2026-08-02に既定モデルを Amazon Nova 2 Lite に変更した。
+2026-07-27のエクスプレッション層の全文評価では、Nova/Haikuの音写が実用に耐えないと判断してSonnet 4.6を既定にした。
+現在の設計で主指標とするブランド/蒸留所層を改めて測定した結果、Nova 2 Liteは誤り0件で、Sonnet 4.6との差は未確定に出た。
 
 | 用途 | モデル | 推論プロファイル | 配送先（IAM） | 実測レイテンシ |
 |------|--------|-----------------|--------------|---------------|
-| **既定（現行）** | **Claude Sonnet 4.6** | `jp.anthropic.claude-sonnet-4-6` | `ap-northeast-1` / `ap-northeast-3` の `anthropic.claude-sonnet-4-6` | — |
-| 切り戻し用 | Amazon Nova 2 Lite | `jp.amazon.nova-2-lite-v1:0` | `ap-northeast-1` / `ap-northeast-3` の `amazon.nova-2-lite-v1:0` | 0.89s |
+| 既定（現行） | Amazon Nova 2 Lite | `jp.amazon.nova-2-lite-v1:0` | `ap-northeast-1` / `ap-northeast-3` の `amazon.nova-2-lite-v1:0` | 0.89s |
+| 切り戻し用 | Claude Sonnet 4.6 | `jp.anthropic.claude-sonnet-4-6` | `ap-northeast-1` / `ap-northeast-3` の `anthropic.claude-sonnet-4-6` | — |
 | 切り戻し用 | Claude Haiku 4.5 | `jp.anthropic.claude-haiku-4-5-20251001-v1:0` | `ap-northeast-1` / `ap-northeast-3` の `anthropic.claude-haiku-4-5-20251001-v1:0` | 1.87s |
 
-- 両プロファイルとも配送先は**日本国内リージョンのみ**（東京・大阪）。データ所在地要件を満たす。`global.*` プロファイルは不採用。
-- 両モデルとも `type: profile`。IAM は profileARN への `InvokeModel` + 配送先 foundation-model ARN 2件（`bedrock:InferenceProfileArn` 条件付き）の別ステートメント。
-- `BEDROCK_MODEL_ID` は上記2つの allowlist と起動時照合。セット外は起動エラー。
-- **実装知見**: 両モデルとも JSON 応答を ` ```json … ``` ` フェンスで包む → パーサーはフェンス除去を必須にする。
-- Bedrock モデル呼び出しログ設定は**無効**（`loggingConfig=null`、2026-07-21 実確認）。検証呼び出し画像の残存経路なし。
+- 3プロファイルの配送先は日本国内リージョンのみ（東京/大阪）。データ所在地要件を満たす。`global.*`プロファイルは不採用。
+- 3モデルとも`type: profile`。IAMはprofile ARNへの`InvokeModel` + 配送先foundation-model ARN 2件（`bedrock:InferenceProfileArn`条件付き）の別ステートメント。
+- `BEDROCK_MODEL_ID`は上記3つのallowlistと起動時照合する。セット外は起動エラー。
+- Nova/HaikuはJSON応答をMarkdownのjsonコードフェンスで包むため、パーサーはフェンスを除去する。
+- Bedrockモデル呼び出しログ設定は無効（`loggingConfig=null`、2026-07-21実確認）。検証呼び出し画像の残存経路はない。
+
+## ブランド認識の実測
+
+| モデル | 正解 | 誤り | 未確定 | 1枚あたり |
+|---|---:|---:|---:|---:|
+| Claude Sonnet 4.6 | 24/27 (88.9%) | 0 (0.0%) | 3 (11.1%) | $0.0069〜$0.054（東京単価未確定） |
+| Claude Haiku 4.5 | 21/27 (77.8%) | 1 (3.7%) | 5 (18.5%) | $0.0023 |
+| Amazon Nova 2 Lite | 20/27 (74.1%) | 0 (0.0%) | 7 (25.9%) | $0.0010 |
+
+出所は2026-08-02にdevで実施した実写真27枚の評価で、成果物は`scripts/eval/results/2026-08-02-sonnet-4-6.json` / `scripts/eval/results/2026-08-02-haiku-4-5.json` / `scripts/eval/results/2026-08-02-nova-2-lite.json`。
+
+Nova 2 LiteはSonnet 4.6より正解率が14.8ポイント低いが、誤りはどちらも0件だった。
+差は未確定に出ており、未確定は利用者が手で修正できる。誤った銘柄の確定を避けることを優先し、Nova 2 Liteを既定にする。
 
 ## 実クエリ価格（AWS Pricing API, ap-northeast-1）
 
@@ -29,59 +41,43 @@ Phase 4 着手前チェックポイント③の確定成果物。タスク06（�
 | Nova 2 Lite 出力トークン | $0.003311 / 1K = **$3.311 / 1M** |
 | S3 Standard ストレージ | **$0.025 / GB-月** |
 
-※ Claude Haiku 4.5 のトークン単価は当リージョンの Pricing API データセットに未掲載。フォールバック専用のため概算幅（Nova比 約2倍）で扱い、最悪ケースは Nova で確定・Haiku は上振れ注記とする。
+※ Claude Sonnet 4.6 / Haiku 4.5のトークン単価は当リージョンのPricing APIデータセットに未掲載。Sonnet 4.6の東京単価は未確定のままであり、確定値として扱わない。
 
 ## 1回あたり原価
 
-### Sonnet 4.6（現行既定・**単価未確定**）
+### Nova 2 Lite（現行既定）
 
-**Sonnet 4.6 の当リージョン単価は Pricing API データセットに未掲載**（Haiku 4.5 と同じ状況）。
-実測できるのはトークン数だけなので、価格は幅で扱う。
+CloudWatchで30回を平均した実測トークンは入力1,872 / 出力82。`maxTokens=512`ではなくこの実測値で計算する。
 
-実測トークン（2026-07-27、実写真・同一プロンプト）: **入力 1,658** / 出力 15〜512（maxTokens 512 を保守側に採用）
+- 入力: 1,872 × $0.396/1M = $0.000741
+- 出力: 82 × $3.311/1M = $0.000272
+- 合計: 約$0.0010 / 呼び出し
+- 月次300回: 約$0.30 / 月
 
-| 想定 | 根拠 | 1回あたり | 月次1000回なら |
-|---|---|---|---|
-| 下限 | us-east-1 リスト価格 $3 / $15 per 1M | $0.0127 | $12.7 |
-| 上限 | Nova の東京補正倍率（入力6.6倍・出力13.8倍）を適用 | $0.1388 | $138.8 |
+### Sonnet 4.6 / Haiku 4.5（切り戻し用）
 
-**下限でも月次1000回では $15 枠を超える**（analyze $12.7 + places $4.8 + ストレージ $0.75 = $18.3）。
-
-→ **`ANALYZE_GLOBAL_MONTHLY_LIMIT` を 1000 から 300 へ暫定的に引き下げた**（2026-07-27）。
-中程度の想定（東京が us-east-1 の1.5〜2倍）なら analyze $5.7〜7.6 で総額 $11〜13 に収まる。
-**実請求で単価が判明したら再計算すること。** 上限想定が当たっていた場合は 300 でも超過する。
-
-### Nova 2 Lite（切り戻し用・確定値）
-
-入力 ~1,750 tokens / 出力 512。
-- 入力: 1,750 × $0.396/1M = $0.00069 ／ 出力: 512 × $3.311/1M = $0.00170
-- **≈ $0.0024 / 呼び出し**。Haiku 概算 ≈ $0.0044 / 呼び出し。
+Sonnet 4.6の東京単価は未確定のため、正確な1回あたり費用や月額を確定できない。切り戻す場合は実請求を確認して再計算する。
 
 ## 日次・月次上限マトリクス（確定：月次予算 $15 から逆算）
 
 **グローバルカウンタは Bedrock 呼び出し試行ごとに1消費**（malformed-JSON リトライ含む → 最悪 request 上限の2倍が invoke 回数）。ユーザーカウンタはリクエスト単位。環境変数名は各 Lambda に注入（タスク06）。
 
-| 操作 | ユーザー日次 | グローバル日次 | グローバル月次 | 最悪月額（確定経路） |
+| 操作 | ユーザー日次 | グローバル日次 | グローバル月次 | 月額の目安 |
 |------|-------------|---------------|---------------|---------------------|
 | upload-url (`UPLOAD_*`) | 30 | 100 | — | S3 PUT 従量（上界なし・低単価・アラーム監視） |
 | create (`CREATE_*`) | 30 | 100 | — | ストレージに算入 |
-| analyze (`ANALYZE_*`) | 20 | **50** | **300**（拘束的） | Sonnet: 300×$0.0127〜$0.1388 ≈ **$3.8〜$41.6/月**（単価未確定※） |
-| places (`PLACES_*`) | 30 | 15 | **150**（拘束的） | Nearby Pro 最悪: 150×$0.032 ≈ **$4.8/月** |
+| analyze (`ANALYZE_*`) | 20 | 50 | 300（拘束的） | Nova: 300×約$0.0010 = 約$0.30/月 |
+| places (`PLACES_*`) | 30 | 15 | 150（拘束的） | Nearby Pro最悪: 150×$0.032 = 約$4.8/月 |
 
-環境変数（例）: `ANALYZE_USER_DAILY_LIMIT=20` / `ANALYZE_GLOBAL_DAILY_LIMIT=50` / `ANALYZE_GLOBAL_MONTHLY_LIMIT=1000` / `PLACES_USER_DAILY_LIMIT=30` / `PLACES_GLOBAL_DAILY_LIMIT=15` / `PLACES_GLOBAL_MONTHLY_LIMIT=150` / `UPLOAD_*`・`CREATE_*` は 30/100。
+環境変数（例）: `ANALYZE_USER_DAILY_LIMIT=20` / `ANALYZE_GLOBAL_DAILY_LIMIT=50` / `ANALYZE_GLOBAL_MONTHLY_LIMIT=300` / `PLACES_USER_DAILY_LIMIT=30` / `PLACES_GLOBAL_DAILY_LIMIT=15` / `PLACES_GLOBAL_MONTHLY_LIMIT=150` / `UPLOAD_*` / `CREATE_*` は30/100。
 
-**ストレージ上界（現在割当数モデル）**: ユーザー 2,000件 / グローバル 20,000件 × 最終1.5MB上限 = 最大30GB → **$0.75/月**。tmp/ は2日ライフサイクルで無視可能（~$0.04/月）。
+ストレージ上界（現在割当数モデル）: ユーザー2,000件 / グローバル20,000件 × 最終1.5MB上限 = 最大30GB → $0.75/月。tmp/は2日ライフサイクルで無視可能（約$0.04/月）。
 
-**月額見込み（Sonnet 4.6 既定・月次300回）**: analyze $3.8〜$41.6 + places $4.8 + ストレージ $0.75
-≈ **$9.4〜$47.2/月**。中程度の想定なら $11〜13 で ceiling 内だが、**上限想定では超過する**。
+月額見込み（Nova 2 Lite既定 / analyze月次300回）: analyze約$0.30 + places最大$4.8 + ストレージ最大$0.75 = 約$5.85/月。
 
-**※ 未確定事項（要フォローアップ）**: Sonnet 4.6 の当リージョン単価が Pricing API に無いため、
-月額を確定できていない。**運用開始後の実請求で単価を確認し、この表を再計算すること。**
-超過が判明した場合の絞り方は以下の順:
-1. `ANALYZE_GLOBAL_MONTHLY_LIMIT` をさらに下げる（現在 300）
-2. `ANALYZE_GLOBAL_DAILY_LIMIT` を下げる（現在 50。月次300に対し日次50は6日で月枠を使い切る計算になる）
-3. 精度と費用を秤にかけ、Nova 2 Lite への切り戻しを検討する
-   （ただし音写の失敗は許容できない水準。実写真27枚の検証結果を参照）
+`ANALYZE_GLOBAL_DAILY_LIMIT=50` / `ANALYZE_GLOBAL_MONTHLY_LIMIT=300`は変更しない。月次300は、Sonnet 4.6の東京単価が未確定で高い可能性があったため、2026-07-27に月次1,000から引き下げた値。Nova 2 Liteでは月次$15枠に対して大きな余裕があるが、上限の引き上げは運用実績を見て別途判断する。
+
+Sonnet 4.6の東京単価は引き続き未確定。Sonnet 4.6へ切り戻す場合は、実請求で単価を確認してこの表を再計算する。
 
 ## Places（支配的・要ユーザー確定）
 

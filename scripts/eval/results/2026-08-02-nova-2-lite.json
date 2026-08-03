@@ -1,0 +1,1419 @@
+{
+  "eval_user": "eval-nova2b",
+  "interrupted": false,
+  "interruption_reason": null,
+  "manifest": "scripts/eval/manifest.real.json",
+  "manifest_sha256": "9e9b10b6eaf2100c68fabdb37254a345d62c6e50bb2c6ad2168ef89c05e5d4f5",
+  "metrics": {
+    "attempted_cases": 27,
+    "by_condition": {
+      "back_label_only": {
+        "brand_confirmed_correct": 0,
+        "brand_confirmed_correct_rate": null,
+        "brand_confirmed_wrong": 0,
+        "brand_confirmed_wrong_rate": null,
+        "brand_evaluable_cases": 0,
+        "brand_excluded_cases": 0,
+        "brand_not_confirmed": 0,
+        "brand_not_confirmed_rate": null,
+        "cases": 0,
+        "confirmed_correct": 0,
+        "confirmed_correct_rate": null,
+        "confirmed_wrong": 0,
+        "confirmed_wrong_rate": null,
+        "correct_abstention_rate": null,
+        "correct_abstentions": 0,
+        "false_confirmation_rate": null,
+        "false_confirmations": 0,
+        "miss_rate": null,
+        "misses": 0,
+        "no_candidates": 0,
+        "no_candidates_rate": null,
+        "not_confirmed": 0,
+        "not_confirmed_rate": null,
+        "rejection_rate": null,
+        "rejections": 0,
+        "retrievable_cases": 0,
+        "top1_accuracy": null,
+        "top1_correct": 0,
+        "top3_accuracy": null,
+        "top3_correct": 0,
+        "unanswerable_cases": 0
+      },
+      "bottle_angle": {
+        "brand_confirmed_correct": 0,
+        "brand_confirmed_correct_rate": null,
+        "brand_confirmed_wrong": 0,
+        "brand_confirmed_wrong_rate": null,
+        "brand_evaluable_cases": 0,
+        "brand_excluded_cases": 0,
+        "brand_not_confirmed": 0,
+        "brand_not_confirmed_rate": null,
+        "cases": 0,
+        "confirmed_correct": 0,
+        "confirmed_correct_rate": null,
+        "confirmed_wrong": 0,
+        "confirmed_wrong_rate": null,
+        "correct_abstention_rate": null,
+        "correct_abstentions": 0,
+        "false_confirmation_rate": null,
+        "false_confirmations": 0,
+        "miss_rate": null,
+        "misses": 0,
+        "no_candidates": 0,
+        "no_candidates_rate": null,
+        "not_confirmed": 0,
+        "not_confirmed_rate": null,
+        "rejection_rate": null,
+        "rejections": 0,
+        "retrievable_cases": 0,
+        "top1_accuracy": null,
+        "top1_correct": 0,
+        "top3_accuracy": null,
+        "top3_correct": 0,
+        "unanswerable_cases": 0
+      },
+      "bottle_front": {
+        "brand_confirmed_correct": 20,
+        "brand_confirmed_correct_rate": 0.7407407407407407,
+        "brand_confirmed_wrong": 0,
+        "brand_confirmed_wrong_rate": 0.0,
+        "brand_evaluable_cases": 27,
+        "brand_excluded_cases": 0,
+        "brand_not_confirmed": 7,
+        "brand_not_confirmed_rate": 0.25925925925925924,
+        "cases": 27,
+        "confirmed_correct": 7,
+        "confirmed_correct_rate": 0.25925925925925924,
+        "confirmed_wrong": 3,
+        "confirmed_wrong_rate": 0.1111111111111111,
+        "correct_abstention_rate": 0.8421052631578947,
+        "correct_abstentions": 16,
+        "false_confirmation_rate": 0.1111111111111111,
+        "false_confirmations": 3,
+        "miss_rate": 0.125,
+        "misses": 1,
+        "no_candidates": 0,
+        "no_candidates_rate": 0.0,
+        "not_confirmed": 17,
+        "not_confirmed_rate": 0.6296296296296297,
+        "rejection_rate": 0.5925925925925926,
+        "rejections": 16,
+        "retrievable_cases": 8,
+        "top1_accuracy": 0.875,
+        "top1_correct": 7,
+        "top3_accuracy": 0.875,
+        "top3_correct": 7,
+        "unanswerable_cases": 19
+      },
+      "box_only": {
+        "brand_confirmed_correct": 0,
+        "brand_confirmed_correct_rate": null,
+        "brand_confirmed_wrong": 0,
+        "brand_confirmed_wrong_rate": null,
+        "brand_evaluable_cases": 0,
+        "brand_excluded_cases": 0,
+        "brand_not_confirmed": 0,
+        "brand_not_confirmed_rate": null,
+        "cases": 0,
+        "confirmed_correct": 0,
+        "confirmed_correct_rate": null,
+        "confirmed_wrong": 0,
+        "confirmed_wrong_rate": null,
+        "correct_abstention_rate": null,
+        "correct_abstentions": 0,
+        "false_confirmation_rate": null,
+        "false_confirmations": 0,
+        "miss_rate": null,
+        "misses": 0,
+        "no_candidates": 0,
+        "no_candidates_rate": null,
+        "not_confirmed": 0,
+        "not_confirmed_rate": null,
+        "rejection_rate": null,
+        "rejections": 0,
+        "retrievable_cases": 0,
+        "top1_accuracy": null,
+        "top1_correct": 0,
+        "top3_accuracy": null,
+        "top3_correct": 0,
+        "unanswerable_cases": 0
+      },
+      "glass_only": {
+        "brand_confirmed_correct": 0,
+        "brand_confirmed_correct_rate": null,
+        "brand_confirmed_wrong": 0,
+        "brand_confirmed_wrong_rate": null,
+        "brand_evaluable_cases": 0,
+        "brand_excluded_cases": 0,
+        "brand_not_confirmed": 0,
+        "brand_not_confirmed_rate": null,
+        "cases": 0,
+        "confirmed_correct": 0,
+        "confirmed_correct_rate": null,
+        "confirmed_wrong": 0,
+        "confirmed_wrong_rate": null,
+        "correct_abstention_rate": null,
+        "correct_abstentions": 0,
+        "false_confirmation_rate": null,
+        "false_confirmations": 0,
+        "miss_rate": null,
+        "misses": 0,
+        "no_candidates": 0,
+        "no_candidates_rate": null,
+        "not_confirmed": 0,
+        "not_confirmed_rate": null,
+        "rejection_rate": null,
+        "rejections": 0,
+        "retrievable_cases": 0,
+        "top1_accuracy": null,
+        "top1_correct": 0,
+        "top3_accuracy": null,
+        "top3_correct": 0,
+        "unanswerable_cases": 0
+      },
+      "low_resolution": {
+        "brand_confirmed_correct": 0,
+        "brand_confirmed_correct_rate": null,
+        "brand_confirmed_wrong": 0,
+        "brand_confirmed_wrong_rate": null,
+        "brand_evaluable_cases": 0,
+        "brand_excluded_cases": 0,
+        "brand_not_confirmed": 0,
+        "brand_not_confirmed_rate": null,
+        "cases": 0,
+        "confirmed_correct": 0,
+        "confirmed_correct_rate": null,
+        "confirmed_wrong": 0,
+        "confirmed_wrong_rate": null,
+        "correct_abstention_rate": null,
+        "correct_abstentions": 0,
+        "false_confirmation_rate": null,
+        "false_confirmations": 0,
+        "miss_rate": null,
+        "misses": 0,
+        "no_candidates": 0,
+        "no_candidates_rate": null,
+        "not_confirmed": 0,
+        "not_confirmed_rate": null,
+        "rejection_rate": null,
+        "rejections": 0,
+        "retrievable_cases": 0,
+        "top1_accuracy": null,
+        "top1_correct": 0,
+        "top3_accuracy": null,
+        "top3_correct": 0,
+        "unanswerable_cases": 0
+      },
+      "miniature": {
+        "brand_confirmed_correct": 0,
+        "brand_confirmed_correct_rate": null,
+        "brand_confirmed_wrong": 0,
+        "brand_confirmed_wrong_rate": null,
+        "brand_evaluable_cases": 0,
+        "brand_excluded_cases": 0,
+        "brand_not_confirmed": 0,
+        "brand_not_confirmed_rate": null,
+        "cases": 0,
+        "confirmed_correct": 0,
+        "confirmed_correct_rate": null,
+        "confirmed_wrong": 0,
+        "confirmed_wrong_rate": null,
+        "correct_abstention_rate": null,
+        "correct_abstentions": 0,
+        "false_confirmation_rate": null,
+        "false_confirmations": 0,
+        "miss_rate": null,
+        "misses": 0,
+        "no_candidates": 0,
+        "no_candidates_rate": null,
+        "not_confirmed": 0,
+        "not_confirmed_rate": null,
+        "rejection_rate": null,
+        "rejections": 0,
+        "retrievable_cases": 0,
+        "top1_accuracy": null,
+        "top1_correct": 0,
+        "top3_accuracy": null,
+        "top3_correct": 0,
+        "unanswerable_cases": 0
+      },
+      "multiple_bottles": {
+        "brand_confirmed_correct": 0,
+        "brand_confirmed_correct_rate": null,
+        "brand_confirmed_wrong": 0,
+        "brand_confirmed_wrong_rate": null,
+        "brand_evaluable_cases": 0,
+        "brand_excluded_cases": 0,
+        "brand_not_confirmed": 0,
+        "brand_not_confirmed_rate": null,
+        "cases": 0,
+        "confirmed_correct": 0,
+        "confirmed_correct_rate": null,
+        "confirmed_wrong": 0,
+        "confirmed_wrong_rate": null,
+        "correct_abstention_rate": null,
+        "correct_abstentions": 0,
+        "false_confirmation_rate": null,
+        "false_confirmations": 0,
+        "miss_rate": null,
+        "misses": 0,
+        "no_candidates": 0,
+        "no_candidates_rate": null,
+        "not_confirmed": 0,
+        "not_confirmed_rate": null,
+        "rejection_rate": null,
+        "rejections": 0,
+        "retrievable_cases": 0,
+        "top1_accuracy": null,
+        "top1_correct": 0,
+        "top3_accuracy": null,
+        "top3_correct": 0,
+        "unanswerable_cases": 0
+      },
+      "partially_occluded": {
+        "brand_confirmed_correct": 0,
+        "brand_confirmed_correct_rate": null,
+        "brand_confirmed_wrong": 0,
+        "brand_confirmed_wrong_rate": null,
+        "brand_evaluable_cases": 0,
+        "brand_excluded_cases": 0,
+        "brand_not_confirmed": 0,
+        "brand_not_confirmed_rate": null,
+        "cases": 0,
+        "confirmed_correct": 0,
+        "confirmed_correct_rate": null,
+        "confirmed_wrong": 0,
+        "confirmed_wrong_rate": null,
+        "correct_abstention_rate": null,
+        "correct_abstentions": 0,
+        "false_confirmation_rate": null,
+        "false_confirmations": 0,
+        "miss_rate": null,
+        "misses": 0,
+        "no_candidates": 0,
+        "no_candidates_rate": null,
+        "not_confirmed": 0,
+        "not_confirmed_rate": null,
+        "rejection_rate": null,
+        "rejections": 0,
+        "retrievable_cases": 0,
+        "top1_accuracy": null,
+        "top1_correct": 0,
+        "top3_accuracy": null,
+        "top3_correct": 0,
+        "unanswerable_cases": 0
+      },
+      "reflection_or_condensation": {
+        "brand_confirmed_correct": 0,
+        "brand_confirmed_correct_rate": null,
+        "brand_confirmed_wrong": 0,
+        "brand_confirmed_wrong_rate": null,
+        "brand_evaluable_cases": 0,
+        "brand_excluded_cases": 0,
+        "brand_not_confirmed": 0,
+        "brand_not_confirmed_rate": null,
+        "cases": 0,
+        "confirmed_correct": 0,
+        "confirmed_correct_rate": null,
+        "confirmed_wrong": 0,
+        "confirmed_wrong_rate": null,
+        "correct_abstention_rate": null,
+        "correct_abstentions": 0,
+        "false_confirmation_rate": null,
+        "false_confirmations": 0,
+        "miss_rate": null,
+        "misses": 0,
+        "no_candidates": 0,
+        "no_candidates_rate": null,
+        "not_confirmed": 0,
+        "not_confirmed_rate": null,
+        "rejection_rate": null,
+        "rejections": 0,
+        "retrievable_cases": 0,
+        "top1_accuracy": null,
+        "top1_correct": 0,
+        "top3_accuracy": null,
+        "top3_correct": 0,
+        "unanswerable_cases": 0
+      }
+    },
+    "error_cases": 0,
+    "false_confirmation_cases": [
+      {
+        "actual_brand_text": "グレンリベット 12年",
+        "actual_whiskey_id": "glenlivet-12",
+        "case_index": 2,
+        "condition": "bottle_front",
+        "expected_canonical_name": "ザ・グレンリベット 12年",
+        "expected_whiskey_id": null,
+        "image": "images-real/11d4823dd468bcec.jpg",
+        "match_source": "catalog"
+      },
+      {
+        "actual_brand_text": "アラン 10年",
+        "actual_whiskey_id": "7342e4c32badbb3a",
+        "case_index": 14,
+        "condition": "bottle_front",
+        "expected_canonical_name": "アラン 10年",
+        "expected_whiskey_id": null,
+        "image": "images-real/7e7a48fc30343313.jpg",
+        "match_source": "catalog"
+      },
+      {
+        "actual_brand_text": "アードベッグ 10年",
+        "actual_whiskey_id": "ardbeg-10",
+        "case_index": 24,
+        "condition": "bottle_front",
+        "expected_canonical_name": "アードベッグ 10年",
+        "expected_whiskey_id": null,
+        "image": "images-real/e6cfec68c8bc3397.jpg",
+        "match_source": "catalog"
+      }
+    ],
+    "overall": {
+      "brand_confirmed_correct": 20,
+      "brand_confirmed_correct_rate": 0.7407407407407407,
+      "brand_confirmed_wrong": 0,
+      "brand_confirmed_wrong_rate": 0.0,
+      "brand_evaluable_cases": 27,
+      "brand_excluded_cases": 0,
+      "brand_not_confirmed": 7,
+      "brand_not_confirmed_rate": 0.25925925925925924,
+      "cases": 27,
+      "confirmed_correct": 7,
+      "confirmed_correct_rate": 0.25925925925925924,
+      "confirmed_wrong": 3,
+      "confirmed_wrong_rate": 0.1111111111111111,
+      "correct_abstention_rate": 0.8421052631578947,
+      "correct_abstentions": 16,
+      "false_confirmation_rate": 0.1111111111111111,
+      "false_confirmations": 3,
+      "miss_rate": 0.125,
+      "misses": 1,
+      "no_candidates": 0,
+      "no_candidates_rate": 0.0,
+      "not_confirmed": 17,
+      "not_confirmed_rate": 0.6296296296296297,
+      "rejection_rate": 0.5925925925925926,
+      "rejections": 16,
+      "retrievable_cases": 8,
+      "top1_accuracy": 0.875,
+      "top1_correct": 7,
+      "top3_accuracy": 0.875,
+      "top3_correct": 7,
+      "unanswerable_cases": 19
+    },
+    "scored_cases": 27
+  },
+  "mode": "evaluation",
+  "remaining_case_count": 0,
+  "result_version": 1,
+  "results": [
+    {
+      "attempted_at": "2026-08-02T14:27:31.633678Z",
+      "case": {
+        "condition": "bottle_front",
+        "expected_brand_key": "laphroaig",
+        "expected_canonical_name": "ラフロイグ 10年",
+        "expected_whiskey_id": "laphroaig-10",
+        "image": "images-real/01b332e69243e027.jpg",
+        "needs_review": false,
+        "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      },
+      "case_index": 0,
+      "response": {
+        "analysis_id": "ai-result:eval-nova2a:32930fe1-a607-4e58-975e-3f226d749d6d",
+        "candidates": [
+          {
+            "brand_en": "Laphroaig",
+            "brand_ja": "ラフロイグ",
+            "brand_key": "laphroaig",
+            "brand_text": "ラフロイグ 10年",
+            "confidence": 0.95,
+            "distillery_ja": "ラフロイグ蒸溜所",
+            "match_source": "catalog",
+            "name_en": "Laphroaig 10 Year Old",
+            "name_ja": "ラフロイグ 10年",
+            "whiskey_id": "laphroaig-10"
+          }
+        ],
+        "confidence": 0.95,
+        "model_id": "jp.amazon.nova-2-lite-v1:0",
+        "multiple_detected": false,
+        "serving_style": "ROCKS"
+      },
+      "status_code": 200,
+      "temporary_s3_key": "tmp/eval-nova2a/32930fe1-a607-4e58-975e-3f226d749d6d.jpg"
+    },
+    {
+      "attempted_at": "2026-08-02T14:27:35.898552Z",
+      "case": {
+        "condition": "bottle_front",
+        "expected_brand_key": "yuza",
+        "expected_canonical_name": "YUZA spring in Japan 2024",
+        "expected_whiskey_id": null,
+        "image": "images-real/041b1c4f173bff70.jpg",
+        "needs_review": false,
+        "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      },
+      "case_index": 1,
+      "response": {
+        "analysis_id": "ai-result:eval-nova2a:fe7cccc6-ac30-4d48-9232-822143e7b794",
+        "candidates": [
+          {
+            "brand_en": "Yuza",
+            "brand_ja": "ユザ",
+            "brand_key": "yuza",
+            "brand_text": "ユザ",
+            "confidence": 0.95,
+            "distillery_ja": "遊佐蒸溜所",
+            "match_source": "ai",
+            "name_en": "Yuza",
+            "name_ja": "ユザ"
+          }
+        ],
+        "confidence": 0.95,
+        "model_id": "jp.amazon.nova-2-lite-v1:0",
+        "multiple_detected": false,
+        "serving_style": "NEAT"
+      },
+      "status_code": 200,
+      "temporary_s3_key": "tmp/eval-nova2a/fe7cccc6-ac30-4d48-9232-822143e7b794.jpg"
+    },
+    {
+      "attempted_at": "2026-08-02T14:27:38.162192Z",
+      "case": {
+        "condition": "bottle_front",
+        "expected_brand_key": "glenlivet",
+        "expected_canonical_name": "ザ・グレンリベット 12年",
+        "expected_whiskey_id": null,
+        "image": "images-real/11d4823dd468bcec.jpg",
+        "needs_review": false,
+        "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      },
+      "case_index": 2,
+      "response": {
+        "analysis_id": "ai-result:eval-nova2a:165b0737-e762-49c4-a19d-59e430549aab",
+        "candidates": [
+          {
+            "brand_en": "The Glenlivet",
+            "brand_ja": "グレンリベット",
+            "brand_key": "glenlivet",
+            "brand_text": "グレンリベット 12年",
+            "confidence": 0.95,
+            "distillery_ja": "グレンリベット蒸溜所",
+            "match_source": "catalog",
+            "name_en": "The Glenlivet 12 Year Old",
+            "name_ja": "グレンリベット 12年",
+            "whiskey_id": "glenlivet-12"
+          },
+          {
+            "brand_en": "Lagavulin",
+            "brand_ja": "ラガヴーリン",
+            "brand_key": "lagavulin",
+            "brand_text": "ラガヴーリン 16年",
+            "confidence": 0.95,
+            "distillery_ja": "ラガヴーリン蒸溜所",
+            "match_source": "catalog",
+            "name_en": "Lagavulin 16 Year Old",
+            "name_ja": "ラガヴーリン 16年",
+            "whiskey_id": "lagavulin-16"
+          }
+        ],
+        "confidence": 0.95,
+        "model_id": "jp.amazon.nova-2-lite-v1:0",
+        "multiple_detected": true,
+        "serving_style": "NEAT"
+      },
+      "status_code": 200,
+      "temporary_s3_key": "tmp/eval-nova2a/165b0737-e762-49c4-a19d-59e430549aab.jpg"
+    },
+    {
+      "attempted_at": "2026-08-02T14:27:40.590775Z",
+      "case": {
+        "condition": "bottle_front",
+        "expected_brand_key": "yamazaki",
+        "expected_canonical_name": "山崎",
+        "expected_whiskey_id": null,
+        "image": "images-real/1f67c86dd63c7a21.jpg",
+        "needs_review": false,
+        "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      },
+      "case_index": 3,
+      "response": {
+        "analysis_id": "ai-result:eval-nova2a:5cb3a4e2-fe74-4438-b0b1-4f2ac7b9b532",
+        "candidates": [
+          {
+            "brand_en": "Yamazaki",
+            "brand_ja": "山崎",
+            "brand_key": "yamazaki",
+            "brand_text": "山崎",
+            "confidence": 0.95,
+            "distillery_ja": "山崎蒸溜所",
+            "match_source": "ai",
+            "name_en": "Yamazaki",
+            "name_ja": "山崎"
+          }
+        ],
+        "confidence": 0.95,
+        "model_id": "jp.amazon.nova-2-lite-v1:0",
+        "multiple_detected": false,
+        "serving_style": "NEAT"
+      },
+      "status_code": 200,
+      "temporary_s3_key": "tmp/eval-nova2a/5cb3a4e2-fe74-4438-b0b1-4f2ac7b9b532.jpg"
+    },
+    {
+      "attempted_at": "2026-08-02T14:27:42.447565Z",
+      "case": {
+        "condition": "bottle_front",
+        "expected_brand_key": "loch_lomond",
+        "expected_canonical_name": "ロッホ・ローモンド インチファッド 2005 17年",
+        "expected_whiskey_id": null,
+        "image": "images-real/22f2a30262771576.jpg",
+        "needs_review": false,
+        "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      },
+      "case_index": 4,
+      "response": {
+        "analysis_id": "ai-result:eval-nova2a:58c89bb0-a924-4ffc-8839-e6803e49efd6",
+        "candidates": [
+          {
+            "brand_en": "Lowland",
+            "brand_ja": "ローランド",
+            "brand_text": "ローランド 17年",
+            "confidence": 0.95,
+            "match_source": "ai",
+            "name_en": "Lowland 17 Year Old",
+            "name_ja": "ローランド 17年"
+          }
+        ],
+        "confidence": 0.95,
+        "model_id": "jp.amazon.nova-2-lite-v1:0",
+        "multiple_detected": false,
+        "serving_style": "NEAT"
+      },
+      "status_code": 200,
+      "temporary_s3_key": "tmp/eval-nova2a/58c89bb0-a924-4ffc-8839-e6803e49efd6.jpg"
+    },
+    {
+      "attempted_at": "2026-08-02T14:27:45.218921Z",
+      "case": {
+        "condition": "bottle_front",
+        "expected_brand_key": "glenfiddich",
+        "expected_canonical_name": "グレンフィディック 12年",
+        "expected_whiskey_id": "glenfiddich-12",
+        "image": "images-real/3742e77a84041a77.jpg",
+        "needs_review": false,
+        "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      },
+      "case_index": 5,
+      "response": {
+        "analysis_id": "ai-result:eval-nova2a:f0d769a3-3729-4ac1-8264-3b151fbbd9d0",
+        "candidates": [
+          {
+            "brand_en": "Glenfiddich",
+            "brand_ja": "グレンフィディック",
+            "brand_key": "glenfiddich",
+            "brand_text": "グレンフィディック 12年",
+            "confidence": 0.95,
+            "distillery_ja": "グレンフィディック蒸溜所",
+            "match_source": "catalog",
+            "name_en": "Glenfiddich 12 Year Old",
+            "name_ja": "グレンフィディック 12年",
+            "whiskey_id": "glenfiddich-12"
+          },
+          {
+            "brand_en": "Hakushu",
+            "brand_ja": "ハクシュウ",
+            "brand_key": "hakushu",
+            "brand_text": "ハクシュウ 12年",
+            "confidence": 0.95,
+            "distillery_ja": "白州蒸溜所",
+            "match_source": "catalog",
+            "name_en": "Hakushu 12 Year Old",
+            "name_ja": "ハクシュウ 12年",
+            "whiskey_id": "hakushu-12"
+          },
+          {
+            "brand_en": "Chita",
+            "brand_ja": "チタ",
+            "brand_key": "chita",
+            "brand_text": "チタ",
+            "confidence": 0.95,
+            "distillery_ja": "知多蒸溜所",
+            "match_source": "ai",
+            "name_en": "Chita",
+            "name_ja": "チタ"
+          }
+        ],
+        "confidence": 0.95,
+        "model_id": "jp.amazon.nova-2-lite-v1:0",
+        "multiple_detected": true,
+        "serving_style": "NEAT"
+      },
+      "status_code": 200,
+      "temporary_s3_key": "tmp/eval-nova2a/f0d769a3-3729-4ac1-8264-3b151fbbd9d0.jpg"
+    },
+    {
+      "attempted_at": "2026-08-02T14:27:47.675475Z",
+      "case": {
+        "condition": "bottle_front",
+        "expected_brand_key": "arran",
+        "expected_canonical_name": "マクリームーア カスクストレングス",
+        "expected_whiskey_id": null,
+        "image": "images-real/38871b3bbcccd8e7.jpg",
+        "needs_review": false,
+        "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      },
+      "case_index": 6,
+      "response": {
+        "analysis_id": "ai-result:eval-nova2a:66b73cc8-80b9-463f-8fd3-27e22c338a5f",
+        "candidates": [
+          {
+            "brand_en": "Machri Moor",
+            "brand_ja": "マックリー・ムーア",
+            "brand_text": "マックリー・ムーア",
+            "confidence": 0.95,
+            "match_source": "ai",
+            "name_en": "Machri Moor",
+            "name_ja": "マックリー・ムーア"
+          }
+        ],
+        "confidence": 0.95,
+        "model_id": "jp.amazon.nova-2-lite-v1:0",
+        "multiple_detected": false,
+        "serving_style": "NEAT"
+      },
+      "status_code": 200,
+      "temporary_s3_key": "tmp/eval-nova2a/66b73cc8-80b9-463f-8fd3-27e22c338a5f.jpg"
+    },
+    {
+      "attempted_at": "2026-08-02T14:27:49.513421Z",
+      "case": {
+        "condition": "bottle_front",
+        "expected_brand_key": "caol_ila",
+        "expected_canonical_name": "カリラ 12年",
+        "expected_whiskey_id": "caol-ila-12",
+        "image": "images-real/3bbf60f2dbcc1f2b.jpg",
+        "needs_review": false,
+        "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      },
+      "case_index": 7,
+      "response": {
+        "analysis_id": "ai-result:eval-nova2a:81cee5f4-5612-43cb-938d-49760f29c5f6",
+        "candidates": [
+          {
+            "brand_en": "Caol Ila",
+            "brand_ja": "カリラ",
+            "brand_key": "caol_ila",
+            "brand_text": "カリラ 12年",
+            "confidence": 0.95,
+            "distillery_ja": "カリラ蒸留所",
+            "match_source": "catalog",
+            "name_en": "Caol Ila 12 Year Old",
+            "name_ja": "カリラ 12年",
+            "whiskey_id": "caol-ila-12"
+          }
+        ],
+        "confidence": 0.95,
+        "model_id": "jp.amazon.nova-2-lite-v1:0",
+        "multiple_detected": false,
+        "serving_style": "NEAT"
+      },
+      "status_code": 200,
+      "temporary_s3_key": "tmp/eval-nova2a/81cee5f4-5612-43cb-938d-49760f29c5f6.jpg"
+    },
+    {
+      "attempted_at": "2026-08-02T14:27:51.235264Z",
+      "case": {
+        "condition": "bottle_front",
+        "expected_brand_key": "ichiros_malt",
+        "expected_canonical_name": "イチローズモルト ミズナラウッドリザーブ",
+        "expected_whiskey_id": null,
+        "image": "images-real/473287f93db7f784.jpg",
+        "needs_review": false,
+        "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      },
+      "case_index": 8,
+      "response": {
+        "analysis_id": "ai-result:eval-nova2a:9c78f2f0-9154-461c-8b19-4ceab4cc807d",
+        "candidates": [
+          {
+            "brand_en": "Ichiro's",
+            "brand_ja": "イチロウズ",
+            "brand_text": "イチロウズモルト MWR",
+            "confidence": 0.95,
+            "match_source": "ai",
+            "name_en": "Ichiro's Malt MWR",
+            "name_ja": "イチロウズモルト MWR"
+          }
+        ],
+        "confidence": 0.95,
+        "model_id": "jp.amazon.nova-2-lite-v1:0",
+        "multiple_detected": false,
+        "serving_style": "NEAT"
+      },
+      "status_code": 200,
+      "temporary_s3_key": "tmp/eval-nova2a/9c78f2f0-9154-461c-8b19-4ceab4cc807d.jpg"
+    },
+    {
+      "attempted_at": "2026-08-02T14:27:53.705712Z",
+      "case": {
+        "condition": "bottle_front",
+        "expected_brand_key": "caol_ila",
+        "expected_canonical_name": "カリラ 12年",
+        "expected_whiskey_id": "caol-ila-12",
+        "image": "images-real/58f391f66188cf5b.jpg",
+        "needs_review": false,
+        "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      },
+      "case_index": 9,
+      "response": {
+        "analysis_id": "ai-result:eval-nova2a:344fceef-a5d7-4ee2-94df-329db65b70e9",
+        "candidates": [
+          {
+            "brand_en": "Caol Ila",
+            "brand_ja": "カリラ",
+            "brand_key": "caol_ila",
+            "brand_text": "カリラ 12年",
+            "confidence": 0.95,
+            "distillery_ja": "カリラ蒸留所",
+            "match_source": "catalog",
+            "name_en": "Caol Ila 12 Year Old",
+            "name_ja": "カリラ 12年",
+            "whiskey_id": "caol-ila-12"
+          }
+        ],
+        "confidence": 0.95,
+        "model_id": "jp.amazon.nova-2-lite-v1:0",
+        "multiple_detected": false,
+        "serving_style": "NEAT"
+      },
+      "status_code": 200,
+      "temporary_s3_key": "tmp/eval-nova2a/344fceef-a5d7-4ee2-94df-329db65b70e9.jpg"
+    },
+    {
+      "attempted_at": "2026-08-02T14:27:55.849225Z",
+      "case": {
+        "condition": "bottle_front",
+        "expected_brand_key": "port_charlotte",
+        "expected_canonical_name": "ポートシャーロット　アイラバーレイ 2014",
+        "expected_whiskey_id": null,
+        "image": "images-real/5d293c8f7c4ed574.jpg",
+        "needs_review": false,
+        "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      },
+      "case_index": 10,
+      "response": {
+        "analysis_id": "ai-result:eval-nova2a:9b1359c9-ba4e-4458-a169-648b2c89ea1a",
+        "candidates": [
+          {
+            "brand_en": "Port Charlotte",
+            "brand_ja": "ポートチャーロット",
+            "brand_key": "port_charlotte",
+            "brand_text": "アイラ バリー 2014",
+            "confidence": 0.95,
+            "distillery_ja": "ブルックラディ蒸留所",
+            "match_source": "ai",
+            "name_en": "Islay Barley 2014",
+            "name_ja": "アイラ バリー 2014"
+          }
+        ],
+        "confidence": 0.95,
+        "model_id": "jp.amazon.nova-2-lite-v1:0",
+        "multiple_detected": false,
+        "serving_style": "NEAT"
+      },
+      "status_code": 200,
+      "temporary_s3_key": "tmp/eval-nova2a/9b1359c9-ba4e-4458-a169-648b2c89ea1a.jpg"
+    },
+    {
+      "attempted_at": "2026-08-02T14:27:58.103410Z",
+      "case": {
+        "condition": "bottle_front",
+        "expected_brand_key": "kilchoman",
+        "expected_canonical_name": "キルホーマン マキヤーベイ",
+        "expected_whiskey_id": null,
+        "image": "images-real/5f44e5b8fbed3979.jpg",
+        "needs_review": false,
+        "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      },
+      "case_index": 11,
+      "response": {
+        "analysis_id": "ai-result:eval-nova2a:14883afd-1c0a-463d-be23-112f1c9377b7",
+        "candidates": [
+          {
+            "brand_en": "Kilchoman",
+            "brand_ja": "キルホマン",
+            "brand_key": "kilchoman",
+            "brand_text": "キルホマン マチアベイ",
+            "confidence": 0.95,
+            "distillery_ja": "キルホーマン蒸留所",
+            "match_source": "ai",
+            "name_en": "Kilchoman Machir Bay",
+            "name_ja": "キルホマン マチアベイ"
+          }
+        ],
+        "confidence": 0.95,
+        "model_id": "jp.amazon.nova-2-lite-v1:0",
+        "multiple_detected": false,
+        "serving_style": "NEAT"
+      },
+      "status_code": 200,
+      "temporary_s3_key": "tmp/eval-nova2a/14883afd-1c0a-463d-be23-112f1c9377b7.jpg"
+    },
+    {
+      "attempted_at": "2026-08-02T14:28:00.596229Z",
+      "case": {
+        "condition": "bottle_front",
+        "expected_brand_key": "macallan",
+        "expected_canonical_name": "ザ・マッカラン 12年 シェリーオークカスク",
+        "expected_whiskey_id": null,
+        "image": "images-real/777ab5b0688e3766.jpg",
+        "needs_review": false,
+        "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      },
+      "case_index": 12,
+      "response": {
+        "analysis_id": "ai-result:eval-nova2a:80e1bf37-1193-4731-9c97-e791e2dcd1db",
+        "candidates": [
+          {
+            "brand_en": "The Macallan",
+            "brand_ja": "マッカラン",
+            "brand_key": "macallan",
+            "brand_text": "マッカラン 12年",
+            "confidence": 0.95,
+            "distillery_ja": "マッカラン蒸溜所",
+            "match_source": "ai",
+            "name_en": "The Macallan 12 Year Old",
+            "name_ja": "マッカラン 12年"
+          },
+          {
+            "brand_en": "Caol Ila",
+            "brand_ja": "カリラ",
+            "brand_key": "caol_ila",
+            "brand_text": "カリラ 12年",
+            "confidence": 0.95,
+            "distillery_ja": "カリラ蒸留所",
+            "match_source": "catalog",
+            "name_en": "Caol Ila 12 Year Old",
+            "name_ja": "カリラ 12年",
+            "whiskey_id": "caol-ila-12"
+          }
+        ],
+        "confidence": 0.95,
+        "model_id": "jp.amazon.nova-2-lite-v1:0",
+        "multiple_detected": true,
+        "serving_style": "NEAT"
+      },
+      "status_code": 200,
+      "temporary_s3_key": "tmp/eval-nova2a/80e1bf37-1193-4731-9c97-e791e2dcd1db.jpg"
+    },
+    {
+      "attempted_at": "2026-08-02T14:28:02.626752Z",
+      "case": {
+        "condition": "bottle_front",
+        "expected_brand_key": "shizuoka",
+        "expected_canonical_name": "静岡 ポットスティルＫ 純外国産大麦",
+        "expected_whiskey_id": null,
+        "image": "images-real/7acde4517afaf1f2.jpg",
+        "needs_review": false,
+        "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      },
+      "case_index": 13,
+      "response": {
+        "analysis_id": "ai-result:eval-nova2a:f29a8163-aa7b-4a92-ace0-b70934acf443",
+        "candidates": [
+          {
+            "brand_en": "K",
+            "brand_ja": "K",
+            "brand_text": "K 4年",
+            "confidence": 0.95,
+            "match_source": "ai",
+            "name_en": "K 4 Year Old",
+            "name_ja": "K 4年"
+          }
+        ],
+        "confidence": 0.95,
+        "model_id": "jp.amazon.nova-2-lite-v1:0",
+        "multiple_detected": false,
+        "serving_style": "NEAT"
+      },
+      "status_code": 200,
+      "temporary_s3_key": "tmp/eval-nova2a/f29a8163-aa7b-4a92-ace0-b70934acf443.jpg"
+    },
+    {
+      "attempted_at": "2026-08-02T14:28:04.488200Z",
+      "case": {
+        "condition": "bottle_front",
+        "expected_brand_key": "arran",
+        "expected_canonical_name": "アラン 10年",
+        "expected_whiskey_id": null,
+        "image": "images-real/7e7a48fc30343313.jpg",
+        "needs_review": false,
+        "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      },
+      "case_index": 14,
+      "response": {
+        "analysis_id": "ai-result:eval-nova2a:0e69486a-5ec3-4200-8c8d-2fe1e84137e7",
+        "candidates": [
+          {
+            "brand_en": "Arran",
+            "brand_ja": "アラン",
+            "brand_key": "arran",
+            "brand_text": "アラン 10年",
+            "confidence": 0.95,
+            "distillery_ja": "アラン蒸留所",
+            "match_source": "catalog",
+            "name_en": "Arran 10 Year Old",
+            "name_ja": "アラン 10年",
+            "whiskey_id": "7342e4c32badbb3a"
+          }
+        ],
+        "confidence": 0.95,
+        "model_id": "jp.amazon.nova-2-lite-v1:0",
+        "multiple_detected": false,
+        "serving_style": "NEAT"
+      },
+      "status_code": 200,
+      "temporary_s3_key": "tmp/eval-nova2a/0e69486a-5ec3-4200-8c8d-2fe1e84137e7.jpg"
+    },
+    {
+      "attempted_at": "2026-08-02T14:28:06.499147Z",
+      "case": {
+        "condition": "bottle_front",
+        "expected_brand_key": "bunnahabhain",
+        "expected_canonical_name": "ブナハーブン 12年",
+        "expected_whiskey_id": "bunnahabhain-12",
+        "image": "images-real/86043967443bceb5.jpg",
+        "needs_review": false,
+        "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      },
+      "case_index": 15,
+      "response": {
+        "analysis_id": "ai-result:eval-nova2a:a7455bfb-a9e6-4954-ab08-b2f61ec6f386",
+        "candidates": [
+          {
+            "brand_en": "Bunnahabhain",
+            "brand_ja": "バナナブハイン",
+            "brand_key": "bunnahabhain",
+            "brand_text": "バナナブハイン 12年",
+            "confidence": 0.95,
+            "distillery_ja": "ブナハーブン蒸溜所",
+            "match_source": "catalog",
+            "name_en": "Bunnahabhain 12 Year Old",
+            "name_ja": "バナナブハイン 12年",
+            "whiskey_id": "bunnahabhain-12"
+          }
+        ],
+        "confidence": 0.95,
+        "model_id": "jp.amazon.nova-2-lite-v1:0",
+        "multiple_detected": false,
+        "serving_style": "NEAT"
+      },
+      "status_code": 200,
+      "temporary_s3_key": "tmp/eval-nova2a/a7455bfb-a9e6-4954-ab08-b2f61ec6f386.jpg"
+    },
+    {
+      "attempted_at": "2026-08-02T14:28:08.444657Z",
+      "case": {
+        "condition": "bottle_front",
+        "expected_brand_key": "fuji",
+        "expected_canonical_name": "富士山麓 シグニチャーブレンド",
+        "expected_whiskey_id": null,
+        "image": "images-real/86d37188fdd388ea.jpg",
+        "needs_review": false,
+        "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      },
+      "case_index": 16,
+      "response": {
+        "analysis_id": "ai-result:eval-nova2a:975bb599-3d74-45c3-9751-4c62d4d951cc",
+        "candidates": [
+          {
+            "brand_en": "Kirin",
+            "brand_ja": "キリン",
+            "brand_text": "富士山ロク",
+            "confidence": 0.95,
+            "match_source": "ai",
+            "name_en": "Fuji Sanroku",
+            "name_ja": "富士山ロク"
+          }
+        ],
+        "confidence": 0.95,
+        "model_id": "jp.amazon.nova-2-lite-v1:0",
+        "multiple_detected": false,
+        "serving_style": "NEAT"
+      },
+      "status_code": 200,
+      "temporary_s3_key": "tmp/eval-nova2a/975bb599-3d74-45c3-9751-4c62d4d951cc.jpg"
+    },
+    {
+      "attempted_at": "2026-08-02T14:28:10.566660Z",
+      "case": {
+        "condition": "bottle_front",
+        "expected_brand_key": "taketsuru",
+        "expected_canonical_name": "竹鶴 ピュアモルト",
+        "expected_whiskey_id": "taketsuru-pure-malt",
+        "image": "images-real/9d9b513092ea8d0b.jpg",
+        "needs_review": false,
+        "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      },
+      "case_index": 17,
+      "response": {
+        "analysis_id": "ai-result:eval-nova2a:a9c7f74b-a96f-4d65-85b3-cb4aba1d5f3f",
+        "candidates": [
+          {
+            "brand_en": "Taketsuru",
+            "brand_ja": "竹鶴",
+            "brand_key": "taketsuru",
+            "brand_text": "竹鶴",
+            "confidence": 0.95,
+            "distillery_ja": "ニッカウヰスキー",
+            "match_source": "ai",
+            "name_en": "Taketsuru",
+            "name_ja": "竹鶴"
+          }
+        ],
+        "confidence": 0.95,
+        "model_id": "jp.amazon.nova-2-lite-v1:0",
+        "multiple_detected": false,
+        "serving_style": "NEAT"
+      },
+      "status_code": 200,
+      "temporary_s3_key": "tmp/eval-nova2a/a9c7f74b-a96f-4d65-85b3-cb4aba1d5f3f.jpg"
+    },
+    {
+      "attempted_at": "2026-08-02T14:28:12.449948Z",
+      "case": {
+        "condition": "bottle_front",
+        "expected_brand_key": "laphroaig",
+        "expected_canonical_name": "ラフロイグ 10年",
+        "expected_whiskey_id": "laphroaig-10",
+        "image": "images-real/a181cb9ea5fb45fe.jpg",
+        "needs_review": false,
+        "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      },
+      "case_index": 18,
+      "response": {
+        "analysis_id": "ai-result:eval-nova2a:50865db5-4e00-4a0c-8a82-5a64782f47e6",
+        "candidates": [
+          {
+            "brand_en": "Laphroaig",
+            "brand_ja": "ラフロイグ",
+            "brand_key": "laphroaig",
+            "brand_text": "ラフロイグ 10年",
+            "confidence": 0.95,
+            "distillery_ja": "ラフロイグ蒸溜所",
+            "match_source": "catalog",
+            "name_en": "Laphroaig 10 Year Old",
+            "name_ja": "ラフロイグ 10年",
+            "whiskey_id": "laphroaig-10"
+          }
+        ],
+        "confidence": 0.95,
+        "model_id": "jp.amazon.nova-2-lite-v1:0",
+        "multiple_detected": false,
+        "serving_style": "ROCKS"
+      },
+      "status_code": 200,
+      "temporary_s3_key": "tmp/eval-nova2a/50865db5-4e00-4a0c-8a82-5a64782f47e6.jpg"
+    },
+    {
+      "attempted_at": "2026-08-02T14:28:14.357672Z",
+      "case": {
+        "condition": "bottle_front",
+        "expected_brand_key": "otani",
+        "expected_canonical_name": "大谷ウイスキー 新潟亀田 ゾディアック サイン シリーズ 「Piscas」",
+        "expected_whiskey_id": null,
+        "image": "images-real/aea286cf1b65a8d1.jpg",
+        "needs_review": false,
+        "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      },
+      "case_index": 19,
+      "response": {
+        "analysis_id": "ai-result:eval-nova2a:032fc5e0-c15d-4384-819d-ad4e26a30026",
+        "candidates": [
+          {
+            "brand_en": "OHTANI",
+            "brand_ja": "オータニ",
+            "brand_text": "オータニ",
+            "confidence": 0.95,
+            "match_source": "ai",
+            "name_en": "OHTANI",
+            "name_ja": "オータニ"
+          }
+        ],
+        "confidence": 0.95,
+        "model_id": "jp.amazon.nova-2-lite-v1:0",
+        "multiple_detected": false,
+        "serving_style": "ROCKS"
+      },
+      "status_code": 200,
+      "temporary_s3_key": "tmp/eval-nova2a/032fc5e0-c15d-4384-819d-ad4e26a30026.jpg"
+    },
+    {
+      "attempted_at": "2026-08-02T14:28:17.874454Z",
+      "case": {
+        "condition": "bottle_front",
+        "expected_brand_key": "hibiki",
+        "expected_canonical_name": "響 ブレンダーズチョイス",
+        "expected_whiskey_id": null,
+        "image": "images-real/c63c9dd7233f1a85.jpg",
+        "needs_review": false,
+        "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      },
+      "case_index": 20,
+      "response": {
+        "analysis_id": "ai-result:eval-nova2b:65207d6d-5f7a-44df-8165-1fc1eec304e4",
+        "candidates": [
+          {
+            "brand_en": "SUNTORY",
+            "brand_ja": "サントリー",
+            "brand_key": "hibiki",
+            "brand_text": "ヒビキ",
+            "confidence": 0.95,
+            "distillery_ja": "サントリー",
+            "match_source": "ai",
+            "name_en": "HIBIKI",
+            "name_ja": "ヒビキ"
+          }
+        ],
+        "confidence": 0.95,
+        "model_id": "jp.amazon.nova-2-lite-v1:0",
+        "multiple_detected": false,
+        "serving_style": "ROCKS"
+      },
+      "status_code": 200,
+      "temporary_s3_key": "tmp/eval-nova2b/65207d6d-5f7a-44df-8165-1fc1eec304e4.jpg"
+    },
+    {
+      "attempted_at": "2026-08-02T14:28:21.156024Z",
+      "case": {
+        "condition": "bottle_front",
+        "expected_brand_key": "port_charlotte",
+        "expected_canonical_name": "ポートシャーロット 10年",
+        "expected_whiskey_id": null,
+        "image": "images-real/c88e636e4b997979.jpg",
+        "needs_review": false,
+        "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      },
+      "case_index": 21,
+      "response": {
+        "analysis_id": "ai-result:eval-nova2b:5ce1e075-16a2-4081-b812-581a66720d82",
+        "candidates": [
+          {
+            "brand_en": "Port Charlotte",
+            "brand_ja": "ポートチャロッテ",
+            "brand_key": "port_charlotte",
+            "brand_text": "ポートチャロッテ 10年",
+            "confidence": 0.95,
+            "distillery_ja": "ブルックラディ蒸留所",
+            "match_source": "ai",
+            "name_en": "Port Charlotte 10 Year Old",
+            "name_ja": "ポートチャロッテ 10年"
+          }
+        ],
+        "confidence": 0.95,
+        "model_id": "jp.amazon.nova-2-lite-v1:0",
+        "multiple_detected": false,
+        "serving_style": "NEAT"
+      },
+      "status_code": 200,
+      "temporary_s3_key": "tmp/eval-nova2b/5ce1e075-16a2-4081-b812-581a66720d82.jpg"
+    },
+    {
+      "attempted_at": "2026-08-02T14:28:23.203784Z",
+      "case": {
+        "condition": "bottle_front",
+        "expected_brand_key": "ichiros_malt",
+        "expected_canonical_name": "イチローズモルト ダブルディスティラリーズ",
+        "expected_whiskey_id": null,
+        "image": "images-real/c8ab63402874f242.jpg",
+        "needs_review": false,
+        "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      },
+      "case_index": 22,
+      "response": {
+        "analysis_id": "ai-result:eval-nova2b:5dd9754b-a243-4552-b687-e462ced9c668",
+        "candidates": [
+          {
+            "brand_en": "Ichiro's",
+            "brand_ja": "イチロウズ",
+            "brand_text": "イチロウズモルト",
+            "confidence": 0.95,
+            "match_source": "ai",
+            "name_en": "Ichiro's Malt",
+            "name_ja": "イチロウズモルト"
+          }
+        ],
+        "confidence": 0.95,
+        "model_id": "jp.amazon.nova-2-lite-v1:0",
+        "multiple_detected": false,
+        "serving_style": "NEAT"
+      },
+      "status_code": 200,
+      "temporary_s3_key": "tmp/eval-nova2b/5dd9754b-a243-4552-b687-e462ced9c668.jpg"
+    },
+    {
+      "attempted_at": "2026-08-02T14:28:25.560568Z",
+      "case": {
+        "condition": "bottle_front",
+        "expected_brand_key": "sakurao",
+        "expected_canonical_name": "桜尾 シングルモルト",
+        "expected_whiskey_id": null,
+        "image": "images-real/d9226c34aa7c7be1.jpg",
+        "needs_review": false,
+        "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      },
+      "case_index": 23,
+      "response": {
+        "analysis_id": "ai-result:eval-nova2b:ecde23b8-c6a6-4e46-b07f-f8b37f7a206e",
+        "candidates": [
+          {
+            "brand_en": "Sakurai",
+            "brand_ja": "サクラオ",
+            "brand_key": "sakurao",
+            "brand_text": "サクラオ",
+            "confidence": 0.95,
+            "distillery_ja": "桜尾蒸留所",
+            "match_source": "ai",
+            "name_en": "Sakurai",
+            "name_ja": "サクラオ"
+          }
+        ],
+        "confidence": 0.95,
+        "model_id": "jp.amazon.nova-2-lite-v1:0",
+        "multiple_detected": false,
+        "serving_style": "ROCKS"
+      },
+      "status_code": 200,
+      "temporary_s3_key": "tmp/eval-nova2b/ecde23b8-c6a6-4e46-b07f-f8b37f7a206e.jpg"
+    },
+    {
+      "attempted_at": "2026-08-02T14:28:27.622443Z",
+      "case": {
+        "condition": "bottle_front",
+        "expected_brand_key": "ardbeg",
+        "expected_canonical_name": "アードベッグ 10年",
+        "expected_whiskey_id": null,
+        "image": "images-real/e6cfec68c8bc3397.jpg",
+        "needs_review": false,
+        "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      },
+      "case_index": 24,
+      "response": {
+        "analysis_id": "ai-result:eval-nova2b:730294b6-9adc-4008-a3bd-f5b2d957096f",
+        "candidates": [
+          {
+            "brand_en": "Ardbeg",
+            "brand_ja": "アードベッグ",
+            "brand_key": "ardbeg",
+            "brand_text": "アードベッグ 10年",
+            "confidence": 0.95,
+            "distillery_ja": "アードベッグ蒸溜所",
+            "match_source": "catalog",
+            "name_en": "Ardbeg 10 Year Old",
+            "name_ja": "アードベッグ 10年",
+            "whiskey_id": "ardbeg-10"
+          },
+          {
+            "brand_en": "Ardbeg",
+            "brand_ja": "アードベッグ",
+            "brand_key": "ardbeg",
+            "brand_text": "アードベッグ ヘビー・ヴァポアーズ",
+            "confidence": 0.95,
+            "distillery_ja": "アードベッグ蒸溜所",
+            "match_source": "ai",
+            "name_en": "Ardbeg Heavy Vapours",
+            "name_ja": "アードベッグ ヘビー・ヴァポアーズ"
+          }
+        ],
+        "confidence": 0.95,
+        "model_id": "jp.amazon.nova-2-lite-v1:0",
+        "multiple_detected": true,
+        "serving_style": "NEAT"
+      },
+      "status_code": 200,
+      "temporary_s3_key": "tmp/eval-nova2b/730294b6-9adc-4008-a3bd-f5b2d957096f.jpg"
+    },
+    {
+      "attempted_at": "2026-08-02T14:28:30.059961Z",
+      "case": {
+        "condition": "bottle_front",
+        "expected_brand_key": "lagavulin",
+        "expected_canonical_name": "ラガヴーリン 16年",
+        "expected_whiskey_id": "lagavulin-16",
+        "image": "images-real/f5ea380cfb8782f2.jpg",
+        "needs_review": false,
+        "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      },
+      "case_index": 25,
+      "response": {
+        "analysis_id": "ai-result:eval-nova2b:e8f882cb-8576-4976-97f3-93e7bb49245f",
+        "candidates": [
+          {
+            "brand_en": "Lagavulin",
+            "brand_ja": "ラガヴーリン",
+            "brand_key": "lagavulin",
+            "brand_text": "ラガヴーリン 16年",
+            "confidence": 0.95,
+            "distillery_ja": "ラガヴーリン蒸溜所",
+            "match_source": "catalog",
+            "name_en": "Lagavulin 16 Year Old",
+            "name_ja": "ラガヴーリン 16年",
+            "whiskey_id": "lagavulin-16"
+          }
+        ],
+        "confidence": 0.95,
+        "model_id": "jp.amazon.nova-2-lite-v1:0",
+        "multiple_detected": false,
+        "serving_style": "NEAT"
+      },
+      "status_code": 200,
+      "temporary_s3_key": "tmp/eval-nova2b/e8f882cb-8576-4976-97f3-93e7bb49245f.jpg"
+    },
+    {
+      "attempted_at": "2026-08-02T14:28:32.284046Z",
+      "case": {
+        "condition": "bottle_front",
+        "expected_brand_key": "akkeshi",
+        "expected_canonical_name": "厚岸 シングルモルト ジャパニーズ ウイスキー -立春-",
+        "expected_whiskey_id": null,
+        "image": "images-real/feddadf4ebc40d8b.jpg",
+        "needs_review": false,
+        "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      },
+      "case_index": 26,
+      "response": {
+        "analysis_id": "ai-result:eval-nova2b:a8159566-ebec-40d2-ab2a-2e75b69e3af0",
+        "candidates": [
+          {
+            "brand_en": "The Akkeshi",
+            "brand_ja": "アッケシ",
+            "brand_key": "akkeshi",
+            "brand_text": "アッケシ シングルモルト 日本産ウイスキー ピーテッド 2024",
+            "confidence": 1,
+            "distillery_ja": "厚岸蒸溜所",
+            "match_source": "ai",
+            "name_en": "The Akkeshi Single Malt Japanese Whisky Peated 2024",
+            "name_ja": "アッケシ シングルモルト 日本産ウイスキー ピーテッド 2024"
+          }
+        ],
+        "confidence": 1,
+        "model_id": "jp.amazon.nova-2-lite-v1:0",
+        "multiple_detected": false,
+        "serving_style": "NEAT"
+      },
+      "status_code": 200,
+      "temporary_s3_key": "tmp/eval-nova2b/a8159566-ebec-40d2-ab2a-2e75b69e3af0.jpg"
+    }
+  ],
+  "selected_case_count": 7,
+  "started_at": "2026-08-02T14:28:17.874419Z",
+  "successful_case_count": 27,
+  "target": "dev",
+  "total_case_count": 27,
+  "updated_at": "2026-08-02T14:28:35.028456Z"
+}

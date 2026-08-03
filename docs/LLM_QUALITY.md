@@ -6,7 +6,7 @@
 ## 現在LLMを使用している箇所
 
 `lambda/drink-log-analyze/index.py` は実行時に写真から銘柄と飲み方を判別します。
-Amazon BedrockのConverse APIを使い、既定モデルは`jp.anthropic.claude-sonnet-4-6`です。
+Amazon BedrockのConverse APIを使い、既定モデルは`jp.amazon.nova-2-lite-v1:0`です。
 `BEDROCK_MODEL_ID`が`BEDROCK_MODEL_ALLOWLIST`に含まれることを実行時にも検査するため、CDKの設定とLambdaの検査で二重に制限しています。
 
 `scripts/extract_whiskey_names_claude_sonnet.py` はオフライン処理で楽天の商品名からウイスキー情報を構造化抽出します。
@@ -132,6 +132,9 @@ python scripts/eval/run_brand_eval.py scripts/eval/manifest.real.json --dry-run
 `BEDROCK_MODEL_ID` / `BEDROCK_MODEL_ALLOWLIST` / `lambda/drink-log-analyze/index.py`のプロンプトを変更するPRでは、変更前と変更後に必ず実行します。
 N枚の評価を前後で1回ずつ実行すると、合計2N回のBedrock呼び出しと各呼び出しに伴うAppStateカウンタ消費が発生します。
 
+2026-08-02にdevで実施した実写真27枚の3モデル比較が、この手順をモデル切り替えに適用した最初の実例です。
+成果物は`scripts/eval/results/2026-08-02-sonnet-4-6.json` / `scripts/eval/results/2026-08-02-haiku-4-5.json` / `scripts/eval/results/2026-08-02-nova-2-lite.json`の3ファイルです。
+
 モデルの世代交代を検討するときにも実行します。
 結果はIssue #27でモデルを切り替えるか判断する材料にします。
 候補モデルごとにN回のBedrock呼び出しとAppStateカウンタ消費が発生します。
@@ -147,7 +150,7 @@ N枚の評価を前後で1回ずつ実行すると、合計2N回のBedrock呼び
 ```bash
 AWS_PROFILE=dev python scripts/eval/run_brand_eval.py scripts/eval/manifest.real.json \
   --target dev --profile dev --max-cases 20 --yes \
-  --json scripts/eval/results/2026-08-01-sonnet-4-6.json
+  --json scripts/eval/results/2026-08-02-sonnet-4-6.json
 ```
 
 20件を超える場合は翌日以降に同じファイルを`--resume`へ渡します。
