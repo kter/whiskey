@@ -593,7 +593,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
       environment: {
         ...authenticatedDrinkLogEnvironment,
         WHISKEY_SEARCH_TABLE: whiskeySearchTable.tableName,
-        BEDROCK_MODEL_ID: 'jp.anthropic.claude-sonnet-4-6',
+        BEDROCK_MODEL_ID: 'jp.amazon.nova-2-lite-v1:0',
         BEDROCK_MODEL_ALLOWLIST: bedrockModelAllowlist(bedrockModels).join(','),
         ANALYZE_USER_DAILY_LIMIT: '20',
         ANALYZE_GLOBAL_DAILY_LIMIT: '50',

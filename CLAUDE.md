@@ -114,7 +114,9 @@ curl "https://api.dev.whiskeybar.site/api/whiskeys/search/?q=%E3%83%9C%E3%82%A6%
   - `AppState-dev`: 濫用/コスト防御の原子カウンタ（PK `pk`、TTL 有効）
   - ~~`Users-dev`~~: 廃止（プロフィールは Cognito 属性の読み取り専用表示）
   - ~~`Whiskeys-dev`~~: 廃止（`WhiskeySearch-dev` に統合）
-- **Bedrock**: 画像から銘柄/飲み方を判別（`jp.anthropic.claude-sonnet-4-6` 既定 / Nova 2 Lite・Haiku 4.5 は切り戻し用、APAC 域内固定プロファイル、Converse API）。Nova/Haiku は銘柄名の音写が実用に耐えないため既定から外した（実写真27枚で検証）
+- **Bedrock**: 画像から銘柄/飲み方を判別（`jp.amazon.nova-2-lite-v1:0` 既定 / Sonnet 4.6・Haiku 4.5 は切り戻し用、APAC 域内固定プロファイル、Converse API）
+  - 2026-07-27 の実写真27枚によるエクスプレッション層の全文評価では、Nova/Haiku の銘柄名の音写が実用に耐えないと判断し、Sonnet 4.6 を既定にした
+  - 2026-08-02 に現在の主指標であるブランド/蒸留所層で同じ27枚を dev 評価した結果、Nova 2 Lite は20件正解 / 誤り0件 / 未確定7件だった。Sonnet 4.6 より正解は4件少ないが、誤り0件で同等の安全性を示し、差は未確定に出たため Nova 2 Lite を既定に切り替えた
 - **Cognito**: User authentication + Google OAuth（MAU従量）
 - **Route53**: DNS management with custom domains（クエリ従量）
 
@@ -247,7 +249,7 @@ WHISKEY_SEARCH_TABLE=WhiskeySearch-dev            # Search-optimized table
 DRINKLOGS_TABLE=DrinkLogs-dev                      # Drink logs table
 APP_STATE_TABLE=AppState-dev                       # Abuse/cost counters
 IMAGES_BUCKET=whiskey-images-dev-<account>         # Drink log images bucket
-BEDROCK_MODEL_ID=jp.anthropic.claude-sonnet-4-6    # Analyze model (allowlist gated)
+BEDROCK_MODEL_ID=jp.amazon.nova-2-lite-v1:0        # Analyze model (allowlist gated)
 ```
 
 ### Frontend (.env)

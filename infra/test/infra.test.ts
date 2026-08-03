@@ -603,13 +603,18 @@ describe('Lambda bundling and shared layer', () => {
     }));
     const analyzeEnv = lambdaByName(json, 'drink-log-analyze-dev').Properties?.Environment.Variables;
     expect(analyzeEnv).toEqual(expect.objectContaining({
-      BEDROCK_MODEL_ID: 'jp.anthropic.claude-sonnet-4-6',
+      BEDROCK_MODEL_ID: 'jp.amazon.nova-2-lite-v1:0',
       BEDROCK_MODEL_ALLOWLIST: 'jp.amazon.nova-2-lite-v1:0,jp.anthropic.claude-haiku-4-5-20251001-v1:0,jp.anthropic.claude-sonnet-4-6',
       ANALYZE_USER_DAILY_LIMIT: '20',
       ANALYZE_GLOBAL_DAILY_LIMIT: '50',
       // Sonnet 4.6 の単価が確定するまでの暫定値。docs/COST_MATRIX.md 参照。
       ANALYZE_GLOBAL_MONTHLY_LIMIT: '300',
     }));
+    // The pair above is two literals: swapping the default for a model outside the
+    // allowlist would keep them green while the Lambda refuses to start. Assert the
+    // relationship, not just the values.
+    expect(String(analyzeEnv?.BEDROCK_MODEL_ALLOWLIST).split(','))
+      .toContain(analyzeEnv?.BEDROCK_MODEL_ID);
     const placesEnv = lambdaByName(json, 'drink-log-places-dev').Properties?.Environment.Variables;
     expect(placesEnv).toEqual(expect.objectContaining({
       PLACES_USER_DAILY_LIMIT: '30',
