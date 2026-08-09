@@ -48,8 +48,14 @@ def create_response(
     logger: Any = None,
 ) -> dict[str, Any]:
     """Create a valid API Gateway Lambda proxy response."""
-    response_headers = dict(headers or get_cors_headers(event or {}, private=private))
-    if private:
+    if headers:
+        response_headers = dict(headers)
+    else:
+        response_headers = get_cors_headers(event or {}, private=private)
+    # Only needed on the caller-supplied-headers path: the else branch above passes
+    # private=private into get_cors_headers, which already sets this. Keep that
+    # argument if you touch the branch, or private responses lose no-store here.
+    if private and headers:
         response_headers["Cache-Control"] = "private, no-store"
     response = {
         "statusCode": status_code,
