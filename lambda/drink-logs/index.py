@@ -8,10 +8,11 @@ import re
 import sys
 import time
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from botocore.exceptions import ClientError
 
@@ -1281,13 +1282,233 @@ def delete_drink_log(
     return _finalize_delete(dynamodb, drinklogs_table_name, app_state_table_name, item)
 
 
-def _validation_response(exc: ValidationError, event: Mapping[str, Any]) -> dict[str, Any]:
-    return create_response(
-        400,
-        {"error": "Validation failed", "fields": exc.fields},
-        event=event,
-        private=True,
+@dataclass(frozen=True)
+class _RouteContext:
+    event: dict[str, Any]
+    query: Mapping[str, Any]
+    dynamodb: Any
+    s3: Any
+    table: Any
+    drinklogs_table_name: str
+    app_state_table_name: str
+    bucket_name: str
+    user_id: str
+    record_id: Any
+
+
+class _ExpectedRouteError(Exception):
+    def __init__(self, cause: Exception):
+        super().__init__(str(cause))
+        self.cause = cause
+
+
+_RouteKey = tuple[str, str]
+_RouteResult = tuple[int, Any]
+_RouteHandler = Callable[[_RouteContext], _RouteResult]
+_ErrorMapper = Callable[[Exception, _RouteKey], _RouteResult]
+
+_VALIDATION_ERRORS = (ValidationError,)
+_UPLOAD_ERRORS = (RateLimitExceeded, TransientConflict)
+_CREATE_ERRORS = _VALIDATION_ERRORS + _UPLOAD_ERRORS + (
+    AnalysisConflict,
+    CreateConflict,
+    KeyError,
+)
+
+
+def _invoke_route_step(
+    action: Callable[[], Any], expected_errors: tuple[type[Exception], ...]
+) -> Any:
+    try:
+        return action()
+    except expected_errors as exc:
+        raise _ExpectedRouteError(exc) from exc
+
+
+def _handle_upload_url(context: _RouteContext) -> _RouteResult:
+    content_type = _invoke_route_step(
+        lambda: validate_upload_input(_parse_json_body(context.event)),
+        _VALIDATION_ERRORS,
     )
+    result = _invoke_route_step(
+        lambda: create_upload_url(
+            context.dynamodb,
+            context.s3,
+            context.app_state_table_name,
+            context.bucket_name,
+            context.user_id,
+            content_type,
+        ),
+        _UPLOAD_ERRORS,
+    )
+    return 200, result
+
+
+def _handle_create(context: _RouteContext) -> _RouteResult:
+    record, created = _invoke_route_step(
+        lambda: create_drink_log(
+            context.dynamodb,
+            context.s3,
+            context.drinklogs_table_name,
+            context.app_state_table_name,
+            context.bucket_name,
+            context.user_id,
+            validate_create_input(_parse_json_body(context.event)),
+        ),
+        _CREATE_ERRORS,
+    )
+    return (
+        201 if created else 200,
+        _public_record(
+            record,
+            context.s3,
+            context.bucket_name,
+            context.user_id,
+        ),
+    )
+
+
+def _handle_detail(context: _RouteContext) -> _RouteResult:
+    record = get_owned_drink_log(
+        context.table,
+        context.s3,
+        context.bucket_name,
+        context.user_id,
+        context.record_id,
+    )
+    if not record:
+        return 404, {"error": "Drink log not found"}
+    return 200, record
+
+
+def _handle_timeline(context: _RouteContext) -> _RouteResult:
+    limit, start_key, filters = _invoke_route_step(
+        lambda: parse_timeline_query(context.query),
+        _VALIDATION_ERRORS,
+    )
+    records, next_token = get_timeline(
+        context.dynamodb,
+        context.s3,
+        context.drinklogs_table_name,
+        context.bucket_name,
+        context.user_id,
+        limit,
+        start_key,
+        filters,
+    )
+    return 200, {
+        "results": records,
+        "drink_logs": records,
+        "count": len(records),
+        "next_token": next_token,
+    }
+
+
+def _handle_update(context: _RouteContext) -> _RouteResult:
+    data = _invoke_route_step(
+        lambda: validate_update_input(_parse_json_body(context.event)),
+        _VALIDATION_ERRORS,
+    )
+    record = update_drink_log(
+        context.table,
+        context.user_id,
+        context.record_id,
+        data,
+    )
+    if not record:
+        return 404, {"error": "Drink log not found"}
+    return (
+        200,
+        _public_record(
+            record,
+            context.s3,
+            context.bucket_name,
+            context.user_id,
+        ),
+    )
+
+
+def _handle_delete(context: _RouteContext) -> _RouteResult:
+    deleted = delete_drink_log(
+        context.dynamodb,
+        context.s3,
+        context.drinklogs_table_name,
+        context.app_state_table_name,
+        context.bucket_name,
+        context.user_id,
+        context.record_id,
+    )
+    if not deleted:
+        return 404, {"error": "Drink log not found"}
+    return 204, ""
+
+
+_ROUTE_DISPATCH: dict[_RouteKey, _RouteHandler] = {
+    ("POST", "upload-url"): _handle_upload_url,
+    ("POST", "collection"): _handle_create,
+    ("GET", "record"): _handle_detail,
+    ("GET", "collection"): _handle_timeline,
+    ("PUT", "record"): _handle_update,
+    ("DELETE", "record"): _handle_delete,
+}
+
+
+def _route_key(method: str, path: str, record_id: Any) -> _RouteKey:
+    if method == "POST" and path.endswith("/upload-url"):
+        return method, "upload-url"
+    return method, "record" if record_id else "collection"
+
+
+def _validation_error(exc: Exception, _route: _RouteKey) -> _RouteResult:
+    return 400, {"error": "Validation failed", "fields": exc.fields}
+
+
+def _rate_limit_error(_exc: Exception, route: _RouteKey) -> _RouteResult:
+    message = (
+        "Daily upload limit exceeded"
+        if route == ("POST", "upload-url")
+        else "Daily create or storage limit exceeded"
+    )
+    return 429, {"error": message}
+
+
+def _transient_conflict_error(_exc: Exception, _route: _RouteKey) -> _RouteResult:
+    return 503, {"error": "書き込みが混み合っています。少し時間をおいて再試行してください。"}
+
+
+def _conflict_error(exc: Exception, _route: _RouteKey) -> _RouteResult:
+    return 409, {"error": str(exc)}
+
+
+def _not_found_error(_exc: Exception, _route: _RouteKey) -> _RouteResult:
+    return 404, {"error": "Drink log not found"}
+
+
+_EXCEPTION_MAPPERS: tuple[tuple[type[Exception], _ErrorMapper], ...] = (
+    (ValidationError, _validation_error),
+    (RateLimitExceeded, _rate_limit_error),
+    (TransientConflict, _transient_conflict_error),
+    (AnalysisConflict, _conflict_error),
+    (CreateConflict, _conflict_error),
+    (KeyError, _not_found_error),
+)
+
+
+def _map_exception(exc: Exception, route: _RouteKey) -> _RouteResult:
+    for exception_type, mapper in _EXCEPTION_MAPPERS:
+        if isinstance(exc, exception_type):
+            return mapper(exc, route)
+    raise exc
+
+
+def _dispatch(route: _RouteKey, context: _RouteContext) -> _RouteResult:
+    handler = _ROUTE_DISPATCH.get(route)
+    if not handler:
+        return 405, {"error": "Method not allowed"}
+    try:
+        return handler(context)
+    except _ExpectedRouteError as exc:
+        return _map_exception(exc.cause, route)
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
@@ -1311,141 +1532,28 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         bucket_name = os.environ["IMAGES_BUCKET"]
         table = dynamodb.Table(drinklogs_table_name)
         record_id = (event.get("pathParameters") or {}).get("id")
-
-        if method == "POST" and path.endswith("/upload-url"):
-            try:
-                content_type = validate_upload_input(_parse_json_body(event))
-            except ValidationError as exc:
-                return _validation_response(exc, event)
-            try:
-                result = create_upload_url(
-                    dynamodb,
-                    s3,
-                    app_state_table_name,
-                    bucket_name,
-                    user_id,
-                    content_type,
-                )
-            except RateLimitExceeded:
-                return create_response(
-                    429,
-                    {"error": "Daily upload limit exceeded"},
-                    event=event,
-                    private=True,
-                )
-            except TransientConflict:
-                return create_response(
-                    503,
-                    {"error": "書き込みが混み合っています。少し時間をおいて再試行してください。"},
-                    event=event,
-                    private=True,
-                )
-            return create_response(200, result, event=event, private=True)
-
-        if method == "POST" and not record_id:
-            try:
-                data = validate_create_input(_parse_json_body(event))
-                record, created = create_drink_log(
-                    dynamodb,
-                    s3,
-                    drinklogs_table_name,
-                    app_state_table_name,
-                    bucket_name,
-                    user_id,
-                    data,
-                )
-            except ValidationError as exc:
-                return _validation_response(exc, event)
-            except RateLimitExceeded:
-                return create_response(
-                    429,
-                    {"error": "Daily create or storage limit exceeded"},
-                    event=event,
-                    private=True,
-                )
-            except TransientConflict:
-                return create_response(
-                    503,
-                    {"error": "書き込みが混み合っています。少し時間をおいて再試行してください。"},
-                    event=event,
-                    private=True,
-                )
-            except AnalysisConflict as exc:
-                return create_response(409, {"error": str(exc)}, event=event, private=True)
-            except CreateConflict as exc:
-                return create_response(409, {"error": str(exc)}, event=event, private=True)
-            except KeyError:
-                return create_response(404, {"error": "Drink log not found"}, event=event, private=True)
-            return create_response(
-                201 if created else 200,
-                _public_record(record, s3, bucket_name, user_id),
+        route = _route_key(method, path, record_id)
+        status_code, body = _dispatch(
+            route,
+            _RouteContext(
                 event=event,
-                private=True,
-            )
-
-        if method == "GET" and record_id:
-            record = get_owned_drink_log(table, s3, bucket_name, user_id, record_id)
-            if not record:
-                return create_response(404, {"error": "Drink log not found"}, event=event, private=True)
-            return create_response(200, record, event=event, private=True)
-
-        if method == "GET" and not record_id:
-            try:
-                limit, start_key, filters = parse_timeline_query(query)
-            except ValidationError as exc:
-                return _validation_response(exc, event)
-            records, next_token = get_timeline(
-                dynamodb,
-                s3,
-                drinklogs_table_name,
-                bucket_name,
-                user_id,
-                limit,
-                start_key,
-                filters,
-            )
-            return create_response(
-                200,
-                {
-                    "results": records,
-                    "drink_logs": records,
-                    "count": len(records),
-                    "next_token": next_token,
-                },
-                event=event,
-                private=True,
-            )
-
-        if method == "PUT" and record_id:
-            try:
-                data = validate_update_input(_parse_json_body(event))
-            except ValidationError as exc:
-                return _validation_response(exc, event)
-            record = update_drink_log(table, user_id, record_id, data)
-            if not record:
-                return create_response(404, {"error": "Drink log not found"}, event=event, private=True)
-            return create_response(
-                200,
-                _public_record(record, s3, bucket_name, user_id),
-                event=event,
-                private=True,
-            )
-
-        if method == "DELETE" and record_id:
-            deleted = delete_drink_log(
-                dynamodb,
-                s3,
-                drinklogs_table_name,
-                app_state_table_name,
-                bucket_name,
-                user_id,
-                record_id,
-            )
-            if not deleted:
-                return create_response(404, {"error": "Drink log not found"}, event=event, private=True)
-            return create_response(204, "", event=event, private=True)
-
-        return create_response(405, {"error": "Method not allowed"}, event=event, private=True)
+                query=query,
+                dynamodb=dynamodb,
+                s3=s3,
+                table=table,
+                drinklogs_table_name=drinklogs_table_name,
+                app_state_table_name=app_state_table_name,
+                bucket_name=bucket_name,
+                user_id=user_id,
+                record_id=record_id,
+            ),
+        )
+        return create_response(
+            status_code,
+            body,
+            event=event,
+            private=True,
+        )
     except Exception as exc:
         logger.error("Unhandled drink-log error", error=str(exc), request_id=request_id)
         return create_response(
