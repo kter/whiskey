@@ -107,6 +107,3 @@ def extract_user_id_from_event(event: Mapping[str, Any]) -> str | None:
         return None
     payload = verify_cognito_jwt(token)
     return payload.get("sub") if payload else None
-
-
-extract_user_id_from_token = extract_user_id_from_event

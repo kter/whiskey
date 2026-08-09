@@ -35,6 +35,17 @@ def test_response_serializes_decimal_and_sets_private_cache(monkeypatch):
     assert response["body"] == '{"rating": 4.5}'
     assert response["headers"]["Cache-Control"] == "private, no-store"
 
+    response_with_headers = responses.create_response(
+        200,
+        {"rating": Decimal("4.5")},
+        headers={"X-Test": "value"},
+        private=True,
+    )
+    assert response_with_headers["headers"] == {
+        "X-Test": "value",
+        "Cache-Control": "private, no-store",
+    }
+
 
 def test_clients_use_service_specific_endpoints_and_bounded_config(monkeypatch):
     monkeypatch.setenv("AWS_ENDPOINT_URL", "http://must-not-be-used")

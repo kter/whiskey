@@ -1,10 +1,12 @@
 """Contract checks for the local FastAPI-to-Lambda adapter."""
 
+import asyncio
 import os
 import subprocess
 import sys
 from pathlib import Path
 
+import httpx
 import pytest
 import yaml
 
@@ -56,13 +58,39 @@ def test_fastapi_routes_mirror_swagger_contract():
         if method.lower() in {"get", "post", "put", "delete", "patch"}
     }
     actual = {
-        (route.path, method)
+        (route.path.removesuffix("/"), method)
         for route in app.routes
         if route.path.startswith("/api/")
         for method in route.methods
         if method != "HEAD"
     }
     assert actual == expected
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/whiskeys/",
+        "/api/whiskeys/search/",
+        "/api/whiskeys/search/suggest/",
+        "/api/whiskeys/suggest/",
+    ],
+)
+def test_whiskey_routes_accept_trailing_slash_without_redirect(monkeypatch, path):
+    from local_api import main
+
+    async def invoke(_request, _handler):
+        return main.Response(status_code=200)
+
+    monkeypatch.setattr(main, "invoke", invoke)
+
+    async def request():
+        transport = httpx.ASGITransport(app=main.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            return await client.get(path, follow_redirects=False)
+
+    response = asyncio.run(request())
+    assert response.status_code == 200
 
 
 def test_lambda_context_uses_a_deadline():

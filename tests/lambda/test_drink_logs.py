@@ -13,7 +13,7 @@ import boto3
 import pytest
 from botocore.exceptions import ClientError
 from moto import mock_aws
-from PIL import Image
+from PIL import Image, features
 
 from tests.lambda_module_loader import load_lambda_module
 
@@ -25,6 +25,9 @@ images = load_lambda_module(
     "lambda/common/python/whiskey_common/images.py",
 )
 ROOT = Path(__file__).resolve().parents[2]
+requires_webp = pytest.mark.skipif(
+    not features.check("webp"), reason="Pillow built without WEBP support"
+)
 
 
 class TransactionCanceled(Exception):
@@ -245,6 +248,7 @@ def test_normalize_applies_orientation_and_strips_metadata():
         assert "icc_profile" not in result.info
 
 
+@requires_webp
 def test_normalize_flattens_transparent_png_and_accepts_webp():
     png = _image_bytes("PNG", size=(10, 10), mode="RGBA", color=(255, 0, 0, 0))
     normalized = images.normalize_image(png, max_bytes=1_572_864)
@@ -1195,7 +1199,10 @@ def test_upload_conflict_returns_503_instead_of_false_429(monkeypatch):
 
 @pytest.mark.parametrize(
     ("fmt", "content_type", "extension"),
-    [("PNG", "image/png", "png"), ("WEBP", "image/webp", "webp")],
+    [
+        ("PNG", "image/png", "png"),
+        pytest.param("WEBP", "image/webp", "webp", marks=requires_webp),
+    ],
 )
 def test_png_and_webp_finish_get_delete_flow(fmt, content_type, extension):
     upload_uuid = "12345678-1234-4234-8234-123456789abc"

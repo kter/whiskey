@@ -219,13 +219,17 @@ app.add_middleware(
 )
 
 
+@app.get("/api/whiskeys/")
 @app.get("/api/whiskeys")
 async def list_whiskeys(request: Request) -> Response:
     return await invoke(request, WHISKEY_LIST.lambda_handler)
 
 
+@app.get("/api/whiskeys/search/")
 @app.get("/api/whiskeys/search")
+@app.get("/api/whiskeys/suggest/")
 @app.get("/api/whiskeys/suggest")
+@app.get("/api/whiskeys/search/suggest/")
 @app.get("/api/whiskeys/search/suggest")
 async def search_whiskeys(request: Request) -> Response:
     return await invoke(request, WHISKEY_SEARCH.lambda_handler)
