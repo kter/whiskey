@@ -1,5 +1,5 @@
-requests>=2.27.0
+requests>=2.34.2
 urllib3>=1.26.0
 certifi>=2022.5.18 
-boto3>=1.39.3
+boto3>=1.43.69
 pillow-heif==1.5.0
