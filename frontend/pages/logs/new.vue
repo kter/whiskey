@@ -1,39 +1,40 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref } from 'vue'
+import { onBeforeUnmount, reactive } from 'vue'
 import {
-  clearPendingItemPlaceIds,
-  copyStoreToPendingItems,
-  isPlaceSelectedForPendingItems,
-  setPlaceOnPendingItems,
-  useDrinkLogBatch,
-  MAX_DRINK_LOG_BATCH_SIZE,
-  type DrinkLogBatchItem,
-} from '~/composables/useDrinkLogBatch'
-import { candidateIndexAfterBrandEdit, useDrinkLogs, type PlaceCandidate } from '~/composables/useDrinkLogs'
+  useDrinkLogRecordingSession,
+  type RecordingSessionItem,
+} from '~/composables/useDrinkLogRecordingSession'
 import { useGeolocation } from '~/composables/useGeolocation'
 import { SERVING_STYLES, type ServingStyle } from '~/types/whiskey'
 import { formatLocalLogDate, formatLocalLogTime } from '~/utils/drinkLogs'
-import { readExifGps, type Coordinates } from '~/utils/exifLocation'
 
-const { searchPlaces, upsertLogs } = useDrinkLogs()
 const {
   items,
+  places,
+  pageError,
+  selectionNotice,
+  placeError,
+  placeNotice,
+  readyItems,
   isProcessing,
   isSaving,
-  allSaved,
-  processFiles,
-  retryProcessing,
-  savePending,
-  retrySave,
+  canSave,
+  selectFiles,
+  retryItemProcessing: handleProcessingRetry,
+  selectCandidate,
+  reconcileBrandEdit: handleBrandInput,
+  selectedPlaceFor,
+  selectedPlaceAttributions,
+  isSharedPlaceSelected,
+  toggleSharedPlace,
+  copyFirstStoreToAll: applyFirstStoreToAllCards,
+  findNearbyPlaces: findPlaces,
+  saveAll,
+  retryItemSave,
   reset,
-} = useDrinkLogBatch()
+} = useDrinkLogRecordingSession()
 const { disclosure, requesting: requestingLocation, requestPosition } = useGeolocation()
 
-const places = ref<PlaceCandidate[]>([])
-const pageError = ref('')
-const selectionNotice = ref('')
-const placeError = ref('')
-const placeNotice = ref('')
 const lightbox = reactive({
   open: false,
   src: '',
@@ -48,7 +49,7 @@ const styleLabels: Record<ServingStyle, string> = {
   COCKTAIL: 'カクテル',
 }
 
-const processingLabels: Record<DrinkLogBatchItem['phase'], string> = {
+const processingLabels: Record<RecordingSessionItem['phase'], string> = {
   queued: '処理中',
   resizing: '処理中',
   uploading: '処理中',
@@ -57,141 +58,23 @@ const processingLabels: Record<DrinkLogBatchItem['phase'], string> = {
   failed: '失敗',
 }
 
-const readyItems = computed(() => items.value.filter(item => item.phase === 'ready'))
-const canSave = computed(() => (
-  items.value.some(item => item.phase === 'ready' && item.saveStatus !== 'saved')
-  && !isProcessing.value
-  && !isSaving.value
-))
-
 onBeforeUnmount(reset)
-
-const errorMessage = (cause: unknown, fallback: string) => cause instanceof Error && cause.message
-  ? cause.message
-  : fallback
-
-const selectCandidate = (item: DrinkLogBatchItem, index: number) => {
-  const candidate = item.candidates[index]
-  if (!candidate) return
-  item.selectedCandidateIndex = index
-  item.brandText = candidate.brand_text
-}
-
-const handleBrandInput = (item: DrinkLogBatchItem) => {
-  const reconciledIndex = candidateIndexAfterBrandEdit(
-    item.candidates,
-    item.selectedCandidateIndex,
-    item.brandText,
-  )
-  if (reconciledIndex === null) {
-    item.selectedCandidateIndex = null
-  }
-}
-
-const selectedPlaceFor = (item: DrinkLogBatchItem) => (
-  places.value.find(place => place.place_id === item.placeId) || null
-)
-const selectedPlaceAttributions = (item: DrinkLogBatchItem) => selectedPlaceFor(item)?.attributions || []
-
-const clearItemPlaceIds = () => clearPendingItemPlaceIds(items.value)
-
-const isSharedPlaceSelected = (placeId: string) => isPlaceSelectedForPendingItems(items.value, placeId)
-
-const toggleSharedPlace = (placeId: string) => {
-  setPlaceOnPendingItems(items.value, isSharedPlaceSelected(placeId) ? '' : placeId)
-}
-
-const applyFirstStoreToAllCards = () => {
-  const firstItem = readyItems.value[0]
-  if (!firstItem) return
-  copyStoreToPendingItems(readyItems.value, firstItem)
-}
 
 const handleFileSelection = async (event: Event) => {
   const input = event.target as HTMLInputElement
   const files = Array.from(input.files || [])
-  if (!files.length) return
-
-  pageError.value = ''
-  selectionNotice.value = files.length > MAX_DRINK_LOG_BATCH_SIZE
-    ? `一度に登録できるのは${MAX_DRINK_LOG_BATCH_SIZE}枚までです`
-    : ''
-  placeNotice.value = ''
   input.value = ''
-
-  let exifCoordinates: Coordinates | null = null
-  for (const file of files.slice(0, MAX_DRINK_LOG_BATCH_SIZE)) {
-    exifCoordinates = await readExifGps(file)
-    if (exifCoordinates) break
-  }
-
-  const processing = processFiles(files)
-  const nearbySearch = exifCoordinates
-    ? searchNearbyPlaces(exifCoordinates, true)
-    : Promise.resolve()
-  exifCoordinates = null
-  await Promise.all([processing, nearbySearch])
+  await selectFiles(files)
 }
 
-const handleProcessingRetry = async (item: DrinkLogBatchItem) => {
-  pageError.value = ''
-  await retryProcessing(item)
-}
-
-const searchNearbyPlaces = async (position: Coordinates, fromExif = false) => {
-  placeError.value = ''
-  placeNotice.value = ''
-
-  try {
-    places.value = await searchPlaces(position.lat, position.lng)
-    clearItemPlaceIds()
-    if (fromExif) placeNotice.value = '写真の位置情報から近くの店を検索しました。'
-    if (!places.value.length) placeError.value = '近くの店候補が見つかりませんでした。店名を手入力してください。'
-  } catch (cause) {
-    places.value = []
-    clearItemPlaceIds()
-    placeError.value = errorMessage(cause, '近くの店を検索できませんでした。店名は手入力できます。')
-  }
-}
-
-const findNearbyPlaces = async () => {
-  placeError.value = ''
-  placeNotice.value = ''
-  const position = await requestPosition()
-  if (!position) {
-    places.value = []
-    clearItemPlaceIds()
-    placeError.value = '位置情報を取得できませんでした。店名を手入力して記録できます。'
-    return
-  }
-
-  await searchNearbyPlaces(position)
-}
-
-const updateFailureSummary = () => {
-  const processingFailures = items.value.filter(item => item.phase === 'failed').length
-  const saveFailures = items.value.filter(item => item.phase === 'ready' && item.saveStatus === 'failed').length
-  const failures = processingFailures + saveFailures
-  pageError.value = failures
-    ? `${failures}件の処理または保存に失敗しました。失敗した項目を確認して再試行してください。`
-    : ''
-}
-
-const finishSave = async (created: Awaited<ReturnType<typeof savePending>>) => {
-  if (created.length) upsertLogs(created)
-  if (allSaved.value) await navigateTo('/logs')
-  else updateFailureSummary()
-}
+const findNearbyPlaces = () => findPlaces(requestPosition)
 
 const handleSubmit = async () => {
-  pageError.value = ''
-  await finishSave(await savePending())
+  if (await saveAll()) await navigateTo('/logs')
 }
 
-const handleSaveRetry = async (item: DrinkLogBatchItem) => {
-  pageError.value = ''
-  const created = await retrySave(item)
-  await finishSave(created ? [created] : [])
+const handleSaveRetry = async (item: RecordingSessionItem) => {
+  if (await retryItemSave(item)) await navigateTo('/logs')
 }
 
 const openLightbox = (src: string, alt: string) => {
