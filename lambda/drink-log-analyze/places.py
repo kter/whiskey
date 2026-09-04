@@ -7,7 +7,6 @@ import json
 import math
 import os
 import time
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import quote
@@ -16,10 +15,10 @@ import requests
 
 try:
     from whiskey_common.clients import get_boto3_client, get_dynamodb_resource
+    from whiskey_common.cost_guard import UsageBudget, UsageBudgetExceeded
     from whiskey_common.jwt_utils import extract_user_id_from_event
     from whiskey_common.logger import extract_correlation_id, get_logger
     from whiskey_common.responses import create_response
-    from whiskey_common.transactions import transact_write_with_retry
 except ModuleNotFoundError as exc:
     if exc.name != "whiskey_common":
         raise
@@ -27,10 +26,10 @@ except ModuleNotFoundError as exc:
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "common" / "python"))
     from whiskey_common.clients import get_boto3_client, get_dynamodb_resource
+    from whiskey_common.cost_guard import UsageBudget, UsageBudgetExceeded
     from whiskey_common.jwt_utils import extract_user_id_from_event
     from whiskey_common.logger import extract_correlation_id, get_logger
     from whiskey_common.responses import create_response
-    from whiskey_common.transactions import transact_write_with_retry
 
 
 PLACES_BASE_URL = "https://places.googleapis.com/v1"
@@ -52,8 +51,7 @@ class ValidationError(ValueError):
         self.fields = dict(fields)
 
 
-class BudgetExceeded(Exception):
-    """Raised when a Places request would exceed a cost ceiling."""
+BudgetExceeded = UsageBudgetExceeded
 
 
 class OwnershipError(Exception):
@@ -66,14 +64,6 @@ class UpstreamError(Exception):
 
 class UpstreamTimeout(UpstreamError):
     """Raised when the Places deadline is exhausted."""
-
-
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _rfc3339(value: datetime) -> str:
-    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _env_flag_is_set(name: str) -> bool:
@@ -192,95 +182,6 @@ def validate_resolve_input(body: Mapping[str, Any]) -> list[dict[str, str]]:
     if errors:
         raise ValidationError(errors)
     return validated
-
-
-def _counter_update(
-    table_name: str,
-    key: str,
-    *,
-    amount: int,
-    limit: int,
-    ttl: int,
-    now: str,
-) -> dict[str, Any]:
-    return {
-        "Update": {
-            "TableName": table_name,
-            "Key": {"pk": key},
-            "UpdateExpression": (
-                "SET #ttl = if_not_exists(#ttl, :ttl), updated_at = :now ADD #count :amount"
-            ),
-            "ConditionExpression": (
-                "attribute_not_exists(#count) OR #count <= :largest_existing"
-            ),
-            "ExpressionAttributeNames": {"#count": "count", "#ttl": "ttl"},
-            "ExpressionAttributeValues": {
-                ":amount": amount,
-                ":largest_existing": limit - amount,
-                ":ttl": ttl,
-                ":now": now,
-            },
-        }
-    }
-
-
-def reserve_places_budget(
-    dynamodb: Any,
-    table_name: str,
-    user_id: str,
-    amount: int,
-    *,
-    now_dt: datetime | None = None,
-) -> None:
-    if amount < 1:
-        raise ValueError("amount must be positive")
-    current = now_dt or _utc_now()
-    limits = (
-        int(os.environ.get("PLACES_USER_DAILY_LIMIT", "30")),
-        int(os.environ.get("PLACES_GLOBAL_DAILY_LIMIT", "15")),
-        int(os.environ.get("PLACES_GLOBAL_MONTHLY_LIMIT", "150")),
-    )
-    if any(amount > limit for limit in limits):
-        raise BudgetExceeded
-    date = current.strftime("%Y-%m-%d")
-    month = current.strftime("%Y-%m")
-    now = _rfc3339(current)
-    daily_ttl = int((current + timedelta(days=2)).timestamp())
-    monthly_ttl = int((current + timedelta(days=35)).timestamp())
-    writes = [
-        _counter_update(
-            table_name,
-            f"drinklog-counter#places#user#{user_id}#{date}",
-            amount=amount,
-            limit=limits[0],
-            ttl=daily_ttl,
-            now=now,
-        ),
-        _counter_update(
-            table_name,
-            f"drinklog-counter#places#global#{date}",
-            amount=amount,
-            limit=limits[1],
-            ttl=daily_ttl,
-            now=now,
-        ),
-        _counter_update(
-            table_name,
-            f"drinklog-counter#places#global-month#{month}",
-            amount=amount,
-            limit=limits[2],
-            ttl=monthly_ttl,
-            now=now,
-        ),
-    ]
-    client = dynamodb.meta.client
-    try:
-        transact_write_with_retry(client, writes)
-    except client.exceptions.TransactionCanceledException as exc:
-        reasons = exc.response.get("CancellationReasons", [])
-        if any(reason.get("Code") == "ConditionalCheckFailed" for reason in reasons):
-            raise BudgetExceeded from exc
-        raise
 
 
 def _attributions(value: Any) -> list[Any]:
@@ -480,7 +381,7 @@ def resolve_places(
     records = _batch_get_logs(dynamodb, drinklogs_table_name, log_ids, deadline)
     _verify_ownership(records, items, user_id)
     place_ids = list(dict.fromkeys(item["place_id"] for item in items))
-    reserve_places_budget(dynamodb, app_state_table_name, user_id, len(place_ids))
+    UsageBudget(dynamodb, app_state_table_name).reserve_places(user_id, len(place_ids))
 
     details: dict[str, dict[str, Any] | None] = {}
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(place_ids)))
@@ -572,7 +473,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             return create_response(200, {"results": results}, event=event, private=True)
         if path.endswith("/places"):
             lat, lng = validate_nearby_input(request_body)
-            reserve_places_budget(dynamodb, app_state_table_name, user_id, 1)
+            UsageBudget(dynamodb, app_state_table_name).reserve_places(user_id, 1)
             return create_response(
                 200,
                 search_nearby(lat, lng, api_key, deadline=_deadline(context, started)),

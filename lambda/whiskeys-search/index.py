@@ -8,7 +8,7 @@ from typing import Any
 
 try:
     from whiskey_common.clients import get_dynamodb_resource
-    from whiskey_common.cost_guard import ScanBudgetExceeded, consume_scan_budget
+    from whiskey_common.cost_guard import ScanBudgetExceeded, UsageBudget
     from whiskey_common.logger import extract_correlation_id, get_logger
     from whiskey_common.responses import create_response, get_cors_headers
 except ModuleNotFoundError as exc:
@@ -16,7 +16,7 @@ except ModuleNotFoundError as exc:
         raise
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "common" / "python"))
     from whiskey_common.clients import get_dynamodb_resource
-    from whiskey_common.cost_guard import ScanBudgetExceeded, consume_scan_budget
+    from whiskey_common.cost_guard import ScanBudgetExceeded, UsageBudget
     from whiskey_common.logger import extract_correlation_id, get_logger
     from whiskey_common.responses import create_response, get_cors_headers
 
@@ -56,9 +56,10 @@ def handle_search_endpoint(query_params: dict[str, Any], logger: Any) -> dict[st
         query,
         limit=limit,
         next_token=query_params.get("next_token"),
-        before_page=lambda: consume_scan_budget(
+        before_page=lambda: UsageBudget(
             dynamodb,
             os.environ["APP_STATE_TABLE"],
+        ).reserve_public_scan(
             "search",
             int(os.environ.get("PUBLIC_SCAN_DAILY_LIMIT", "10000")),
         ),

@@ -7,7 +7,7 @@ from typing import Any
 
 try:
     from whiskey_common.clients import get_dynamodb_resource
-    from whiskey_common.cost_guard import ScanBudgetExceeded, consume_scan_budget
+    from whiskey_common.cost_guard import ScanBudgetExceeded, UsageBudget
     from whiskey_common.logger import extract_correlation_id, get_logger
     from whiskey_common.responses import create_response, get_cors_headers
     from whiskey_common.scan_utils import decode_next_token, scan_all_pages
@@ -16,7 +16,7 @@ except ModuleNotFoundError as exc:
         raise
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "common" / "python"))
     from whiskey_common.clients import get_dynamodb_resource
-    from whiskey_common.cost_guard import ScanBudgetExceeded, consume_scan_budget
+    from whiskey_common.cost_guard import ScanBudgetExceeded, UsageBudget
     from whiskey_common.logger import extract_correlation_id, get_logger
     from whiskey_common.responses import create_response, get_cors_headers
     from whiskey_common.scan_utils import decode_next_token, scan_all_pages
@@ -49,9 +49,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         query = event.get("queryStringParameters") or {}
         limit, start_key = _parse_request(query)
         dynamodb = get_dynamodb_resource()
-        consume_scan_budget(
-            dynamodb,
-            os.environ["APP_STATE_TABLE"],
+        UsageBudget(dynamodb, os.environ["APP_STATE_TABLE"]).reserve_public_scan(
             "list",
             int(os.environ.get("PUBLIC_SCAN_DAILY_LIMIT", "10000")),
         )

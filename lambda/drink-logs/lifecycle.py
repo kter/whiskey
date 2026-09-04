@@ -2,29 +2,20 @@
 
 from __future__ import annotations
 
-import os
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any, Callable, Mapping
 
 from botocore.exceptions import ClientError
 
-from whiskey_common.transactions import transact_write_with_retry
+from whiskey_common.cost_guard import UsageBudget
 
 
 NAMESPACE_DRINKLOG = uuid.UUID("7df1920f-5929-51ee-9860-164c1d4bc388")
 
 
-class RateLimitExceeded(Exception):
-    pass
-
-
 class CreateConflict(Exception):
-    pass
-
-
-class TransientConflict(Exception):
     pass
 
 
@@ -44,68 +35,6 @@ def derive_drink_log_id(user_id: str, upload_uuid: str) -> str:
     """Derive a stable record ID bound to both the owner and upload UUID."""
     parsed = str(uuid.UUID(upload_uuid))
     return str(uuid.uuid5(NAMESPACE_DRINKLOG, f"{user_id}\0{parsed}"))
-
-
-def _rate_counter_update(
-    table_name: str,
-    key: str,
-    limit: int,
-    ttl: int,
-    now: str,
-) -> dict[str, Any]:
-    return {
-        "Update": {
-            "TableName": table_name,
-            "Key": {"pk": key},
-            "UpdateExpression": (
-                "SET #ttl = if_not_exists(#ttl, :ttl), updated_at = :updated_at "
-                "ADD #count :one"
-            ),
-            "ConditionExpression": "attribute_not_exists(#count) OR #count < :limit",
-            "ExpressionAttributeNames": {"#count": "count", "#ttl": "ttl"},
-            "ExpressionAttributeValues": {
-                ":one": 1,
-                ":limit": limit,
-                ":ttl": ttl,
-                ":updated_at": now,
-            },
-        }
-    }
-
-
-def _quota_counter_update(
-    table_name: str,
-    key: str,
-    limit: int,
-    now: str,
-) -> dict[str, Any]:
-    return {
-        "Update": {
-            "TableName": table_name,
-            "Key": {"pk": key},
-            "UpdateExpression": "SET updated_at = :updated_at ADD #count :one",
-            "ConditionExpression": "attribute_not_exists(#count) OR #count < :limit",
-            "ExpressionAttributeNames": {"#count": "count"},
-            "ExpressionAttributeValues": {":one": 1, ":limit": limit, ":updated_at": now},
-        }
-    }
-
-
-def _quota_counter_decrement(table_name: str, key: str, now: str) -> dict[str, Any]:
-    return {
-        "Update": {
-            "TableName": table_name,
-            "Key": {"pk": key},
-            "UpdateExpression": "SET updated_at = :updated_at ADD #count :minus_one",
-            "ConditionExpression": "#count >= :one",
-            "ExpressionAttributeNames": {"#count": "count"},
-            "ExpressionAttributeValues": {
-                ":minus_one": -1,
-                ":one": 1,
-                ":updated_at": now,
-            },
-        }
-    }
 
 
 def _is_missing_s3_error(exc: ClientError) -> bool:
@@ -155,84 +84,47 @@ class DrinkLogLifecycle:
         *,
         now: datetime,
     ) -> None:
-        timestamp = self.timestamp_format(now)
-        utc_date = now.astimezone(timezone.utc).strftime("%Y-%m-%d")
-        ttl = int((now + timedelta(days=2)).timestamp())
-        user_id = pending["user_id"]
-        transaction = [
-            {
-                "Put": {
-                    "TableName": self.drinklogs_table_name,
-                    "Item": dict(pending),
-                    "ConditionExpression": "attribute_not_exists(id)",
-                }
-            },
-            _rate_counter_update(
-                self.app_state_table_name,
-                f"drinklog-counter#create#user#{user_id}#{utc_date}",
-                int(os.environ.get("CREATE_USER_DAILY_LIMIT", "30")),
-                ttl,
-                timestamp,
-            ),
-            _rate_counter_update(
-                self.app_state_table_name,
-                f"drinklog-counter#create#global#{utc_date}",
-                int(os.environ.get("CREATE_GLOBAL_DAILY_LIMIT", "100")),
-                ttl,
-                timestamp,
-            ),
-            _quota_counter_update(
-                self.app_state_table_name,
-                f"drinklog-quota#user#{user_id}",
-                int(os.environ.get("STORAGE_USER_LIMIT", "2000")),
-                timestamp,
-            ),
-            _quota_counter_update(
-                self.app_state_table_name,
-                "drinklog-quota#global",
-                int(os.environ.get("STORAGE_GLOBAL_LIMIT", "20000")),
-                timestamp,
-            ),
-            dict(consume_analysis),
-        ]
-        transact_write_with_retry(self.client, transaction)
+        UsageBudget(
+            self.dynamodb,
+            self.app_state_table_name,
+            self.timestamp_format,
+        ).start_drink_log_create(
+            self.drinklogs_table_name,
+            pending,
+            consume_analysis,
+            now=now,
+        )
 
     def compensate_create(self, record: Mapping[str, Any], *, now: datetime) -> bool:
-        timestamp = self.timestamp_format(now)
+        delete_write = {
+            "Delete": {
+                "TableName": self.drinklogs_table_name,
+                "Key": {"id": record["id"]},
+                "ConditionExpression": (
+                    "#owner = :caller AND #status = :pending "
+                    "AND quota_allocated = :true"
+                ),
+                "ExpressionAttributeNames": {
+                    "#owner": "user_id",
+                    "#status": "status",
+                },
+                "ExpressionAttributeValues": {
+                    ":caller": record["user_id"],
+                    ":pending": "pending",
+                    ":true": True,
+                },
+            }
+        }
         try:
-            transact_write_with_retry(
-                self.client,
-                [
-                    {
-                        "Delete": {
-                            "TableName": self.drinklogs_table_name,
-                            "Key": {"id": record["id"]},
-                            "ConditionExpression": (
-                                "#owner = :caller AND #status = :pending "
-                                "AND quota_allocated = :true"
-                            ),
-                            "ExpressionAttributeNames": {
-                                "#owner": "user_id",
-                                "#status": "status",
-                            },
-                            "ExpressionAttributeValues": {
-                                ":caller": record["user_id"],
-                                ":pending": "pending",
-                                ":true": True,
-                            },
-                        }
-                    },
-                    _quota_counter_decrement(
-                        self.app_state_table_name,
-                        f"drinklog-quota#user#{record['user_id']}",
-                        timestamp,
-                    ),
-                    _quota_counter_decrement(
-                        self.app_state_table_name,
-                        "drinklog-quota#global",
-                        timestamp,
-                    ),
-                ],
+            UsageBudget(
+                self.dynamodb,
+                self.app_state_table_name,
+                self.timestamp_format,
+            ).release_drink_log_storage(
+                delete_write,
+                record["user_id"],
+                allocated=True,
+                now=now,
             )
             return True
         except self.client.exceptions.TransactionCanceledException:
@@ -429,25 +321,17 @@ class DrinkLogLifecycle:
                 },
             }
         }
-        transaction: list[dict[str, Any]] = [delete]
-        if item.get("quota_allocated") is True:
-            timestamp = self.timestamp_format(now)
-            transaction.extend(
-                [
-                    _quota_counter_decrement(
-                        self.app_state_table_name,
-                        f"drinklog-quota#user#{item['user_id']}",
-                        timestamp,
-                    ),
-                    _quota_counter_decrement(
-                        self.app_state_table_name,
-                        "drinklog-quota#global",
-                        timestamp,
-                    ),
-                ]
-            )
         try:
-            transact_write_with_retry(self.client, transaction)
+            UsageBudget(
+                self.dynamodb,
+                self.app_state_table_name,
+                self.timestamp_format,
+            ).release_drink_log_storage(
+                delete,
+                item["user_id"],
+                allocated=item.get("quota_allocated") is True,
+                now=now,
+            )
             return True
         except self.client.exceptions.TransactionCanceledException:
             if self.get(item["id"]) is None:

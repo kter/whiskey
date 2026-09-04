@@ -8,7 +8,6 @@ import re
 import threading
 import time
 import uuid
-from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -20,12 +19,12 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 try:
     from whiskey_common.clients import get_dynamodb_resource, get_s3_client
+    from whiskey_common.cost_guard import UsageBudget, UsageBudgetExceeded
     from whiskey_common.images import ImageNormalizationError, normalize_image, sniff_format
     from whiskey_common.jwt_utils import extract_user_id_from_event
     from whiskey_common.logger import extract_correlation_id, get_logger
     from whiskey_common.normalize import normalize_text
     from whiskey_common.responses import create_response
-    from whiskey_common.transactions import transact_write_with_retry
 except ModuleNotFoundError as exc:
     if exc.name != "whiskey_common":
         raise
@@ -33,12 +32,12 @@ except ModuleNotFoundError as exc:
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "common" / "python"))
     from whiskey_common.clients import get_dynamodb_resource, get_s3_client
+    from whiskey_common.cost_guard import UsageBudget, UsageBudgetExceeded
     from whiskey_common.images import ImageNormalizationError, normalize_image, sniff_format
     from whiskey_common.jwt_utils import extract_user_id_from_event
     from whiskey_common.logger import extract_correlation_id, get_logger
     from whiskey_common.normalize import normalize_text
     from whiskey_common.responses import create_response
-    from whiskey_common.transactions import transact_write_with_retry
 
 
 SERVING_STYLES = {"NEAT", "ROCKS", "WATER", "SODA", "COCKTAIL"}
@@ -215,12 +214,7 @@ class OwnershipError(Exception):
     """Raised when an upload key is outside the caller's namespace."""
 
 
-class BudgetExceeded(Exception):
-    """Raised when a configured cost ceiling rejects a reservation."""
-
-    def __init__(self, status_code: int, message: str):
-        super().__init__(message)
-        self.status_code = status_code
+BudgetExceeded = UsageBudgetExceeded
 
 
 def _utc_now() -> datetime:
@@ -290,87 +284,6 @@ def _read_body(response: Mapping[str, Any]) -> bytes:
         close = getattr(body, "close", None)
         if close:
             close()
-
-
-def _counter_update(table_name: str, key: str, limit: int, ttl: int, now: str) -> dict[str, Any]:
-    return {
-        "Update": {
-            "TableName": table_name,
-            "Key": {"pk": key},
-            "UpdateExpression": (
-                "SET #ttl = if_not_exists(#ttl, :ttl), updated_at = :now ADD #count :one"
-            ),
-            "ConditionExpression": "attribute_not_exists(#count) OR #count < :limit",
-            "ExpressionAttributeNames": {"#count": "count", "#ttl": "ttl"},
-            "ExpressionAttributeValues": {
-                ":one": 1,
-                ":limit": limit,
-                ":ttl": ttl,
-                ":now": now,
-            },
-        }
-    }
-
-
-def _reserve_analysis_budget(
-    dynamodb: Any,
-    table_name: str,
-    user_id: str,
-    *,
-    user_request: bool,
-    now_dt: datetime | None = None,
-    remaining_ms: Callable[[], int] | None = None,
-) -> None:
-    current = now_dt or _utc_now()
-    date = current.strftime("%Y-%m-%d")
-    month = current.strftime("%Y-%m")
-    daily_ttl = int((current + timedelta(days=2)).timestamp())
-    monthly_ttl = int((current + timedelta(days=35)).timestamp())
-    now = _rfc3339(current)
-    writes: list[dict[str, Any]] = []
-    labels: list[str] = []
-    if user_request:
-        writes.append(
-            _counter_update(
-                table_name,
-                f"drinklog-counter#analyze#user#{user_id}#{date}",
-                int(os.environ.get("ANALYZE_USER_DAILY_LIMIT", "20")),
-                daily_ttl,
-                now,
-            )
-        )
-        labels.append("daily")
-    else:
-        writes.extend(
-            [
-                _counter_update(
-                    table_name,
-                    f"drinklog-counter#analyze#global#{date}",
-                    int(os.environ.get("ANALYZE_GLOBAL_DAILY_LIMIT", "50")),
-                    daily_ttl,
-                    now,
-                ),
-                _counter_update(
-                    table_name,
-                    f"drinklog-counter#analyze#global-month#{month}",
-                    int(os.environ.get("ANALYZE_GLOBAL_MONTHLY_LIMIT", "1000")),
-                    monthly_ttl,
-                    now,
-                ),
-            ]
-        )
-        labels.extend(("daily", "monthly"))
-    client = dynamodb.meta.client
-    try:
-        transact_write_with_retry(client, writes, remaining_ms=remaining_ms)
-    except client.exceptions.TransactionCanceledException as exc:
-        reasons = exc.response.get("CancellationReasons", [])
-        for index, label in enumerate(labels):
-            if index < len(reasons) and reasons[index].get("Code") == "ConditionalCheckFailed":
-                if label == "monthly":
-                    raise BudgetExceeded(503, "Monthly analysis budget exhausted") from exc
-                raise BudgetExceeded(429, "Daily analysis limit exceeded") from exc
-        raise
 
 
 def strip_json_code_fence(text: str) -> str:
@@ -798,9 +711,8 @@ def analyze_upload(
     raw = _read_body(s3.get_object(Bucket=bucket_name, Key=s3_key, IfMatch=etag))
     normalized = normalize_image(raw, max_bytes=int(os.environ.get("IMAGE_MAX_BYTES", "1572864")))
 
-    _reserve_analysis_budget(
-        dynamodb,
-        app_state_table_name,
+    usage_budget = UsageBudget(dynamodb, app_state_table_name)
+    usage_budget.reserve_analysis(
         user_id,
         user_request=True,
         remaining_ms=lambda: _remaining_budget_ms(context, started),
@@ -809,9 +721,7 @@ def analyze_upload(
     for _attempt in range(2):
         if _remaining_budget_ms(context, started) < MIN_INVOKE_BUDGET_MS:
             break
-        _reserve_analysis_budget(
-            dynamodb,
-            app_state_table_name,
+        usage_budget.reserve_analysis(
             user_id,
             user_request=False,
             remaining_ms=lambda: _remaining_budget_ms(context, started),
