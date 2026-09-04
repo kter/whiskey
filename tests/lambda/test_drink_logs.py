@@ -811,17 +811,21 @@ def test_candidate_consumption_rejects_candidate_tampering(monkeypatch):
         dynamodb, s3, _drinklogs, app_state, analysis, _upload_uuid = (
             _moto_create_dependencies()
         )
-        original_transaction = drink_logs._initial_create_transaction
+        original_transaction = drink_logs.DrinkLogLifecycle.start_create
 
-        def tamper_then_transact(*args, **kwargs):
+        def tamper_then_transact(self, pending, consume, *, now):
             app_state.update_item(
                 Key={"pk": analysis["pk"]},
                 UpdateExpression="SET candidates[0].brand_text = :brand",
                 ExpressionAttributeValues={":brand": "Tampered"},
             )
-            return original_transaction(*args, **kwargs)
+            return original_transaction(self, pending, consume, now=now)
 
-        monkeypatch.setattr(drink_logs, "_initial_create_transaction", tamper_then_transact)
+        monkeypatch.setattr(
+            drink_logs.DrinkLogLifecycle,
+            "start_create",
+            tamper_then_transact,
+        )
         with pytest.raises(drink_logs.AnalysisConflict, match="stale or already consumed"):
             drink_logs.create_drink_log(
                 dynamodb,
@@ -836,7 +840,7 @@ def test_candidate_consumption_rejects_candidate_tampering(monkeypatch):
             )
 
 
-def test_initial_transaction_binds_ai_etag_candidate_and_all_counters():
+def test_lifecycle_start_create_binds_analysis_and_all_budget_counters():
     upload_uuid = "12345678-1234-4234-8234-123456789abc"
     body = _image_bytes("PNG")
     result = _analysis_item("user-1", upload_uuid, body, "image/png")
@@ -856,9 +860,14 @@ def test_initial_transaction_binds_ai_etag_candidate_and_all_counters():
         upload_uuid,
         1,
     )
-    drink_logs._initial_create_transaction(
-        dynamodb, "DrinkLogs-test", "AppState-test", pending, consume
+    lifecycle = drink_logs.DrinkLogLifecycle(
+        dynamodb,
+        s3,
+        "DrinkLogs-test",
+        "AppState-test",
+        "images-test",
     )
+    lifecycle.start_create(pending, consume, now=drink_logs._utc_now())
     transaction = client.transactions[0]
     assert len(transaction) == 6
     assert transaction[0]["Put"]["ConditionExpression"] == "attribute_not_exists(id)"
@@ -1386,7 +1395,7 @@ def test_batch_get_retries_unprocessed_keys_and_fails_closed():
         reconciler._batch_get_records(BatchDynamo(always=True), "DrinkLogs-test", ["log-1"])
 
 
-def test_reconciler_never_treats_unconfirmed_s3_read_as_deleted():
+def test_lifecycle_never_treats_unconfirmed_s3_read_as_deleted():
     class FailingS3:
         def __init__(self):
             self.deleted = []
@@ -1399,7 +1408,13 @@ def test_reconciler_never_treats_unconfirmed_s3_read_as_deleted():
 
     s3 = FailingS3()
     with pytest.raises(ClientError):
-        reconciler._delete_and_confirm(s3, "images-test", "logs/user-1/image.jpg")
+        drink_logs.DrinkLogLifecycle(
+            FakeDynamoDB({}),
+            s3,
+            "DrinkLogs-test",
+            "AppState-test",
+            "images-test",
+        ).delete_and_confirm("logs/user-1/image.jpg")
     assert s3.deleted == ["logs/user-1/image.jpg"]
 
 
