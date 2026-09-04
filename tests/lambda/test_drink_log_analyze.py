@@ -175,15 +175,8 @@ def environment(monkeypatch):
     monkeypatch.delenv("MOCK_PLACES", raising=False)
 
 
-def _snapshot(items, *, complete=True):
-    return {
-        "table_name": "WhiskeySearch-test",
-        "expires_at": analyze.time.monotonic() + 300,
-        "items": tuple(analyze._snapshot_record(item) for item in items),
-        "complete": complete,
-        "incomplete_reason": None if complete else "scan_error",
-        "page_count": 1,
-    }
+def _whiskey_catalog(items, *, complete=True):
+    return analyze.WhiskeyCatalog.from_records(items, complete=complete)
 
 
 def _analysis(whiskeys, serving_style="NEAT", glass_type="tumbler"):
@@ -437,7 +430,7 @@ def test_model_output_validation_rejects_invalid_new_schema(payload):
 
 
 def test_model_read_is_never_upgraded_to_catalog_canonical_name():
-    snapshot = _snapshot(
+    snapshot = _whiskey_catalog(
         [
             {
                 "id": "yamazaki-12",
@@ -447,7 +440,7 @@ def test_model_read_is_never_upgraded_to_catalog_canonical_name():
         ]
     )
 
-    candidates = analyze._build_candidates(
+    candidates = analyze.CANDIDATE_RESOLVER.resolve(
         snapshot,
         _analysis([_whiskey("山崎", "Yamazaki", 0.96)]),
     )
@@ -464,8 +457,8 @@ def test_model_read_is_never_upgraded_to_catalog_canonical_name():
 
 
 def test_normalized_exact_match_adds_id_without_overwriting_model_name():
-    candidates = analyze._build_candidates(
-        _snapshot([CAOL_ILA_ITEM]),
+    candidates = analyze.CANDIDATE_RESOLVER.resolve(
+        _whiskey_catalog([CAOL_ILA_ITEM]),
         _analysis([_whiskey("カリラ 12年", "Caol Ila 12 Year Old", 0.95)]),
     )
 
@@ -476,8 +469,8 @@ def test_normalized_exact_match_adds_id_without_overwriting_model_name():
 
 
 def test_brand_only_does_not_match_age_statement():
-    candidates = analyze._build_candidates(
-        _snapshot([CAOL_ILA_ITEM]),
+    candidates = analyze.CANDIDATE_RESOLVER.resolve(
+        _whiskey_catalog([CAOL_ILA_ITEM]),
         _analysis([_whiskey("カリラ", "Caol Ila", 0.9)]),
     )
 
@@ -487,11 +480,11 @@ def test_brand_only_does_not_match_age_statement():
 
 
 def test_normalize_text_allows_spacing_variation_for_exact_match():
-    snapshot = _snapshot(
+    snapshot = _whiskey_catalog(
         [{"id": "arran-10", "name_ja": "アラン 10年", "name_en": "Arran 10 Year Old"}]
     )
 
-    candidates = analyze._build_candidates(
+    candidates = analyze.CANDIDATE_RESOLVER.resolve(
         snapshot,
         _analysis([_whiskey("アラン10年", "", 0.93)]),
     )
@@ -502,8 +495,8 @@ def test_normalize_text_allows_spacing_variation_for_exact_match():
 
 
 def test_unknown_whiskey_still_produces_recordable_ai_candidate():
-    candidates = analyze._build_candidates(
-        _snapshot([CAOL_ILA_ITEM]),
+    candidates = analyze.CANDIDATE_RESOLVER.resolve(
+        _whiskey_catalog([CAOL_ILA_ITEM]),
         _analysis([_whiskey("厚岸 シングルモルト", "Akkeshi Single Malt", 0.91)]),
     )
 
@@ -522,8 +515,8 @@ def test_brand_alias_match_is_independent_from_expression_match():
     whiskey = _whiskey("厚岸 立春", "Akkeshi Risshun", 0.91)
     whiskey.update(brand_ja="アッケシ", brand_en="Akkeshi")
 
-    candidates = analyze._build_candidates(
-        _snapshot([CAOL_ILA_ITEM]),
+    candidates = analyze.CANDIDATE_RESOLVER.resolve(
+        _whiskey_catalog([CAOL_ILA_ITEM]),
         _analysis([whiskey]),
     )
 
@@ -546,8 +539,8 @@ def test_distillery_label_resolves_to_yuza(brand_field, brand_name):
     whiskey = _whiskey("遊佐 シングルモルト", "Yuza Single Malt")
     whiskey[brand_field] = brand_name
 
-    candidate = analyze._build_candidates(
-        _snapshot([CAOL_ILA_ITEM]),
+    candidate = analyze.CANDIDATE_RESOLVER.resolve(
+        _whiskey_catalog([CAOL_ILA_ITEM]),
         _analysis([whiskey]),
     )[0]
 
@@ -558,16 +551,11 @@ def test_distillery_label_resolves_to_yuza(brand_field, brand_name):
 def test_catalog_distillery_suffix_and_kanji_variation_resolve_to_akkeshi(
     model_brand,
 ):
-    akkeshi = next(
-        brand for brand in analyze.BRAND_CATALOG if brand["brand_key"] == "akkeshi"
-    )
-    assert analyze.normalize_text("厚岸蒸溜所") in akkeshi["_normalized_names"]
-
     whiskey = _whiskey("厚岸 シングルモルト", "Akkeshi Single Malt")
     whiskey["brand_ja"] = model_brand
 
-    candidate = analyze._build_candidates(
-        _snapshot([CAOL_ILA_ITEM]),
+    candidate = analyze.CANDIDATE_RESOLVER.resolve(
+        _whiskey_catalog([CAOL_ILA_ITEM]),
         _analysis([whiskey]),
     )[0]
 
@@ -590,8 +578,8 @@ def test_shared_distillery_name_does_not_attach_arbitrary_brand_key(
     whiskey = _whiskey("共有蒸溜所のウイスキー", "Shared Distillery Whisky")
     whiskey[brand_field] = brand_name
 
-    candidate = analyze._build_candidates(
-        _snapshot([CAOL_ILA_ITEM]),
+    candidate = analyze.CANDIDATE_RESOLVER.resolve(
+        _whiskey_catalog([CAOL_ILA_ITEM]),
         _analysis([whiskey]),
     )[0]
 
@@ -611,8 +599,8 @@ def test_brand_named_for_shared_distillery_takes_precedence(
     whiskey = _whiskey("同名ブランドのウイスキー", "Same-name Brand Whisky")
     whiskey["brand_en"] = brand_name
 
-    candidate = analyze._build_candidates(
-        _snapshot([CAOL_ILA_ITEM]),
+    candidate = analyze.CANDIDATE_RESOLVER.resolve(
+        _whiskey_catalog([CAOL_ILA_ITEM]),
         _analysis([whiskey]),
     )[0]
 
@@ -631,8 +619,8 @@ def test_affix_only_brand_name_does_not_attach_brand_key(brand_field, brand_name
     whiskey = _whiskey("接辞のみのウイスキー", "Affix-only Whisky")
     whiskey[brand_field] = brand_name
 
-    candidate = analyze._build_candidates(
-        _snapshot([CAOL_ILA_ITEM]),
+    candidate = analyze.CANDIDATE_RESOLVER.resolve(
+        _whiskey_catalog([CAOL_ILA_ITEM]),
         _analysis([whiskey]),
     )[0]
 
@@ -641,7 +629,8 @@ def test_affix_only_brand_name_does_not_attach_brand_key(brand_field, brand_name
 
 def test_real_brand_catalog_normalized_names_never_include_empty_string():
     assert all(
-        "" not in brand["_normalized_names"] for brand in analyze.BRAND_CATALOG
+        "" not in analyze.BRAND_CATALOG.exact_names_for(brand["brand_key"])
+        for brand in analyze.BRAND_CATALOG.records
     )
 
 
@@ -656,33 +645,20 @@ def test_distillery_affixes_are_removed_only_at_anchors(brand_field, brand_name)
     whiskey = _whiskey("遊佐ではないウイスキー", "Not Yuza Whisky")
     whiskey[brand_field] = brand_name
 
-    candidate = analyze._build_candidates(
-        _snapshot([CAOL_ILA_ITEM]),
+    candidate = analyze.CANDIDATE_RESOLVER.resolve(
+        _whiskey_catalog([CAOL_ILA_ITEM]),
         _analysis([whiskey]),
     )[0]
 
     assert "brand_key" not in candidate
 
 
-def test_normalized_brand_name_variants_remove_only_complete_affixes():
-    assert analyze.normalize_text("yuza") in analyze._normalized_brand_name_variants(
-        "The Yuza Distillery"
-    )
-    assert analyze.normalize_text("遊佐") in analyze._normalized_brand_name_variants(
-        "遊佐蒸溜所"
-    )
-    assert "" not in analyze._normalized_brand_name_variants("蒸溜所")
-    assert analyze._normalized_brand_name_variants("Theakston") == (
-        analyze.normalize_text("Theakston"),
-    )
-
-
 def test_brand_with_the_prefix_resolves_to_glenlivet():
     whiskey = _whiskey("ザ・グレンリベット", "The Glenlivet")
     whiskey["brand_en"] = "The Glenlivet"
 
-    candidate = analyze._build_candidates(
-        _snapshot([CAOL_ILA_ITEM]),
+    candidate = analyze.CANDIDATE_RESOLVER.resolve(
+        _whiskey_catalog([CAOL_ILA_ITEM]),
         _analysis([whiskey]),
     )[0]
 
@@ -724,8 +700,8 @@ def test_unmatched_brand_omits_catalog_brand_keys():
     whiskey = _whiskey("未登録ウイスキー", "Unlisted Whisky", 0.7)
     whiskey.update(brand_ja="未登録ブランド", brand_en="Unlisted Brand")
 
-    candidate = analyze._build_candidates(
-        _snapshot([CAOL_ILA_ITEM]),
+    candidate = analyze.CANDIDATE_RESOLVER.resolve(
+        _whiskey_catalog([CAOL_ILA_ITEM]),
         _analysis([whiskey]),
     )[0]
 
@@ -735,25 +711,25 @@ def test_unmatched_brand_omits_catalog_brand_keys():
     assert "distillery_ja" not in candidate
 
 
-def test_brand_without_distillery_keeps_brand_key_and_omits_distillery(monkeypatch):
+def test_brand_without_distillery_keeps_brand_key_and_omits_distillery():
     # Synthetic rather than a real catalog row: whether any given brand has a
     # known distillery is data that changes, but the guard must not.
-    monkeypatch.setattr(
-        analyze,
-        "BRAND_CATALOG",
-        (
-            {
-                "brand_key": "unverified_brand",
-                "distillery_ja": "",
-                "_normalized_names": (analyze.normalize_text("Unverified Brand"),),
-            },
-        ),
+    resolver = analyze.CandidateResolver(
+        analyze.BrandCatalog.from_records(
+            [
+                {
+                    "brand_key": "unverified_brand",
+                    "brand_en": "Unverified Brand",
+                    "distillery_ja": "",
+                }
+            ]
+        )
     )
     whiskey = _whiskey("蒸溜所不明ウイスキー", "Unverified Brand Whisky", 0.9)
     whiskey.update(brand_en="unverified brand")
 
-    candidate = analyze._build_candidates(
-        _snapshot([CAOL_ILA_ITEM]),
+    candidate = resolver.resolve(
+        _whiskey_catalog([CAOL_ILA_ITEM]),
         _analysis([whiskey]),
     )[0]
 
@@ -776,33 +752,25 @@ def test_packaged_brand_catalog_matches_curated_source():
 
 
 def test_real_brand_catalog_has_no_normalized_name_collisions():
-    owners = {}
-    for brand in analyze.BRAND_CATALOG:
-        for normalized_name in brand["_normalized_names"]:
-            owners.setdefault(normalized_name, set()).add(brand["brand_key"])
-    collisions = {
-        normalized_name: sorted(brand_keys)
-        for normalized_name, brand_keys in owners.items()
-        if len(brand_keys) > 1
-    }
+    collisions = analyze.BRAND_CATALOG.exact_name_collisions()
     details = ", ".join(
         f"{normalized_name}: {brand_keys}"
         for normalized_name, brand_keys in sorted(collisions.items())
     )
 
     assert not collisions, f"Normalized brand-name collisions: {details}"
-    assert len(analyze.BRAND_CATALOG) == 60
+    assert len(analyze.BRAND_CATALOG.records) == 60
 
 
 def test_duplicate_exact_catalog_names_do_not_attach_an_arbitrary_id():
-    snapshot = _snapshot(
+    snapshot = _whiskey_catalog(
         [
             {"id": "duplicate-1", "name_ja": "同名"},
             {"id": "duplicate-2", "name_ja": "同名"},
         ]
     )
 
-    candidate = analyze._build_candidates(
+    candidate = analyze.CANDIDATE_RESOLVER.resolve(
         snapshot,
         _analysis([_whiskey("同名")]),
     )[0]
@@ -811,29 +779,28 @@ def test_duplicate_exact_catalog_names_do_not_attach_an_arbitrary_id():
     assert "whiskey_id" not in candidate
 
 
-def test_duplicate_normalized_brand_names_do_not_attach_arbitrary_keys(monkeypatch):
-    normalized_name = analyze.normalize_text("Same Brand")
-    monkeypatch.setattr(
-        analyze,
-        "BRAND_CATALOG",
-        (
+def test_duplicate_normalized_brand_names_do_not_attach_arbitrary_keys():
+    resolver = analyze.CandidateResolver(
+        analyze.BrandCatalog.from_records(
+            [
             {
                 "brand_key": "duplicate_brand_1",
+                "brand_en": "Same Brand",
                 "distillery_ja": "第一蒸溜所",
-                "_normalized_names": (normalized_name,),
             },
             {
                 "brand_key": "duplicate_brand_2",
+                "brand_en": "ＳＡＭＥＢＲＡＮＤ",
                 "distillery_ja": "第二蒸溜所",
-                "_normalized_names": (analyze.normalize_text("ＳＡＭＥＢＲＡＮＤ"),),
             },
-        ),
+            ]
+        )
     )
     whiskey = _whiskey("同名ウイスキー", "Same Brand Whisky")
     whiskey.update(brand_en="same brand")
 
-    candidate = analyze._build_candidates(
-        _snapshot([CAOL_ILA_ITEM]),
+    candidate = resolver.resolve(
+        _whiskey_catalog([CAOL_ILA_ITEM]),
         _analysis([whiskey]),
     )[0]
 
@@ -842,8 +809,8 @@ def test_duplicate_normalized_brand_names_do_not_attach_arbitrary_keys(monkeypat
 
 
 def test_incomplete_snapshot_never_attaches_catalog_id():
-    candidate = analyze._build_candidates(
-        _snapshot([CAOL_ILA_ITEM], complete=False),
+    candidate = analyze.CANDIDATE_RESOLVER.resolve(
+        _whiskey_catalog([CAOL_ILA_ITEM], complete=False),
         _analysis([_whiskey("カリラ 12年", "Caol Ila 12 Year Old")]),
     )[0]
 
@@ -1076,7 +1043,7 @@ def test_master_snapshot_reads_every_page_and_uses_required_projection():
 
     assert snapshot["complete"] is True
     assert snapshot["page_count"] == 3
-    assert len(snapshot["items"]) == 3
+    assert snapshot["catalog"].size == 3
     assert len(table.scan_calls) == 3
     assert table.scan_calls[1]["ExclusiveStartKey"] == {"id": "one"}
     assert table.scan_calls[2]["ExclusiveStartKey"] == {"id": "two"}
@@ -1150,7 +1117,7 @@ def test_scan_failure_degrades_to_ai_without_500_and_is_not_cached(monkeypatch, 
     assert "sensitive detail" not in caplog.text
 
 
-def test_master_item_limit_degrades_to_ai_and_caches_incomplete_snapshot(
+def test_master_item_limit_degrades_to_ai_and_caches_incomplete_whiskey_catalog(
     monkeypatch,
     caplog,
 ):
@@ -1382,7 +1349,14 @@ def test_warm_cache_is_used_even_when_the_budget_is_low(monkeypatch):
     upload_uuid = "12345678-1234-4234-8234-123456789abc"
     key = f"tmp/user-1/{upload_uuid}.png"
     dynamodb = FakeDynamoDB()
-    analyze._MASTER_CACHE = _snapshot([CAOL_ILA_ITEM])
+    analyze._MASTER_CACHE = {
+        "table_name": "WhiskeySearch-test",
+        "expires_at": analyze.time.monotonic() + 300,
+        "catalog": _whiskey_catalog([CAOL_ILA_ITEM]),
+        "complete": True,
+        "incomplete_reason": None,
+        "page_count": 1,
+    }
     try:
         bedrock = Bedrock([_model_json([_whiskey("カリラ 12年")])])
         _wire_handler(monkeypatch, dynamodb, MemoryS3(key, _png_bytes()), bedrock)
