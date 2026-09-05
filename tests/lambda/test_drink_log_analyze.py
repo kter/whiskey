@@ -1,5 +1,6 @@
 import io
 import json
+import sys
 import uuid
 from decimal import Decimal
 from pathlib import Path
@@ -14,6 +15,7 @@ from tests.lambda_module_loader import load_lambda_module
 
 analyze = load_lambda_module("drink_log_analyze_tests", "lambda/drink-log-analyze/index.py")
 drink_logs = load_lambda_module("drink_logs_analysis_contract_tests", "lambda/drink-logs/index.py")
+cost_guard = sys.modules["whiskey_common.cost_guard"]
 
 SONNET_MODEL_ID = "jp.anthropic.claude-sonnet-4-6"
 CAOL_ILA_ITEM = {
@@ -1259,7 +1261,7 @@ def test_handler_budget_gives_sonnet_twenty_seconds_and_keeps_four_second_safety
     assert 19_900 <= remaining <= 20_000
 
 
-def test_monthly_analysis_limit_is_a_503_circuit_breaker():
+def test_usage_budget_monthly_analysis_limit_is_a_503_circuit_breaker():
     class MonthlyLimitClient(RecordingClient):
         def __init__(self):
             super().__init__()
@@ -1276,9 +1278,7 @@ def test_monthly_analysis_limit_is_a_503_circuit_breaker():
     dynamodb.meta.client = MonthlyLimitClient()
 
     with pytest.raises(analyze.BudgetExceeded) as exc:
-        analyze._reserve_analysis_budget(
-            dynamodb,
-            "AppState-test",
+        analyze.UsageBudget(dynamodb, "AppState-test").reserve_analysis(
             "user-1",
             user_request=False,
         )
@@ -1287,7 +1287,7 @@ def test_monthly_analysis_limit_is_a_503_circuit_breaker():
     assert dynamodb.meta.client.calls == 1
 
 
-def test_analysis_budget_retries_a_transaction_conflict(monkeypatch):
+def test_usage_budget_retries_an_analysis_transaction_conflict(monkeypatch):
     class ConflictOnceClient(RecordingClient):
         def transact_write_items(self, **kwargs):
             self.transactions.append(kwargs["TransactItems"])
@@ -1296,9 +1296,9 @@ def test_analysis_budget_retries_a_transaction_conflict(monkeypatch):
 
     dynamodb = FakeDynamoDB()
     dynamodb.meta.client = ConflictOnceClient()
-    retry = analyze.transact_write_with_retry
+    retry = cost_guard.transact_write_with_retry
     monkeypatch.setattr(
-        analyze,
+        cost_guard,
         "transact_write_with_retry",
         lambda client, items, **kwargs: retry(
             client,
@@ -1309,9 +1309,7 @@ def test_analysis_budget_retries_a_transaction_conflict(monkeypatch):
         ),
     )
 
-    analyze._reserve_analysis_budget(
-        dynamodb,
-        "AppState-test",
+    analyze.UsageBudget(dynamodb, "AppState-test").reserve_analysis(
         "user-1",
         user_request=True,
         remaining_ms=lambda: 1_000,

@@ -18,6 +18,11 @@ from botocore.exceptions import ClientError
 
 try:
     from whiskey_common.clients import get_dynamodb_resource, get_s3_client
+    from whiskey_common.cost_guard import (
+        BudgetTransactionConflict,
+        UsageBudget,
+        UsageBudgetExceeded,
+    )
     from whiskey_common.images import (
         ImageNormalizationError,
         normalize_image,
@@ -27,12 +32,16 @@ try:
     from whiskey_common.logger import extract_correlation_id, get_logger
     from whiskey_common.responses import create_response
     from whiskey_common.scan_utils import decode_next_token, encode_next_token
-    from whiskey_common.transactions import transact_write_with_retry
 except ModuleNotFoundError as exc:
     if exc.name != "whiskey_common":
         raise
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "common" / "python"))
     from whiskey_common.clients import get_dynamodb_resource, get_s3_client
+    from whiskey_common.cost_guard import (
+        BudgetTransactionConflict,
+        UsageBudget,
+        UsageBudgetExceeded,
+    )
     from whiskey_common.images import (
         ImageNormalizationError,
         normalize_image,
@@ -42,7 +51,15 @@ except ModuleNotFoundError as exc:
     from whiskey_common.logger import extract_correlation_id, get_logger
     from whiskey_common.responses import create_response
     from whiskey_common.scan_utils import decode_next_token, encode_next_token
-    from whiskey_common.transactions import transact_write_with_retry
+
+from lifecycle import (
+    CreateConflict,
+    DrinkLogLifecycle,
+    derive_drink_log_id,
+)
+
+RateLimitExceeded = UsageBudgetExceeded
+TransientConflict = BudgetTransactionConflict
 
 
 SERVING_STYLES = {"NEAT", "ROCKS", "WATER", "SODA", "COCKTAIL"}
@@ -70,7 +87,6 @@ MAX_PAGE_LIMIT = 50
 MAX_TIMELINE_PAGE_QUERIES = 10
 PRESIGNED_POST_SECONDS = 120
 PRESIGNED_GET_SECONDS = 900
-NAMESPACE_DRINKLOG = uuid.UUID("7df1920f-5929-51ee-9860-164c1d4bc388")
 UUID_TEXT = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}"
 ANALYSIS_ID_RE = re.compile(rf"^(?:ai-result:([^:]+):)?({UUID_TEXT})$")
 RFC3339_WITH_OFFSET_RE = re.compile(
@@ -84,31 +100,8 @@ class ValidationError(ValueError):
         self.fields = dict(fields)
 
 
-class RateLimitExceeded(Exception):
-    pass
-
-
 class AnalysisConflict(Exception):
     pass
-
-
-class CreateConflict(Exception):
-    pass
-
-
-class TransientConflict(Exception):
-    pass
-
-
-def _is_transaction_conflict_only(reasons: Any) -> bool:
-    if not isinstance(reasons, list) or not reasons:
-        return False
-    if any(not isinstance(reason, Mapping) for reason in reasons):
-        return False
-    codes = [reason.get("Code") for reason in reasons]
-    return "TransactionConflict" in codes and all(
-        code in {None, "None", "TransactionConflict"} for code in codes
-    )
 
 
 def _utc_now() -> datetime:
@@ -325,12 +318,6 @@ def parse_timeline_query(
     return limit, start_key, filters
 
 
-def derive_drink_log_id(user_id: str, upload_uuid: str) -> str:
-    """Derive a stable ID bound to both the owner and upload UUID."""
-    parsed = str(uuid.UUID(upload_uuid))
-    return str(uuid.uuid5(NAMESPACE_DRINKLOG, f"{user_id}\0{parsed}"))
-
-
 def _analysis_identity(user_id: str, analysis_id: str) -> tuple[str, str]:
     match = ANALYSIS_ID_RE.fullmatch(analysis_id)
     if not match:
@@ -352,53 +339,6 @@ def _extract_upload_uuid(s3_key: str, user_id: str) -> str:
     return str(uuid.UUID(match.group(1)))
 
 
-def _rate_counter_update(table_name: str, key: str, limit: int, ttl: int, now: str) -> dict[str, Any]:
-    return {
-        "Update": {
-            "TableName": table_name,
-            "Key": {"pk": key},
-            "UpdateExpression": (
-                "SET #ttl = if_not_exists(#ttl, :ttl), updated_at = :updated_at "
-                "ADD #count :one"
-            ),
-            "ConditionExpression": "attribute_not_exists(#count) OR #count < :limit",
-            "ExpressionAttributeNames": {"#count": "count", "#ttl": "ttl"},
-            "ExpressionAttributeValues": {
-                ":one": 1,
-                ":limit": limit,
-                ":ttl": ttl,
-                ":updated_at": now,
-            },
-        }
-    }
-
-
-def _quota_counter_update(table_name: str, key: str, limit: int, now: str) -> dict[str, Any]:
-    return {
-        "Update": {
-            "TableName": table_name,
-            "Key": {"pk": key},
-            "UpdateExpression": "SET updated_at = :updated_at ADD #count :one",
-            "ConditionExpression": "attribute_not_exists(#count) OR #count < :limit",
-            "ExpressionAttributeNames": {"#count": "count"},
-            "ExpressionAttributeValues": {":one": 1, ":limit": limit, ":updated_at": now},
-        }
-    }
-
-
-def _quota_counter_decrement(table_name: str, key: str, now: str) -> dict[str, Any]:
-    return {
-        "Update": {
-            "TableName": table_name,
-            "Key": {"pk": key},
-            "UpdateExpression": "SET updated_at = :updated_at ADD #count :minus_one",
-            "ConditionExpression": "#count >= :one",
-            "ExpressionAttributeNames": {"#count": "count"},
-            "ExpressionAttributeValues": {":minus_one": -1, ":one": 1, ":updated_at": now},
-        }
-    }
-
-
 def create_upload_url(
     dynamodb: Any,
     s3: Any,
@@ -408,37 +348,10 @@ def create_upload_url(
     content_type: str,
 ) -> dict[str, Any]:
     now_dt = _utc_now()
-    now = _rfc3339(now_dt)
-    utc_date = now_dt.strftime("%Y-%m-%d")
-    ttl = int((now_dt + timedelta(days=2)).timestamp())
-    client = dynamodb.meta.client
-    try:
-        transact_write_with_retry(
-            client,
-            [
-                _rate_counter_update(
-                    app_state_table_name,
-                    f"drinklog-counter#upload#user#{user_id}#{utc_date}",
-                    int(os.environ.get("UPLOAD_USER_DAILY_LIMIT", "30")),
-                    ttl,
-                    now,
-                ),
-                _rate_counter_update(
-                    app_state_table_name,
-                    f"drinklog-counter#upload#global#{utc_date}",
-                    int(os.environ.get("UPLOAD_GLOBAL_DAILY_LIMIT", "100")),
-                    ttl,
-                    now,
-                ),
-            ],
-        )
-    except client.exceptions.TransactionCanceledException as exc:
-        reasons = exc.response.get("CancellationReasons", [])
-        if any(reason.get("Code") == "ConditionalCheckFailed" for reason in reasons):
-            raise RateLimitExceeded from exc
-        if _is_transaction_conflict_only(reasons):
-            raise TransientConflict from exc
-        raise
+    UsageBudget(dynamodb, app_state_table_name, _rfc3339).reserve_upload(
+        user_id,
+        now=now_dt,
+    )
 
     _format, extension = CONTENT_TYPES[content_type]
     key = f"tmp/{user_id}/{uuid.uuid4()}.{extension}"
@@ -458,10 +371,6 @@ def create_upload_url(
         ExpiresIn=PRESIGNED_POST_SECONDS,
     )
     return {"upload_url": post["url"], "fields": post["fields"], "s3_key": key}
-
-
-def _get_record(table: Any, record_id: str) -> dict[str, Any] | None:
-    return table.get_item(Key={"id": record_id}, ConsistentRead=True).get("Item")
 
 
 def _candidate_brand(candidate: Any) -> str:
@@ -651,101 +560,6 @@ def _prepare_initial_record(
     return pending, consume
 
 
-def _initial_create_transaction(
-    dynamodb: Any,
-    drinklogs_table_name: str,
-    app_state_table_name: str,
-    pending: Mapping[str, Any],
-    consume_analysis: Mapping[str, Any],
-) -> None:
-    now_dt = _utc_now()
-    now = _rfc3339(now_dt)
-    utc_date = now_dt.strftime("%Y-%m-%d")
-    ttl = int((now_dt + timedelta(days=2)).timestamp())
-    user_id = pending["user_id"]
-    transaction = [
-        {
-            "Put": {
-                "TableName": drinklogs_table_name,
-                "Item": dict(pending),
-                "ConditionExpression": "attribute_not_exists(id)",
-            }
-        },
-        _rate_counter_update(
-            app_state_table_name,
-            f"drinklog-counter#create#user#{user_id}#{utc_date}",
-            int(os.environ.get("CREATE_USER_DAILY_LIMIT", "30")),
-            ttl,
-            now,
-        ),
-        _rate_counter_update(
-            app_state_table_name,
-            f"drinklog-counter#create#global#{utc_date}",
-            int(os.environ.get("CREATE_GLOBAL_DAILY_LIMIT", "100")),
-            ttl,
-            now,
-        ),
-        _quota_counter_update(
-            app_state_table_name,
-            f"drinklog-quota#user#{user_id}",
-            int(os.environ.get("STORAGE_USER_LIMIT", "2000")),
-            now,
-        ),
-        _quota_counter_update(
-            app_state_table_name,
-            "drinklog-quota#global",
-            int(os.environ.get("STORAGE_GLOBAL_LIMIT", "20000")),
-            now,
-        ),
-        dict(consume_analysis),
-    ]
-    transact_write_with_retry(dynamodb.meta.client, transaction)
-
-
-def _compensate_pending(
-    dynamodb: Any,
-    drinklogs_table_name: str,
-    app_state_table_name: str,
-    record: Mapping[str, Any],
-) -> bool:
-    now = _rfc3339(_utc_now())
-    client = dynamodb.meta.client
-    try:
-        transact_write_with_retry(
-            client,
-            [
-                {
-                    "Delete": {
-                        "TableName": drinklogs_table_name,
-                        "Key": {"id": record["id"]},
-                        "ConditionExpression": (
-                            "#owner = :caller AND #status = :pending AND quota_allocated = :true"
-                        ),
-                        "ExpressionAttributeNames": {"#owner": "user_id", "#status": "status"},
-                        "ExpressionAttributeValues": {
-                            ":caller": record["user_id"],
-                            ":pending": "pending",
-                            ":true": True,
-                        },
-                    }
-                },
-                _quota_counter_decrement(
-                    app_state_table_name,
-                    f"drinklog-quota#user#{record['user_id']}",
-                    now,
-                ),
-                _quota_counter_decrement(
-                    app_state_table_name,
-                    "drinklog-quota#global",
-                    now,
-                ),
-            ],
-        )
-        return True
-    except client.exceptions.TransactionCanceledException:
-        return False
-
-
 def _read_s3_body(s3: Any, *, bucket_name: str, key: str, etag: str) -> bytes:
     response = s3.get_object(Bucket=bucket_name, Key=key, IfMatch=etag)
     body = response["Body"]
@@ -759,102 +573,6 @@ def _is_missing_s3_error(exc: ClientError) -> bool:
     return exc.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}
 
 
-def _object_absent(s3: Any, bucket_name: str, key: str) -> bool:
-    try:
-        s3.head_object(Bucket=bucket_name, Key=key)
-    except ClientError as exc:
-        if _is_missing_s3_error(exc):
-            return True
-        raise
-    return False
-
-
-def _remove_tmp_reference(
-    table: Any,
-    record_id: str,
-    user_id: str,
-    tmp_key: str,
-) -> dict[str, Any] | None:
-    try:
-        response = table.update_item(
-            Key={"id": record_id},
-            UpdateExpression="REMOVE tmp_s3_key",
-            ConditionExpression="#owner = :caller AND #status = :complete AND tmp_s3_key = :tmp",
-            ExpressionAttributeNames={"#owner": "user_id", "#status": "status"},
-            ExpressionAttributeValues={
-                ":caller": user_id,
-                ":complete": "complete",
-                ":tmp": tmp_key,
-            },
-            ReturnValues="ALL_NEW",
-        )
-        return response.get("Attributes")
-    except table.meta.client.exceptions.ConditionalCheckFailedException:
-        return None
-
-
-def _complete_pending_record(
-    table: Any,
-    record: Mapping[str, Any],
-    final_key: str,
-) -> dict[str, Any] | None:
-    completion = record.get("_completion")
-    if not isinstance(completion, Mapping):
-        raise CreateConflict("Pending record is missing completion metadata")
-    names = {
-        "#owner": "user_id",
-        "#status": "status",
-        "#brand_text": "brand_text",
-        "#brand_source": "brand_source",
-        "#serving_style": "serving_style",
-        "#store": "store",
-        "#updated_at": "updated_at",
-        "#completion": "_completion",
-        "#content_type": "content_type",
-        "#tmp_etag": "tmp_etag",
-    }
-    values: dict[str, Any] = {
-        ":caller": record["user_id"],
-        ":pending": "pending",
-        ":complete": "complete",
-        ":final_key": final_key,
-        ":brand_text": completion["brand_text"],
-        ":brand_source": completion["brand_source"],
-        ":serving_style": completion["serving_style"],
-        ":store": completion["store"],
-        ":updated_at": _rfc3339(_utc_now()),
-    }
-    sets = [
-        "#status = :complete",
-        "s3_image_key = :final_key",
-        "#brand_text = :brand_text",
-        "#brand_source = :brand_source",
-        "#serving_style = :serving_style",
-        "#store = :store",
-        "#updated_at = :updated_at",
-    ]
-    for field in ("whiskey_id", "ai", "rating", "notes"):
-        if field in completion:
-            names[f"#{field}"] = field
-            values[f":{field}"] = completion[field]
-            sets.append(f"#{field} = :{field}")
-    try:
-        response = table.update_item(
-            Key={"id": record["id"]},
-            UpdateExpression=(
-                f"SET {', '.join(sets)} "
-                "REMOVE #completion, #content_type, #tmp_etag"
-            ),
-            ConditionExpression="#owner = :caller AND #status = :pending",
-            ExpressionAttributeNames=names,
-            ExpressionAttributeValues=values,
-            ReturnValues="ALL_NEW",
-        )
-        return response.get("Attributes")
-    except table.meta.client.exceptions.ConditionalCheckFailedException:
-        return None
-
-
 def _finish_pending_create(
     dynamodb: Any,
     s3: Any,
@@ -863,7 +581,13 @@ def _finish_pending_create(
     bucket_name: str,
     record: Mapping[str, Any],
 ) -> dict[str, Any]:
-    table = dynamodb.Table(drinklogs_table_name)
+    lifecycle = DrinkLogLifecycle(
+        dynamodb,
+        s3,
+        drinklogs_table_name,
+        app_state_table_name,
+        bucket_name,
+    )
     tmp_key = record.get("tmp_s3_key")
     etag = record.get("tmp_etag")
     content_type = record.get("content_type")
@@ -881,13 +605,8 @@ def _finish_pending_create(
             max_bytes=int(os.environ.get("IMAGE_MAX_BYTES", "1572864")),
         )
     except ImageNormalizationError as exc:
-        compensated = _compensate_pending(
-            dynamodb,
-            drinklogs_table_name,
-            app_state_table_name,
-            record,
-        )
-        winner = _get_record(table, record["id"])
+        compensated = lifecycle.compensate_create(record, now=_utc_now())
+        winner = lifecycle.get(record["id"])
         if not compensated and winner and winner.get("status") == "complete":
             return winner
         if not compensated and winner:
@@ -905,13 +624,8 @@ def _finish_pending_create(
             "PreconditionFailed",
             "412",
         }:
-            compensated = _compensate_pending(
-                dynamodb,
-                drinklogs_table_name,
-                app_state_table_name,
-                record,
-            )
-            winner = _get_record(table, record["id"])
+            compensated = lifecycle.compensate_create(record, now=_utc_now())
+            winner = lifecycle.get(record["id"])
             if not compensated and winner and winner.get("status") == "complete":
                 return winner
             if not compensated and winner:
@@ -935,9 +649,9 @@ def _finish_pending_create(
         ContentType="image/jpeg",
         CacheControl="private, no-store",
     )
-    completed = _complete_pending_record(table, record, final_key)
+    completed = lifecycle.complete_create(record, final_key, now=_utc_now())
     if completed is None:
-        winner = _get_record(table, record["id"])
+        winner = lifecycle.get(record["id"])
         if not winner or winner.get("user_id") != record["user_id"]:
             raise CreateConflict("Drink log disappeared during creation")
         if winner.get("status") != "complete":
@@ -945,10 +659,10 @@ def _finish_pending_create(
         completed = winner
 
     s3.delete_object(Bucket=bucket_name, Key=tmp_key)
-    if not _object_absent(s3, bucket_name, tmp_key):
+    if not lifecycle.object_absent(tmp_key):
         raise RuntimeError("Temporary image deletion was not confirmed")
-    cleaned = _remove_tmp_reference(table, record["id"], record["user_id"], tmp_key)
-    return cleaned or _get_record(table, record["id"]) or completed
+    cleaned = lifecycle.remove_tmp_reference(record["id"], record["user_id"], tmp_key)
+    return cleaned or lifecycle.get(record["id"]) or completed
 
 
 def create_drink_log(
@@ -962,9 +676,15 @@ def create_drink_log(
 ) -> tuple[dict[str, Any], bool]:
     analysis_pk, upload_uuid = _analysis_identity(user_id, data["analysis_id"])
     record_id = derive_drink_log_id(user_id, upload_uuid)
-    table = dynamodb.Table(drinklogs_table_name)
+    lifecycle = DrinkLogLifecycle(
+        dynamodb,
+        s3,
+        drinklogs_table_name,
+        app_state_table_name,
+        bucket_name,
+    )
 
-    existing = _get_record(table, record_id)
+    existing = lifecycle.get(record_id)
     if existing:
         if existing.get("user_id") != user_id:
             raise KeyError(record_id)
@@ -994,17 +714,11 @@ def create_drink_log(
     )
     client = dynamodb.meta.client
     try:
-        _initial_create_transaction(
-            dynamodb,
-            drinklogs_table_name,
-            app_state_table_name,
-            pending,
-            consume,
-        )
+        lifecycle.start_create(pending, consume, now=_utc_now())
         created = True
         current = pending
     except client.exceptions.TransactionCanceledException as exc:
-        current = _get_record(table, record_id)
+        current = lifecycle.get(record_id)
         if current:
             if current.get("user_id") != user_id:
                 raise KeyError(record_id) from exc
@@ -1020,17 +734,12 @@ def create_drink_log(
                     current,
                 ), False
         reasons = exc.response.get("CancellationReasons", [])
-        if not reasons or any(
-            index < len(reasons) and reasons[index].get("Code") == "ConditionalCheckFailed"
-            for index in (1, 2, 3, 4)
-        ):
-            raise RateLimitExceeded from exc
+        if not reasons:
+            raise RateLimitExceeded("create", "daily") from exc
         if len(reasons) > 5 and reasons[5].get("Code") == "ConditionalCheckFailed":
             raise AnalysisConflict("Analysis result is stale or already consumed") from exc
         if reasons[0].get("Code") == "ConditionalCheckFailed":
             raise CreateConflict("Concurrent creation did not expose a winner") from exc
-        if _is_transaction_conflict_only(reasons):
-            raise TransientConflict from exc
         raise
 
     return _finish_pending_create(
@@ -1131,7 +840,7 @@ def get_owned_drink_log(
     user_id: str,
     record_id: str,
 ) -> dict[str, Any] | None:
-    item = _get_record(table, record_id)
+    item = table.get_item(Key={"id": record_id}, ConsistentRead=True).get("Item")
     if not item or item.get("user_id") != user_id or item.get("status") != "complete":
         return None
     return _public_record(item, s3, bucket_name, user_id)
@@ -1194,50 +903,6 @@ def update_drink_log(
         return None
 
 
-def _finalize_delete(
-    dynamodb: Any,
-    drinklogs_table_name: str,
-    app_state_table_name: str,
-    item: Mapping[str, Any],
-) -> bool:
-    client = dynamodb.meta.client
-    delete = {
-        "Delete": {
-            "TableName": drinklogs_table_name,
-            "Key": {"id": item["id"]},
-            "ConditionExpression": (
-                "#owner = :caller AND #status = :deleting AND quota_allocated = :allocated"
-            ),
-            "ExpressionAttributeNames": {"#owner": "user_id", "#status": "status"},
-            "ExpressionAttributeValues": {
-                ":caller": item["user_id"],
-                ":deleting": "deleting",
-                ":allocated": bool(item.get("quota_allocated")),
-            },
-        }
-    }
-    transaction: list[dict[str, Any]] = [delete]
-    if item.get("quota_allocated") is True:
-        now = _rfc3339(_utc_now())
-        transaction.extend(
-            [
-                _quota_counter_decrement(
-                    app_state_table_name,
-                    f"drinklog-quota#user#{item['user_id']}",
-                    now,
-                ),
-                _quota_counter_decrement(app_state_table_name, "drinklog-quota#global", now),
-            ]
-        )
-    try:
-        transact_write_with_retry(client, transaction)
-        return True
-    except client.exceptions.TransactionCanceledException:
-        if _get_record(dynamodb.Table(drinklogs_table_name), item["id"]) is None:
-            return True
-        raise RuntimeError("Drink log deletion transaction did not converge")
-
-
 def delete_drink_log(
     dynamodb: Any,
     s3: Any,
@@ -1247,39 +912,14 @@ def delete_drink_log(
     user_id: str,
     record_id: str,
 ) -> bool:
-    table = dynamodb.Table(drinklogs_table_name)
-    try:
-        response = table.update_item(
-            Key={"id": record_id},
-            UpdateExpression=(
-                "SET #status = :deleting, "
-                "delete_started_at = if_not_exists(delete_started_at, :started_at)"
-            ),
-            ConditionExpression=(
-                "#owner = :caller AND (#status = :complete OR #status = :deleting)"
-            ),
-            ExpressionAttributeNames={"#owner": "user_id", "#status": "status"},
-            ExpressionAttributeValues={
-                ":caller": user_id,
-                ":complete": "complete",
-                ":deleting": "deleting",
-                ":started_at": _rfc3339(_utc_now()),
-            },
-            ReturnValues="ALL_NEW",
-        )
-    except table.meta.client.exceptions.ConditionalCheckFailedException:
-        return False
-    item = response.get("Attributes")
-    if not item:
-        raise RuntimeError("Deleting record was not returned")
-    key = item.get("s3_image_key")
-    if isinstance(key, str) and key.startswith(f"logs/{user_id}/"):
-        s3.delete_object(Bucket=bucket_name, Key=key)
-        if not _object_absent(s3, bucket_name, key):
-            raise RuntimeError("Drink log image deletion was not confirmed")
-    elif key:
-        raise RuntimeError("Refusing to delete an image outside the owner prefix")
-    return _finalize_delete(dynamodb, drinklogs_table_name, app_state_table_name, item)
+    lifecycle = DrinkLogLifecycle(
+        dynamodb,
+        s3,
+        drinklogs_table_name,
+        app_state_table_name,
+        bucket_name,
+    )
+    return lifecycle.delete(user_id, record_id, now=_utc_now())
 
 
 @dataclass(frozen=True)
