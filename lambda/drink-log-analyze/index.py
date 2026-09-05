@@ -18,12 +18,16 @@ from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
 try:
+    from whiskey_common.candidate_resolution import (
+        BrandCatalog,
+        CandidateResolver,
+        WhiskeyCatalog,
+    )
     from whiskey_common.clients import get_dynamodb_resource, get_s3_client
     from whiskey_common.cost_guard import UsageBudget, UsageBudgetExceeded
     from whiskey_common.images import ImageNormalizationError, normalize_image, sniff_format
     from whiskey_common.jwt_utils import extract_user_id_from_event
     from whiskey_common.logger import extract_correlation_id, get_logger
-    from whiskey_common.normalize import normalize_text
     from whiskey_common.responses import create_response
 except ModuleNotFoundError as exc:
     if exc.name != "whiskey_common":
@@ -31,12 +35,16 @@ except ModuleNotFoundError as exc:
     import sys
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "common" / "python"))
+    from whiskey_common.candidate_resolution import (
+        BrandCatalog,
+        CandidateResolver,
+        WhiskeyCatalog,
+    )
     from whiskey_common.clients import get_dynamodb_resource, get_s3_client
     from whiskey_common.cost_guard import UsageBudget, UsageBudgetExceeded
     from whiskey_common.images import ImageNormalizationError, normalize_image, sniff_format
     from whiskey_common.jwt_utils import extract_user_id_from_event
     from whiskey_common.logger import extract_correlation_id, get_logger
-    from whiskey_common.normalize import normalize_text
     from whiskey_common.responses import create_response
 
 
@@ -74,132 +82,8 @@ PROMPT = (
 _MASTER_CACHE_LOCK = threading.Lock()
 _MASTER_CACHE: dict[str, Any] | None = None
 
-_BRAND_PREFIX_RE = re.compile(r"^the\s+", re.IGNORECASE)
-_BRAND_SUFFIX_RE = re.compile(
-    r"(?:蒸溜所|蒸留所|蒸溜|蒸留|\s+(?:distillery|distillers))$",
-    re.IGNORECASE,
-)
-
-
-def _normalized_brand_name_variants(name: str) -> tuple[str, ...]:
-    """Return normalized brand names with distillery affixes removed."""
-    variants = [name]
-    without_prefix = _BRAND_PREFIX_RE.sub("", name)
-    if without_prefix != name:
-        variants.append(without_prefix)
-    for variant in tuple(variants):
-        without_suffix = _BRAND_SUFFIX_RE.sub("", variant)
-        if without_suffix != variant:
-            variants.append(without_suffix)
-    return tuple(
-        dict.fromkeys(
-            normalized
-            for variant in variants
-            if (normalized := normalize_text(variant))
-        )
-    )
-
-
-def _load_brand_catalog() -> tuple[dict[str, Any], ...]:
-    """Load the brand layer shipped with the analysis Lambda."""
-    path = Path(__file__).with_name("brands.json")
-    with path.open(encoding="utf-8") as source_file:
-        document = json.load(source_file)
-    if not isinstance(document, dict):
-        raise RuntimeError("brands.json must use catalog version 1")
-    brands = document.get("brands")
-    if document.get("version") != 1 or not isinstance(brands, list):
-        raise RuntimeError("brands.json must use catalog version 1")
-
-    records: list[dict[str, Any]] = []
-    for brand in brands:
-        if not isinstance(brand, dict):
-            raise RuntimeError("brands.json contains an invalid brand")
-        names = [
-            brand.get("brand_ja"),
-            brand.get("brand_en"),
-        ]
-        aliases = brand.get("aliases")
-        if isinstance(aliases, list):
-            names.extend(aliases)
-        distillery_names = [
-            brand.get("distillery_ja"),
-            brand.get("distillery_en"),
-        ]
-        normalized_names = tuple(
-            dict.fromkeys(
-                normalized
-                for name in names
-                if isinstance(name, str)
-                for normalized in _normalized_brand_name_variants(name)
-            )
-        )
-        normalized_distillery_names = tuple(
-            dict.fromkeys(
-                normalized
-                for name in distillery_names
-                if isinstance(name, str)
-                for normalized in _normalized_brand_name_variants(name)
-            )
-        )
-        if (
-            not isinstance(brand.get("brand_key"), str)
-            or not isinstance(brand.get("distillery_ja"), str)
-            or not normalized_names
-        ):
-            raise RuntimeError("brands.json contains an invalid brand")
-        records.append(
-            {
-                **brand,
-                "_normalized_names": normalized_names,
-                "_normalized_distillery_names": normalized_distillery_names,
-            }
-        )
-
-    brand_name_owners: dict[str, set[str]] = {}
-    distillery_name_owners: dict[str, set[str]] = {}
-    for record in records:
-        for normalized_name in record["_normalized_names"]:
-            brand_name_owners.setdefault(normalized_name, set()).add(record["brand_key"])
-        for normalized_name in record["_normalized_distillery_names"]:
-            distillery_name_owners.setdefault(normalized_name, set()).add(
-                record["brand_key"]
-            )
-
-    # Intentionally omit distillery names shared by multiple brands: a distillery
-    # alone cannot identify one brand. Real examples include Midleton shared by
-    # jameson/redbreast and Nikka Whisky shared by nikka/taketsuru. A shared name
-    # is retained only when it is also the current brand's own unique name.
-    return tuple(
-        {
-            **{
-                key: value
-                for key, value in record.items()
-                if key != "_normalized_distillery_names"
-            },
-            "_normalized_names": tuple(
-                dict.fromkeys(
-                    (
-                        *record["_normalized_names"],
-                        *(
-                            name
-                            for name in record["_normalized_distillery_names"]
-                            if brand_name_owners.get(name) == {record["brand_key"]}
-                            or (
-                                name not in brand_name_owners
-                                and distillery_name_owners[name]
-                                == {record["brand_key"]}
-                            )
-                        ),
-                    )
-                )
-            ),
-        }
-        for record in records
-    )
-
-
-BRAND_CATALOG = _load_brand_catalog()
+BRAND_CATALOG = BrandCatalog.from_file(Path(__file__).with_name("brands.json"))
+CANDIDATE_RESOLVER = CandidateResolver(BRAND_CATALOG)
 
 
 class ValidationError(ValueError):
@@ -429,38 +313,6 @@ def _invoke_model(model_id: str, image: bytes, context: Any, started: float) -> 
     return _validate_model_output(parsed) or {}
 
 
-def _whiskey_names(whiskey: Mapping[str, Any]) -> list[str]:
-    return [
-        value
-        for value in (whiskey.get("name_ja"), whiskey.get("name_en"))
-        if isinstance(value, str) and value
-    ]
-
-
-def _whiskey_id(item: Mapping[str, Any]) -> str | None:
-    value = item.get("id")
-    return value if isinstance(value, str) and value else None
-
-
-def _snapshot_record(item: Mapping[str, Any]) -> dict[str, Any]:
-    record = dict(item)
-    names = [
-        value
-        for value in (
-            item.get("name_ja"),
-            item.get("name_en"),
-            item.get("name"),
-            item.get("normalized_name"),
-        )
-        if isinstance(value, str) and value
-    ]
-    normalized_names = tuple(
-        dict.fromkeys(normalized for name in names if (normalized := normalize_text(name)))
-    )
-    record["_normalized_names"] = normalized_names
-    return record
-
-
 def _reset_master_cache() -> None:
     """Clear the module-level master snapshot cache for tests."""
     global _MASTER_CACHE
@@ -497,7 +349,7 @@ def _build_master_snapshot(table: Any, table_name: str, logger: Any = None) -> d
         if not isinstance(page_items, list):
             page_items = []
         remaining = MASTER_SNAPSHOT_MAX_ITEMS - len(items)
-        items.extend(_snapshot_record(item) for item in page_items[:remaining])
+        items.extend(page_items[:remaining])
         last_key = response.get("LastEvaluatedKey")
         if len(page_items) > remaining or (
             len(items) >= MASTER_SNAPSHOT_MAX_ITEMS and last_key
@@ -512,10 +364,11 @@ def _build_master_snapshot(table: Any, table_name: str, logger: Any = None) -> d
         if not complete:
             incomplete_reason = "max_pages"
 
+    catalog = WhiskeyCatalog.from_records(items, complete=complete)
     snapshot = {
         "table_name": table_name,
         "expires_at": time.monotonic() + MASTER_SNAPSHOT_TTL_SECONDS,
-        "items": tuple(items),
+        "catalog": catalog,
         "complete": complete,
         "incomplete_reason": incomplete_reason,
         "page_count": page_count,
@@ -523,7 +376,7 @@ def _build_master_snapshot(table: Any, table_name: str, logger: Any = None) -> d
     if not complete and incomplete_reason != "scan_error" and logger is not None:
         logger.warning(
             "Master snapshot incomplete",
-            master_snapshot_size=len(items),
+            master_snapshot_size=catalog.size,
             page_count=page_count,
             incomplete_reason=incomplete_reason,
         )
@@ -594,87 +447,11 @@ def _master_snapshot_within_budget(
     return {
         "table_name": table_name,
         "expires_at": 0.0,
-        "items": (),
+        "catalog": WhiskeyCatalog.from_records((), complete=False),
         "complete": False,
         "incomplete_reason": "insufficient_budget",
         "page_count": 0,
     }
-
-
-def _unique_records(records: list[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
-    unique: dict[str, Mapping[str, Any]] = {}
-    for record in records:
-        record_id = _whiskey_id(record)
-        if record_id:
-            unique[record_id] = record
-    return list(unique.values())
-
-
-def _catalog_match(
-    snapshot: Mapping[str, Any],
-    whiskey: Mapping[str, Any],
-) -> Mapping[str, Any] | None:
-    if not snapshot.get("complete"):
-        return None
-
-    normalized_names = tuple(
-        dict.fromkeys(
-            normalized
-            for name in _whiskey_names(whiskey)
-            if (normalized := normalize_text(name))
-        )
-    )
-    exact_matches = _unique_records(
-        [
-            item
-            for item in snapshot.get("items", ())
-            if set(normalized_names).intersection(item.get("_normalized_names", ()))
-        ]
-    )
-    return exact_matches[0] if len(exact_matches) == 1 else None
-
-
-def _brand_catalog_match(whiskey: Mapping[str, Any]) -> Mapping[str, Any] | None:
-    normalized_names = {
-        normalized
-        for field in ("brand_ja", "brand_en")
-        if isinstance(name := whiskey.get(field), str)
-        for normalized in _normalized_brand_name_variants(name)
-    }
-    matches = [
-        brand
-        for brand in BRAND_CATALOG
-        if normalized_names.intersection(brand["_normalized_names"])
-    ]
-    return matches[0] if len(matches) == 1 else None
-
-
-def _build_candidates(
-    snapshot: Mapping[str, Any],
-    analysis: Mapping[str, Any],
-) -> list[dict[str, Any]]:
-    candidates: list[dict[str, Any]] = []
-    for whiskey in analysis.get("whiskeys", []):
-        matched = _catalog_match(snapshot, whiskey)
-        brand_matched = _brand_catalog_match(whiskey)
-        candidate = {
-            "brand_text": whiskey["name_ja"],
-            "name_ja": whiskey["name_ja"],
-            "name_en": whiskey["name_en"],
-            "confidence": whiskey["confidence"],
-            "match_source": "catalog" if matched is not None else "ai",
-        }
-        if matched is not None and (whiskey_id := _whiskey_id(matched)):
-            candidate["whiskey_id"] = whiskey_id
-        for brand_field in ("brand_ja", "brand_en"):
-            if whiskey.get(brand_field):
-                candidate[brand_field] = whiskey[brand_field]
-        if brand_matched is not None:
-            candidate["brand_key"] = brand_matched["brand_key"]
-            if brand_matched["distillery_ja"]:
-                candidate["distillery_ja"] = brand_matched["distillery_ja"]
-        candidates.append(candidate)
-    return candidates
 
 
 def analyze_upload(
@@ -743,7 +520,7 @@ def analyze_upload(
         started,
         logger,
     )
-    candidates = _build_candidates(snapshot, analysis)
+    candidates = CANDIDATE_RESOLVER.resolve(snapshot["catalog"], analysis)
     if logger is not None:
         catalog_count = sum(
             candidate["match_source"] == "catalog" for candidate in candidates
@@ -760,7 +537,7 @@ def analyze_upload(
             ),
             model_id=model_id,
             master_snapshot_complete=snapshot["complete"],
-            master_snapshot_size=len(snapshot["items"]),
+            master_snapshot_size=snapshot["catalog"].size,
         )
     expires_at = int((_utc_now() + timedelta(seconds=ANALYSIS_TTL_SECONDS)).timestamp())
     analysis_id = f"ai-result:{user_id}:{upload_uuid}"

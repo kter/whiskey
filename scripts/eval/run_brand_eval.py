@@ -14,7 +14,6 @@ import mimetypes
 import os
 import re
 import sys
-import unicodedata
 import uuid
 from collections import Counter
 from datetime import datetime, timezone
@@ -24,6 +23,12 @@ from typing import Any, Iterable, Mapping, Sequence
 import boto3
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError, ProfileNotFound
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+COMMON_PYTHON = REPOSITORY_ROOT / "lambda" / "common" / "python"
+sys.path.insert(0, str(COMMON_PYTHON))
+from whiskey_common.candidate_resolution import BrandCatalog  # noqa: E402
 
 
 DEV_ACCOUNT_ID = "031921999648"
@@ -78,7 +83,6 @@ CLIENT_CONFIG = Config(
     read_timeout=40,
     retries={"mode": "standard", "total_max_attempts": 2},
 )
-REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 BRANDS_PATH = REPOSITORY_ROOT / "scripts/catalog/brands.json"
 
 
@@ -768,65 +772,6 @@ def save_manifest_draft_atomic(
     save_json_atomic(path, document)
 
 
-def normalize_brand_label(value: str) -> str:
-    """Normalize a catalog or manifest label for local partial matching."""
-    normalized = unicodedata.normalize("NFKC", value).casefold()
-    return "".join(character for character in normalized if character.isalnum())
-
-
-def load_brand_catalog(path: Path | None = None) -> list[dict[str, Any]]:
-    """Load the local version 1 brand catalog without using AWS."""
-    catalog_path = path or BRANDS_PATH
-    with catalog_path.open(encoding="utf-8") as catalog_file:
-        document = json.load(catalog_file)
-    if not isinstance(document, dict) or document.get("version") != 1:
-        raise ValueError("brands catalog must be a version 1 JSON object")
-    brands = document.get("brands")
-    if not isinstance(brands, list):
-        raise ValueError("brands catalog must contain a brands array")
-    for index, brand in enumerate(brands):
-        if not isinstance(brand, dict):
-            raise ValueError(f"brands[{index}] must be an object")
-        brand_key = brand.get("brand_key")
-        if not isinstance(brand_key, str) or not brand_key.strip():
-            raise ValueError(f"brands[{index}].brand_key must be a non-empty string")
-    return brands
-
-
-def _brand_match_keys(
-    canonical_name: Any,
-    brands: Sequence[Mapping[str, Any]],
-) -> set[str]:
-    if not isinstance(canonical_name, str):
-        return set()
-    normalized_canonical_name = normalize_brand_label(canonical_name)
-    if not normalized_canonical_name:
-        return set()
-
-    matches: set[str] = set()
-    for brand in brands:
-        raw_names = [
-            brand.get("brand_ja"),
-            brand.get("brand_en"),
-            brand.get("distillery_ja"),
-            brand.get("distillery_en"),
-        ]
-        aliases = brand.get("aliases", [])
-        if isinstance(aliases, list):
-            raw_names.extend(aliases)
-        for raw_name in raw_names:
-            if not isinstance(raw_name, str):
-                continue
-            normalized_name = normalize_brand_label(raw_name)
-            if normalized_name and (
-                normalized_name in normalized_canonical_name
-                or normalized_canonical_name in normalized_name
-            ):
-                matches.add(brand["brand_key"])
-                break
-    return matches
-
-
 def _append_brand_review_note(case: dict[str, Any]) -> None:
     notes = case.get("notes", "")
     if BRAND_REVIEW_NOTE in notes:
@@ -837,15 +782,16 @@ def _append_brand_review_note(case: dict[str, Any]) -> None:
 
 def propose_brand_keys(
     manifest: Mapping[str, Any],
-    brands: Sequence[Mapping[str, Any]],
+    brands: Sequence[Mapping[str, Any]] | BrandCatalog,
 ) -> dict[str, Any]:
     """Return a manifest with only uniquely matched brand keys proposed."""
+    catalog = brands if isinstance(brands, BrandCatalog) else BrandCatalog.from_records(brands)
     proposed = {
         "version": manifest["version"],
         "cases": [dict(case) for case in manifest["cases"]],
     }
     for case in proposed["cases"]:
-        matches = _brand_match_keys(case.get("expected_canonical_name"), brands)
+        matches = catalog.proposal_keys(case.get("expected_canonical_name"))
         if len(matches) == 1:
             case["expected_brand_key"] = next(iter(matches))
         else:
@@ -883,7 +829,7 @@ def propose_brand_keys_file(
     manifest = validate_manifest_data(raw_manifest)
     proposed = propose_brand_keys(
         manifest,
-        load_brand_catalog(brands_path),
+        BrandCatalog.from_file(brands_path or BRANDS_PATH),
     )
     save_json_atomic(manifest_path, proposed)
     return proposed
