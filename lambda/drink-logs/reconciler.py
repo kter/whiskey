@@ -5,27 +5,23 @@ from __future__ import annotations
 import os
 import re
 import sys
-import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
-from botocore.exceptions import ClientError
-
 try:
     from whiskey_common.clients import get_dynamodb_resource, get_s3_client
     from whiskey_common.logger import get_logger
-    from whiskey_common.transactions import transact_write_with_retry
 except ModuleNotFoundError as exc:
     if exc.name != "whiskey_common":
         raise
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "common" / "python"))
     from whiskey_common.clients import get_dynamodb_resource, get_s3_client
     from whiskey_common.logger import get_logger
-    from whiskey_common.transactions import transact_write_with_retry
+
+from lifecycle import DrinkLogLifecycle, derive_drink_log_id
 
 
-NAMESPACE_DRINKLOG = uuid.UUID("7df1920f-5929-51ee-9860-164c1d4bc388")
 UUID_TEXT = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}"
 LOG_KEY_RE = re.compile(rf"^logs/([^/]+)/({UUID_TEXT})-[0-9a-fA-F]+\.jpg$")
 MAX_BATCH_GET_ATTEMPTS = 3
@@ -37,10 +33,6 @@ def _utc_now() -> datetime:
 
 def _rfc3339(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-def _derive_id(user_id: str, upload_uuid: str) -> str:
-    return str(uuid.uuid5(NAMESPACE_DRINKLOG, f"{user_id}\0{str(uuid.UUID(upload_uuid))}"))
 
 
 def _parse_time(value: Any) -> datetime | None:
@@ -122,140 +114,6 @@ def _batch_get_records(
     return records
 
 
-def _is_missing_s3_error(exc: ClientError) -> bool:
-    return exc.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}
-
-
-def _object_absent(s3: Any, bucket_name: str, key: str) -> bool:
-    try:
-        s3.head_object(Bucket=bucket_name, Key=key)
-    except ClientError as exc:
-        if _is_missing_s3_error(exc):
-            return True
-        raise
-    return False
-
-
-def _delete_and_confirm(s3: Any, bucket_name: str, key: str) -> None:
-    s3.delete_object(Bucket=bucket_name, Key=key)
-    if not _object_absent(s3, bucket_name, key):
-        raise RuntimeError(f"S3 deletion was not confirmed for {key}")
-
-
-def _quota_counter_decrement(table_name: str, key: str, now: str) -> dict[str, Any]:
-    return {
-        "Update": {
-            "TableName": table_name,
-            "Key": {"pk": key},
-            "UpdateExpression": "SET updated_at = :updated_at ADD #count :minus_one",
-            "ConditionExpression": "#count >= :one",
-            "ExpressionAttributeNames": {"#count": "count"},
-            "ExpressionAttributeValues": {":minus_one": -1, ":one": 1, ":updated_at": now},
-        }
-    }
-
-
-def _get_record(table: Any, record_id: str) -> dict[str, Any] | None:
-    return table.get_item(Key={"id": record_id}, ConsistentRead=True).get("Item")
-
-
-def _acquire_pending(table: Any, item: Mapping[str, Any]) -> dict[str, Any] | None:
-    try:
-        response = table.update_item(
-            Key={"id": item["id"]},
-            UpdateExpression="SET #status = :deleting",
-            ConditionExpression="#status = :pending AND #owner = :owner",
-            ExpressionAttributeNames={"#status": "status", "#owner": "user_id"},
-            ExpressionAttributeValues={
-                ":pending": "pending",
-                ":deleting": "deleting",
-                ":owner": item["user_id"],
-            },
-            ReturnValues="ALL_NEW",
-        )
-        return response.get("Attributes")
-    except table.meta.client.exceptions.ConditionalCheckFailedException:
-        return None
-
-
-def _create_tombstone(
-    table: Any,
-    record_id: str,
-    user_id: str,
-    key: str,
-    timestamp: datetime,
-) -> dict[str, Any] | None:
-    object_time = _rfc3339(timestamp)
-    item = {
-        "id": record_id,
-        "user_id": user_id,
-        "status": "deleting",
-        "datetime": _rfc3339(timestamp),
-        "s3_image_key": key,
-        "quota_allocated": False,
-        "created_at": object_time,
-        "updated_at": object_time,
-    }
-    try:
-        table.put_item(Item=item, ConditionExpression="attribute_not_exists(id)")
-        return item
-    except table.meta.client.exceptions.ConditionalCheckFailedException:
-        return None
-
-
-def _finalize_deleting(
-    dynamodb: Any,
-    drinklogs_table_name: str,
-    app_state_table_name: str,
-    item: Mapping[str, Any],
-) -> bool:
-    delete = {
-        "Delete": {
-            "TableName": drinklogs_table_name,
-            "Key": {"id": item["id"]},
-            "ConditionExpression": (
-                "#status = :deleting AND #owner = :owner AND quota_allocated = :allocated"
-            ),
-            "ExpressionAttributeNames": {"#status": "status", "#owner": "user_id"},
-            "ExpressionAttributeValues": {
-                ":deleting": "deleting",
-                ":owner": item["user_id"],
-                ":allocated": bool(item.get("quota_allocated")),
-            },
-        }
-    }
-    transaction: list[dict[str, Any]] = [delete]
-    if item.get("quota_allocated") is True:
-        now = _rfc3339(_utc_now())
-        transaction.extend(
-            [
-                _quota_counter_decrement(
-                    app_state_table_name,
-                    f"drinklog-quota#user#{item['user_id']}",
-                    now,
-                ),
-                _quota_counter_decrement(app_state_table_name, "drinklog-quota#global", now),
-            ]
-        )
-    client = dynamodb.meta.client
-    try:
-        transact_write_with_retry(client, transaction)
-        return True
-    except client.exceptions.TransactionCanceledException:
-        if _get_record(dynamodb.Table(drinklogs_table_name), item["id"]) is None:
-            return True
-        raise RuntimeError("Deleting record transaction did not converge")
-
-
-def _delete_record_image(s3: Any, bucket_name: str, item: Mapping[str, Any]) -> None:
-    key = item.get("s3_image_key")
-    if not key:
-        return
-    if not isinstance(key, str) or not key.startswith(f"logs/{item['user_id']}/"):
-        raise RuntimeError("Refusing to reconcile an image outside its owner prefix")
-    _delete_and_confirm(s3, bucket_name, key)
-
-
 def reconcile_log_objects(
     dynamodb: Any,
     s3: Any,
@@ -264,6 +122,9 @@ def reconcile_log_objects(
     cutoff: datetime,
 ) -> int:
     table = dynamodb.Table(drinklogs_table_name)
+    lifecycle = DrinkLogLifecycle(
+        dynamodb, s3, drinklogs_table_name, "", bucket_name, _rfc3339
+    )
     objects = [
         item
         for item in _list_all_objects(s3, bucket_name, "logs/")
@@ -276,7 +137,7 @@ def reconcile_log_objects(
         if not match:
             continue
         user_id, upload_uuid = match.groups()
-        parsed.append((obj, key, user_id, _derive_id(user_id, upload_uuid)))
+        parsed.append((obj, key, user_id, derive_drink_log_id(user_id, upload_uuid)))
     records = _batch_get_records(
         dynamodb,
         drinklogs_table_name,
@@ -291,24 +152,24 @@ def reconcile_log_objects(
         if record and record.get("status") == "complete":
             if record.get("s3_image_key") == key:
                 continue
-            _delete_and_confirm(s3, bucket_name, key)
+            lifecycle.delete_and_confirm(key)
             deleted += 1
             continue
         if record and record.get("status") == "pending":
-            acquired = _acquire_pending(table, record)
+            acquired = lifecycle.acquire_pending_for_deletion(record)
             if acquired is None:
-                current = _get_record(table, record_id)
+                current = lifecycle.get(record_id)
                 if not current or current.get("user_id") != user_id:
                     continue
                 if current.get("status") == "complete" and current.get("s3_image_key") == key:
                     continue
                 if current.get("status") not in {"complete", "deleting"}:
                     continue
-            _delete_and_confirm(s3, bucket_name, key)
+            lifecycle.delete_and_confirm(key)
             deleted += 1
             continue
         if record and record.get("status") == "deleting":
-            _delete_and_confirm(s3, bucket_name, key)
+            lifecycle.delete_and_confirm(key)
             deleted += 1
             continue
         if record:
@@ -317,16 +178,16 @@ def reconcile_log_objects(
         last_modified = _parse_time(obj.get("LastModified"))
         if last_modified is None:
             continue
-        tombstone = _create_tombstone(table, record_id, user_id, key, last_modified)
+        tombstone = lifecycle.create_tombstone(record_id, user_id, key, last_modified)
         if tombstone is None:
-            current = _get_record(table, record_id)
+            current = lifecycle.get(record_id)
             if not current or current.get("user_id") != user_id:
                 continue
             if current.get("status") == "complete" and current.get("s3_image_key") == key:
                 continue
             if current.get("status") not in {"complete", "deleting"}:
                 continue
-        _delete_and_confirm(s3, bucket_name, key)
+        lifecycle.delete_and_confirm(key)
         deleted += 1
     return deleted
 
@@ -340,6 +201,14 @@ def reconcile_deleting_records(
     cutoff: datetime,
 ) -> int:
     table = dynamodb.Table(drinklogs_table_name)
+    lifecycle = DrinkLogLifecycle(
+        dynamodb,
+        s3,
+        drinklogs_table_name,
+        app_state_table_name,
+        bucket_name,
+        _rfc3339,
+    )
     records = _scan_all(
         table,
         ConsistentRead=True,
@@ -351,8 +220,8 @@ def reconcile_deleting_records(
     for item in records:
         if not _record_is_old(item, cutoff):
             continue
-        _delete_record_image(s3, bucket_name, item)
-        if _finalize_deleting(dynamodb, drinklogs_table_name, app_state_table_name, item):
+        lifecycle.delete_record_image(item)
+        if lifecycle.finalize_delete(item, now=_utc_now()):
             completed += 1
     return completed
 
@@ -366,6 +235,14 @@ def reconcile_pending_records(
     cutoff: datetime,
 ) -> int:
     table = dynamodb.Table(drinklogs_table_name)
+    lifecycle = DrinkLogLifecycle(
+        dynamodb,
+        s3,
+        drinklogs_table_name,
+        app_state_table_name,
+        bucket_name,
+        _rfc3339,
+    )
     records = _scan_all(
         table,
         ConsistentRead=True,
@@ -377,11 +254,11 @@ def reconcile_pending_records(
     for item in records:
         if not _record_is_old(item, cutoff):
             continue
-        acquired = _acquire_pending(table, item)
+        acquired = lifecycle.acquire_pending_for_deletion(item)
         if not acquired:
             continue
-        _delete_record_image(s3, bucket_name, acquired)
-        if _finalize_deleting(dynamodb, drinklogs_table_name, app_state_table_name, acquired):
+        lifecycle.delete_record_image(acquired)
+        if lifecycle.finalize_delete(acquired, now=_utc_now()):
             completed += 1
     return completed
 
@@ -394,6 +271,9 @@ def reconcile_tmp_objects(
     cutoff: datetime,
 ) -> int:
     table = dynamodb.Table(drinklogs_table_name)
+    lifecycle = DrinkLogLifecycle(
+        dynamodb, s3, drinklogs_table_name, "", bucket_name, _rfc3339
+    )
     records = _scan_all(
         table,
         ConsistentRead=True,
@@ -409,7 +289,7 @@ def reconcile_tmp_objects(
         key = obj.get("Key")
         if not isinstance(key, str) or key in referenced or not _object_is_old(obj, cutoff):
             continue
-        _delete_and_confirm(s3, bucket_name, key)
+        lifecycle.delete_and_confirm(key)
         deleted += 1
     return deleted
 
@@ -422,6 +302,9 @@ def reconcile_complete_tmp_references(
     cutoff: datetime,
 ) -> int:
     table = dynamodb.Table(drinklogs_table_name)
+    lifecycle = DrinkLogLifecycle(
+        dynamodb, s3, drinklogs_table_name, "", bucket_name, _rfc3339
+    )
     records = _scan_all(
         table,
         ConsistentRead=True,
@@ -436,7 +319,7 @@ def reconcile_complete_tmp_references(
         key = item.get("tmp_s3_key")
         if not isinstance(key, str) or not key.startswith(f"tmp/{item['user_id']}/"):
             continue
-        _delete_and_confirm(s3, bucket_name, key)
+        lifecycle.delete_and_confirm(key)
         try:
             table.update_item(
                 Key={"id": item["id"]},
