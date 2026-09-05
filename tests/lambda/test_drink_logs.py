@@ -24,6 +24,7 @@ images = load_lambda_module(
     "drink_logs_images_tests",
     "lambda/common/python/whiskey_common/images.py",
 )
+cost_guard = sys.modules["whiskey_common.cost_guard"]
 ROOT = Path(__file__).resolve().parents[2]
 requires_webp = pytest.mark.skipif(
     not features.check("webp"), reason="Pillow built without WEBP support"
@@ -947,7 +948,7 @@ def test_transaction_loser_joins_winner_without_second_counter_charge(monkeypatc
 
 
 def _disable_transaction_retry_delays(monkeypatch):
-    retry = drink_logs.transact_write_with_retry
+    retry = cost_guard.transact_write_with_retry
 
     def without_delays(client, transact_items, **kwargs):
         return retry(
@@ -958,7 +959,7 @@ def _disable_transaction_retry_delays(monkeypatch):
             **kwargs,
         )
 
-    monkeypatch.setattr(drink_logs, "transact_write_with_retry", without_delays)
+    monkeypatch.setattr(cost_guard, "transact_write_with_retry", without_delays)
 
 
 def _stub_initial_create(monkeypatch, upload_uuid):

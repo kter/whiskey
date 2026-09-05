@@ -64,7 +64,11 @@ def test_search_uses_bounded_scan_and_returns_next_token(monkeypatch):
     dynamodb = Mock()
     dynamodb.Table.return_value = table
     monkeypatch.setattr(search, "get_dynamodb_resource", lambda: dynamodb)
-    monkeypatch.setattr(search, "consume_scan_budget", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        search.UsageBudget,
+        "reserve_public_scan",
+        lambda *args, **kwargs: None,
+    )
     response = search.lambda_handler(
         event(query={"q": "Hibiki", "limit": "25"}),
         SimpleNamespace(aws_request_id="aws-1"),
@@ -173,10 +177,10 @@ def test_search_consumes_scan_budget_for_each_internal_page(monkeypatch):
     ]
     dynamodb = Mock()
     dynamodb.Table.return_value = table
-    consume_scan_budget = Mock()
+    reserve_public_scan = Mock()
     monkeypatch.setenv("PUBLIC_SCAN_MAX_PAGES", "2")
     monkeypatch.setattr(search, "get_dynamodb_resource", lambda: dynamodb)
-    monkeypatch.setattr(search, "consume_scan_budget", consume_scan_budget)
+    monkeypatch.setattr(search.UsageBudget, "reserve_public_scan", reserve_public_scan)
 
     response = search.lambda_handler(
         event(query={"q": "missing", "limit": "20"}),
@@ -184,7 +188,7 @@ def test_search_consumes_scan_budget_for_each_internal_page(monkeypatch):
     )
 
     assert response["statusCode"] == 200
-    assert consume_scan_budget.call_count == 2
+    assert reserve_public_scan.call_count == 2
 
 
 def test_list_uses_bounded_scan_and_returns_next_token(monkeypatch):
@@ -196,7 +200,11 @@ def test_list_uses_bounded_scan_and_returns_next_token(monkeypatch):
     dynamodb = Mock()
     dynamodb.Table.return_value = table
     monkeypatch.setattr(list_lambda, "get_dynamodb_resource", lambda: dynamodb)
-    monkeypatch.setattr(list_lambda, "consume_scan_budget", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        list_lambda.UsageBudget,
+        "reserve_public_scan",
+        lambda *args, **kwargs: None,
+    )
     response = list_lambda.lambda_handler(
         event("/api/whiskeys", {"limit": "50"}),
         SimpleNamespace(aws_request_id="aws-list"),
@@ -209,9 +217,9 @@ def test_list_uses_bounded_scan_and_returns_next_token(monkeypatch):
 
 def test_public_scan_budget_returns_429(monkeypatch):
     def exhausted(*args, **kwargs):
-        raise search.ScanBudgetExceeded
+        raise search.ScanBudgetExceeded()
 
-    monkeypatch.setattr(search, "consume_scan_budget", exhausted)
+    monkeypatch.setattr(search.UsageBudget, "reserve_public_scan", exhausted)
     monkeypatch.setattr(search, "get_dynamodb_resource", Mock())
     response = search.lambda_handler(event(query={"q": "test"}), SimpleNamespace(aws_request_id="aws-1"))
     assert response["statusCode"] == 429

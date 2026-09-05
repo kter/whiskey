@@ -18,6 +18,11 @@ from botocore.exceptions import ClientError
 
 try:
     from whiskey_common.clients import get_dynamodb_resource, get_s3_client
+    from whiskey_common.cost_guard import (
+        BudgetTransactionConflict,
+        UsageBudget,
+        UsageBudgetExceeded,
+    )
     from whiskey_common.images import (
         ImageNormalizationError,
         normalize_image,
@@ -27,12 +32,16 @@ try:
     from whiskey_common.logger import extract_correlation_id, get_logger
     from whiskey_common.responses import create_response
     from whiskey_common.scan_utils import decode_next_token, encode_next_token
-    from whiskey_common.transactions import transact_write_with_retry
 except ModuleNotFoundError as exc:
     if exc.name != "whiskey_common":
         raise
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "common" / "python"))
     from whiskey_common.clients import get_dynamodb_resource, get_s3_client
+    from whiskey_common.cost_guard import (
+        BudgetTransactionConflict,
+        UsageBudget,
+        UsageBudgetExceeded,
+    )
     from whiskey_common.images import (
         ImageNormalizationError,
         normalize_image,
@@ -42,15 +51,15 @@ except ModuleNotFoundError as exc:
     from whiskey_common.logger import extract_correlation_id, get_logger
     from whiskey_common.responses import create_response
     from whiskey_common.scan_utils import decode_next_token, encode_next_token
-    from whiskey_common.transactions import transact_write_with_retry
 
 from lifecycle import (
     CreateConflict,
     DrinkLogLifecycle,
-    RateLimitExceeded,
-    TransientConflict,
     derive_drink_log_id,
 )
+
+RateLimitExceeded = UsageBudgetExceeded
+TransientConflict = BudgetTransactionConflict
 
 
 SERVING_STYLES = {"NEAT", "ROCKS", "WATER", "SODA", "COCKTAIL"}
@@ -93,17 +102,6 @@ class ValidationError(ValueError):
 
 class AnalysisConflict(Exception):
     pass
-
-
-def _is_transaction_conflict_only(reasons: Any) -> bool:
-    if not isinstance(reasons, list) or not reasons:
-        return False
-    if any(not isinstance(reason, Mapping) for reason in reasons):
-        return False
-    codes = [reason.get("Code") for reason in reasons]
-    return "TransactionConflict" in codes and all(
-        code in {None, "None", "TransactionConflict"} for code in codes
-    )
 
 
 def _utc_now() -> datetime:
@@ -341,27 +339,6 @@ def _extract_upload_uuid(s3_key: str, user_id: str) -> str:
     return str(uuid.UUID(match.group(1)))
 
 
-def _rate_counter_update(table_name: str, key: str, limit: int, ttl: int, now: str) -> dict[str, Any]:
-    return {
-        "Update": {
-            "TableName": table_name,
-            "Key": {"pk": key},
-            "UpdateExpression": (
-                "SET #ttl = if_not_exists(#ttl, :ttl), updated_at = :updated_at "
-                "ADD #count :one"
-            ),
-            "ConditionExpression": "attribute_not_exists(#count) OR #count < :limit",
-            "ExpressionAttributeNames": {"#count": "count", "#ttl": "ttl"},
-            "ExpressionAttributeValues": {
-                ":one": 1,
-                ":limit": limit,
-                ":ttl": ttl,
-                ":updated_at": now,
-            },
-        }
-    }
-
-
 def create_upload_url(
     dynamodb: Any,
     s3: Any,
@@ -371,37 +348,10 @@ def create_upload_url(
     content_type: str,
 ) -> dict[str, Any]:
     now_dt = _utc_now()
-    now = _rfc3339(now_dt)
-    utc_date = now_dt.strftime("%Y-%m-%d")
-    ttl = int((now_dt + timedelta(days=2)).timestamp())
-    client = dynamodb.meta.client
-    try:
-        transact_write_with_retry(
-            client,
-            [
-                _rate_counter_update(
-                    app_state_table_name,
-                    f"drinklog-counter#upload#user#{user_id}#{utc_date}",
-                    int(os.environ.get("UPLOAD_USER_DAILY_LIMIT", "30")),
-                    ttl,
-                    now,
-                ),
-                _rate_counter_update(
-                    app_state_table_name,
-                    f"drinklog-counter#upload#global#{utc_date}",
-                    int(os.environ.get("UPLOAD_GLOBAL_DAILY_LIMIT", "100")),
-                    ttl,
-                    now,
-                ),
-            ],
-        )
-    except client.exceptions.TransactionCanceledException as exc:
-        reasons = exc.response.get("CancellationReasons", [])
-        if any(reason.get("Code") == "ConditionalCheckFailed" for reason in reasons):
-            raise RateLimitExceeded from exc
-        if _is_transaction_conflict_only(reasons):
-            raise TransientConflict from exc
-        raise
+    UsageBudget(dynamodb, app_state_table_name, _rfc3339).reserve_upload(
+        user_id,
+        now=now_dt,
+    )
 
     _format, extension = CONTENT_TYPES[content_type]
     key = f"tmp/{user_id}/{uuid.uuid4()}.{extension}"
@@ -784,17 +734,12 @@ def create_drink_log(
                     current,
                 ), False
         reasons = exc.response.get("CancellationReasons", [])
-        if not reasons or any(
-            index < len(reasons) and reasons[index].get("Code") == "ConditionalCheckFailed"
-            for index in (1, 2, 3, 4)
-        ):
-            raise RateLimitExceeded from exc
+        if not reasons:
+            raise RateLimitExceeded("create", "daily") from exc
         if len(reasons) > 5 and reasons[5].get("Code") == "ConditionalCheckFailed":
             raise AnalysisConflict("Analysis result is stale or already consumed") from exc
         if reasons[0].get("Code") == "ConditionalCheckFailed":
             raise CreateConflict("Concurrent creation did not expose a winner") from exc
-        if _is_transaction_conflict_only(reasons):
-            raise TransientConflict from exc
         raise
 
     return _finish_pending_create(
