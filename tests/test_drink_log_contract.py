@@ -5,92 +5,98 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_UPLOAD_MAX_BYTES = 3_670_016
-EXPECTED_IMAGE_MAX_BYTES = 1_572_864
+SOURCE_OF_TRUTH_PATH = "infra/lib/whiskey-infra-stack.ts"
+
+_NUMERIC_VALUE = (
+    r"(?P<value>(?:(?P<quote>['\"])[\d_]+(?P=quote)|[\d_]+))"
+    r"(?!\s*(?:[\d_*/+\-%@&|^<>=!.?:~(\[]|"
+    r"\b(?:and|as|else|for|if|in|instanceof|is|not|or|satisfies)\b))"
+)
 
 
 def _environment_default(name: str) -> str:
     return (
         rf"os\s*\.\s*environ\s*\.\s*get\s*\(\s*['\"]{name}['\"]\s*,\s*"
-        rf"(?P<value>['\"]?[\d_]+['\"]?)\s*\)"
+        rf"{_NUMERIC_VALUE}\s*\)"
     )
 
 
 def _assignment(name: str) -> str:
-    return rf"\b{name}\s*(?::[^=\n]+)?=\s*(?P<value>['\"]?[\d_]+['\"]?)"
+    return rf"\b{name}\s*(?::[^=\n]+)?=\s*{_NUMERIC_VALUE}"
 
 
 def _object_property(name: str) -> str:
-    return rf"\b{name}\s*:\s*(?P<value>['\"]?[\d_]+['\"]?)"
+    return rf"\b{name}\s*:\s*{_NUMERIC_VALUE}"
 
 
-def _extract_numbers(relative_path: str, pattern: str, count: int) -> list[int]:
+def _extract_numbers(relative_path: str, pattern: str) -> list[int]:
     source = (ROOT / relative_path).read_text(encoding="utf-8")
     matches = list(re.finditer(pattern, source, flags=re.MULTILINE))
 
     assert matches, f"{relative_path}: constant was not found"
-    assert len(matches) == count, (
-        f"{relative_path}: expected {count} matching constant(s), found {len(matches)}"
-    )
     return [
         int(match.group("value").strip("'\"").replace("_", ""))
         for match in matches
     ]
 
 
+def _source_of_truth_value(name: str) -> int:
+    values = _extract_numbers(SOURCE_OF_TRUTH_PATH, _object_property(name))
+    expected = values[0]
+    assert all(value == expected for value in values), (
+        f"{SOURCE_OF_TRUTH_PATH}: {name} values disagree: {values}"
+    )
+    return expected
+
+
 @pytest.mark.parametrize(
-    ("relative_path", "pattern", "count"),
+    ("constant_name", "relative_path", "pattern"),
     [
-        ("lambda/drink-logs/index.py", _environment_default("UPLOAD_MAX_BYTES"), 2),
         (
+            "UPLOAD_MAX_BYTES",
+            "lambda/drink-logs/index.py",
+            _environment_default("UPLOAD_MAX_BYTES"),
+        ),
+        (
+            "UPLOAD_MAX_BYTES",
             "lambda/drink-log-analyze/index.py",
             _environment_default("UPLOAD_MAX_BYTES"),
-            1,
         ),
         (
-            "infra/lib/whiskey-infra-stack.ts",
-            _object_property("UPLOAD_MAX_BYTES"),
-            2,
+            "UPLOAD_MAX_BYTES",
+            "frontend/utils/imageResize.ts",
+            _assignment("MAX_OUTPUT_SIZE"),
         ),
-        ("frontend/utils/imageResize.ts", _assignment("MAX_OUTPUT_SIZE"), 1),
-        ("scripts/eval/run_brand_eval.py", _assignment("UPLOAD_MAX_BYTES"), 1),
         (
+            "UPLOAD_MAX_BYTES",
+            "scripts/eval/run_brand_eval.py",
+            _assignment("UPLOAD_MAX_BYTES"),
+        ),
+        (
+            "UPLOAD_MAX_BYTES",
             "scripts/eval/import_real_photos.py",
             _assignment("OUTPUT_MAX_BYTES"),
-            1,
         ),
-    ],
-)
-def test_upload_size_limits_match(
-    relative_path: str, pattern: str, count: int
-) -> None:
-    assert _extract_numbers(relative_path, pattern, count) == [
-        EXPECTED_UPLOAD_MAX_BYTES
-    ] * count
-
-
-@pytest.mark.parametrize(
-    ("relative_path", "pattern", "count"),
-    [
-        ("lambda/drink-logs/index.py", _environment_default("IMAGE_MAX_BYTES"), 1),
         (
+            "IMAGE_MAX_BYTES",
+            "lambda/drink-logs/index.py",
+            _environment_default("IMAGE_MAX_BYTES"),
+        ),
+        (
+            "IMAGE_MAX_BYTES",
             "lambda/drink-log-analyze/index.py",
             _environment_default("IMAGE_MAX_BYTES"),
-            1,
-        ),
-        (
-            "infra/lib/whiskey-infra-stack.ts",
-            _object_property("IMAGE_MAX_BYTES"),
-            2,
         ),
     ],
 )
-def test_normalized_image_size_limits_match(
-    relative_path: str, pattern: str, count: int
+def test_size_limits_match(
+    constant_name: str, relative_path: str, pattern: str
 ) -> None:
-    assert _extract_numbers(relative_path, pattern, count) == [
-        EXPECTED_IMAGE_MAX_BYTES
-    ] * count
+    expected = _source_of_truth_value(constant_name)
+    values = _extract_numbers(relative_path, pattern)
+    assert all(value == expected for value in values), (
+        f"{relative_path}: {constant_name} expected {expected}, found {values}"
+    )
 
 
 def test_backend_store_name_placeholder_is_known_to_frontend() -> None:

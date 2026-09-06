@@ -56,6 +56,6 @@ export const servingStyleLabel = (style?: string) => ({
  * all, a place_id we deliberately never resolved, or a Places lookup that failed
  * (`PLACEHOLDER_NAME` in lambda/drink-log-analyze/places.py). None of them are
  * meaningful as a Google Maps search query.
+ * Keep this list in sync with tests/test_drink_log_contract.py.
  */
-// Keep in sync with tests/test_drink_log_contract.py.
 export const STORE_NAME_PLACEHOLDERS = ['場所登録済み', '場所未登録', '店舗情報を取得できません']

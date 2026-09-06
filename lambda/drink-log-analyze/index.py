@@ -472,11 +472,11 @@ def analyze_upload(
     head = s3.head_object(Bucket=bucket_name, Key=s3_key)
     content_length = head.get("ContentLength")
     etag = head.get("ETag")
+    # Keep in sync with tests/test_drink_log_contract.py.
     if (
         isinstance(content_length, bool)
         or not isinstance(content_length, int)
         or content_length <= 0
-        # Keep in sync with tests/test_drink_log_contract.py.
         or content_length > int(os.environ.get("UPLOAD_MAX_BYTES", "3670016"))
         or not isinstance(etag, str)
         or not etag

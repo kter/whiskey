@@ -602,9 +602,9 @@ def _finish_pending_create(
         expected_format = CONTENT_TYPES[content_type][0]
         if actual_format != expected_format:
             raise ImageNormalizationError("Image bytes do not match the declared content type")
-        # Keep in sync with tests/test_drink_log_contract.py.
         normalized = normalize_image(
             raw,
+            # Keep in sync with tests/test_drink_log_contract.py.
             max_bytes=int(os.environ.get("IMAGE_MAX_BYTES", "1572864")),
         )
     except ImageNormalizationError as exc:

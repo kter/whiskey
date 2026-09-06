@@ -575,7 +575,6 @@ export class WhiskeyInfraStack extends cdk.Stack {
         STORAGE_GLOBAL_LIMIT: '20000',
         // Keep in sync with tests/test_drink_log_contract.py.
         IMAGE_MAX_BYTES: '1572864',
-        // Keep in sync with tests/test_drink_log_contract.py.
         UPLOAD_MAX_BYTES: '3670016',
       },
     });
@@ -606,7 +605,6 @@ export class WhiskeyInfraStack extends cdk.Stack {
         ANALYZE_GLOBAL_MONTHLY_LIMIT: '300',
         // Keep in sync with tests/test_drink_log_contract.py.
         IMAGE_MAX_BYTES: '1572864',
-        // Keep in sync with tests/test_drink_log_contract.py.
         UPLOAD_MAX_BYTES: '3670016',
       },
     });
