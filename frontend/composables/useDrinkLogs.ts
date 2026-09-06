@@ -1,5 +1,5 @@
-import { computed } from 'vue'
-import { ApiError, useApi } from '~/composables/useApi'
+import { useApi } from '~/composables/useApi'
+
 
 export interface DrinkLogCandidate {
   brand_text: string
@@ -128,12 +128,6 @@ interface UploadUrlResponse {
 
 type UploadProgressCallback = (progress: number) => void
 
-export const normalizeDrinkLogError = (cause: unknown, fallback: string) => {
-  if (cause instanceof ApiError) return cause.message
-  if (cause instanceof Error && cause.message) return cause.message
-  return fallback
-}
-
 export const buildDrinkLogPayload = (form: DrinkLogFormValues): CreateDrinkLogPayload => ({
   analysis_id: form.analysisId,
   ...(form.capturedAt ? { datetime: form.capturedAt } : {}),
@@ -184,36 +178,17 @@ export const mergeDrinkLogs = (...collections: DrinkLog[][]) => {
 export const useDrinkLogs = () => {
   const api = useApi()
   const logs = useState<DrinkLog[]>('drink-logs', () => [])
-  const loadingCount = useState<number>('drink-logs-loading-count', () => 0)
-  const error = useState<string | null>('drink-logs-error', () => null)
-  const loading = computed(() => loadingCount.value > 0)
 
-  const run = async <T>(fallback: string, operation: () => Promise<T>): Promise<T> => {
-    loadingCount.value += 1
-    error.value = null
-    try {
-      return await operation()
-    } catch (cause) {
-      error.value = normalizeDrinkLogError(cause, fallback)
-      throw cause
-    } finally {
-      loadingCount.value = Math.max(0, loadingCount.value - 1)
-    }
-  }
-
-  const getUploadUrl = (contentType: string) => run(
-    '画像アップロードの準備に失敗しました。',
-    () => api.request<UploadUrlResponse>('/api/drink-logs/upload-url', {
-      method: 'POST', auth: 'required', body: { content_type: contentType },
-    }),
-  )
+  const getUploadUrl = (contentType: string) => api.request<UploadUrlResponse>('/api/drink-logs/upload-url', {
+    method: 'POST', auth: 'required', body: { content_type: contentType },
+  })
 
   const uploadToS3 = (
     uploadUrl: string,
     fields: Record<string, string>,
     blob: Blob,
     onProgress?: UploadProgressCallback,
-  ) => run('画像のアップロードに失敗しました。', () => new Promise<void>((resolve, reject) => {
+  ) => new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     const form = new FormData()
     Object.entries(fields).forEach(([key, value]) => form.append(key, value))
@@ -236,64 +211,52 @@ export const useDrinkLogs = () => {
     xhr.onerror = () => reject(new Error('画像のアップロード中に通信エラーが発生しました。'))
     xhr.onabort = () => reject(new Error('画像のアップロードが中断されました。'))
     xhr.send(form)
-  }))
+  })
 
-  const analyze = (s3Key: string) => run(
-    '画像解析に失敗しました。銘柄を確認して、もう一度お試しください。',
-    () => api.request<DrinkLogAnalysis>('/api/drink-logs/analyze', {
-      method: 'POST', auth: 'required', body: { s3_key: s3Key },
-    }),
+  const analyze = (s3Key: string) => api.request<DrinkLogAnalysis>('/api/drink-logs/analyze', {
+    method: 'POST', auth: 'required', body: { s3_key: s3Key },
+  })
+
+  const createLog = (payload: CreateDrinkLogPayload) => api.request<DrinkLog>(
+    '/api/drink-logs',
+    { method: 'POST', auth: 'required', body: payload },
   )
 
-  const createLog = (payload: CreateDrinkLogPayload) => run(
-    '記録の保存に失敗しました。',
-    () => api.request<DrinkLog>('/api/drink-logs', { method: 'POST', auth: 'required', body: payload }),
+  const listLogs = (params: DrinkLogListParams = {}) => api.request<DrinkLogListResponse>('/api/drink-logs', {
+    auth: 'required',
+    query: {
+      limit: params.limit,
+      next_token: params.next_token,
+      brand: params.brand,
+      store: params.store,
+      place_id: params.place_id,
+    },
+  })
+
+  const getLog = (id: string) => api.request<DrinkLog>(
+    `/api/drink-logs/${encodeURIComponent(id)}`,
+    { auth: 'required' },
   )
 
-  const listLogs = (params: DrinkLogListParams = {}) => run(
-    '記録一覧の取得に失敗しました。',
-    () => api.request<DrinkLogListResponse>('/api/drink-logs', {
-      auth: 'required',
-      query: {
-        limit: params.limit,
-        next_token: params.next_token,
-        brand: params.brand,
-        store: params.store,
-        place_id: params.place_id,
-      },
-    }),
+  const updateLog = (id: string, payload: UpdateDrinkLogPayload) => api.request<DrinkLog>(
+    `/api/drink-logs/${encodeURIComponent(id)}`,
+    { method: 'PUT', auth: 'required', body: payload },
   )
 
-  const getLog = (id: string) => run(
-    '記録の取得に失敗しました。',
-    () => api.request<DrinkLog>(`/api/drink-logs/${encodeURIComponent(id)}`, { auth: 'required' }),
+  const deleteLog = (id: string) => api.request<void>(
+    `/api/drink-logs/${encodeURIComponent(id)}`,
+    { method: 'DELETE', auth: 'required' },
   )
 
-  const updateLog = (id: string, payload: UpdateDrinkLogPayload) => run(
-    '記録の更新に失敗しました。',
-    () => api.request<DrinkLog>(`/api/drink-logs/${encodeURIComponent(id)}`, {
-      method: 'PUT', auth: 'required', body: payload,
-    }),
-  )
+  const searchPlaces = (lat: number, lng: number) => api.request<PlaceCandidate[]>('/api/drink-logs/places', {
+    method: 'POST', auth: 'required', body: { lat, lng },
+  })
 
-  const deleteLog = (id: string) => run(
-    '記録の削除に失敗しました。',
-    () => api.request<void>(`/api/drink-logs/${encodeURIComponent(id)}`, { method: 'DELETE', auth: 'required' }),
-  )
-
-  const searchPlaces = (lat: number, lng: number) => run(
-    '近くの店を検索できませんでした。店名は手入力できます。',
-    () => api.request<PlaceCandidate[]>('/api/drink-logs/places', {
-      method: 'POST', auth: 'required', body: { lat, lng },
-    }),
-  )
-
-  const resolvePlaces = (items: ResolvePlaceItem[]) => run(
-    '店情報の取得に失敗しました。',
-    async () => (await api.request<{ results: ResolvedPlace[] }>('/api/drink-logs/places/resolve', {
+  const resolvePlaces = async (items: ResolvePlaceItem[]) => (
+    await api.request<{ results: ResolvedPlace[] }>('/api/drink-logs/places/resolve', {
       method: 'POST', auth: 'required', body: { items },
-    })).results,
-  )
+    })
+  ).results
 
   const upsertLog = (log: DrinkLog) => {
     logs.value = mergeDrinkLogs(logs.value, [log])
@@ -309,8 +272,6 @@ export const useDrinkLogs = () => {
 
   return {
     logs,
-    loading,
-    error,
     getUploadUrl,
     uploadToS3,
     analyze,
