@@ -12,7 +12,7 @@ from typing import Any, Mapping
 
 from botocore.exceptions import ClientError
 
-from whiskey_common.cost_guard import UsageBudget
+from whiskey_common.cost_guard import UsageBudget, UsageBudgetExceeded
 from whiskey_common.images import ImageNormalizationError, normalize_image, sniff_format
 from whiskey_common.scan_utils import encode_next_token
 

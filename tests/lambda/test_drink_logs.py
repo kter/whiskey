@@ -1065,6 +1065,38 @@ def test_create_limit_stays_429_without_retry(monkeypatch):
     assert len(client.transactions) == 1
 
 
+def test_cancellation_without_reasons_is_a_429_not_a_500(monkeypatch):
+    """A cancelled create carrying no reasons is a limit, and must stay one.
+
+    DynamoDB may cancel a transaction without populating CancellationReasons.
+    The store has to name UsageBudgetExceeded here; a missing import would turn
+    this path into a NameError and report the user's quota as a server fault.
+    """
+    upload_uuid = "12345678-1234-4234-8234-123456789abc"
+
+    def reasonless_failure(_transaction):
+        raise TransactionCanceled([])
+
+    client = RecordingClient(reasonless_failure)
+    dynamodb = FakeDynamoDB(
+        {"DrinkLogs-test": StaticTable(item=None, client=client)},
+        client,
+    )
+    _stub_initial_create(monkeypatch, upload_uuid)
+    monkeypatch.setattr(drink_logs, "get_dynamodb_resource", lambda: dynamodb)
+    monkeypatch.setattr(drink_logs, "get_s3_client", PresignS3)
+
+    response = drink_logs.lambda_handler(
+        _post_event(
+            "/api/drink-logs",
+            {"analysis_id": upload_uuid, "candidate_index": 0},
+        ),
+        SimpleNamespace(aws_request_id="aws-1"),
+    )
+
+    assert response["statusCode"] == 429
+
+
 def test_mixed_reasons_prefer_the_limit_over_the_conflict(monkeypatch):
     """A real limit must win over a co-occurring conflict: 429, never 503."""
     upload_uuid = "12345678-1234-4234-8234-123456789abc"
