@@ -355,6 +355,7 @@ def create_upload_url(
 
     _format, extension = CONTENT_TYPES[content_type]
     key = f"tmp/{user_id}/{uuid.uuid4()}.{extension}"
+    # Keep in sync with tests/test_drink_log_contract.py.
     max_bytes = int(os.environ.get("UPLOAD_MAX_BYTES", "3670016"))
     # A captured form is pinned to one exact key. Reuse can only overwrite that
     # object and cannot consume storage allocation or an expensive API. The
@@ -518,6 +519,7 @@ def _prepare_initial_record(
     content_type = head.get("ContentType")
     if content_type not in CONTENT_TYPES:
         raise AnalysisConflict("Uploaded image content type is unsupported")
+    # Keep in sync with tests/test_drink_log_contract.py.
     if int(head.get("ContentLength", 0)) > int(os.environ.get("UPLOAD_MAX_BYTES", "3670016")):
         raise AnalysisConflict("Uploaded image exceeds the upload limit")
 
@@ -600,6 +602,7 @@ def _finish_pending_create(
         expected_format = CONTENT_TYPES[content_type][0]
         if actual_format != expected_format:
             raise ImageNormalizationError("Image bytes do not match the declared content type")
+        # Keep in sync with tests/test_drink_log_contract.py.
         normalized = normalize_image(
             raw,
             max_bytes=int(os.environ.get("IMAGE_MAX_BYTES", "1572864")),

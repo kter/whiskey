@@ -30,6 +30,7 @@ from whiskey_common.images import ImageNormalizationError, normalize_image  # no
 
 
 SUPPORTED_EXTENSIONS = {".heic", ".heif", ".jpg", ".jpeg", ".png", ".webp"}
+# Keep in sync with tests/test_drink_log_contract.py.
 OUTPUT_MAX_BYTES = 3_670_016
 MAX_DECODE_IMAGE_PIXELS = 80_000_000
 HEIC_CONVERSION_QUALITY = 0.92

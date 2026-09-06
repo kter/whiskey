@@ -1,6 +1,7 @@
 const HEIC_MIME_TYPES = new Set(['image/heic', 'image/heif'])
 const HEIC_EXTENSION_PATTERN = /\.(?:heic|heif)$/i
 const OUTPUT_CONTENT_TYPE = 'image/jpeg'
+// Keep in sync with tests/test_drink_log_contract.py.
 const MAX_OUTPUT_SIZE = 3_670_016
 
 const resizeAttempts = [
