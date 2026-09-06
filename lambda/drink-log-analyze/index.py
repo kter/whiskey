@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Protocol
 
 import boto3
 from botocore.config import Config
@@ -28,6 +28,7 @@ try:
     from whiskey_common.images import ImageNormalizationError, normalize_image, sniff_format
     from whiskey_common.jwt_utils import extract_user_id_from_event
     from whiskey_common.logger import extract_correlation_id, get_logger
+    from whiskey_common.mock_guard import environment_flag_is_set, validate_mock_guard
     from whiskey_common.responses import create_response
 except ModuleNotFoundError as exc:
     if exc.name != "whiskey_common":
@@ -45,6 +46,7 @@ except ModuleNotFoundError as exc:
     from whiskey_common.images import ImageNormalizationError, normalize_image, sniff_format
     from whiskey_common.jwt_utils import extract_user_id_from_event
     from whiskey_common.logger import extract_correlation_id, get_logger
+    from whiskey_common.mock_guard import environment_flag_is_set, validate_mock_guard
     from whiskey_common.responses import create_response
 
 
@@ -98,6 +100,14 @@ class OwnershipError(Exception):
     """Raised when an upload key is outside the caller's namespace."""
 
 
+class BottleReader(Protocol):
+    """Bottle-reading interface used by the analysis workflow."""
+
+    def read(self, image: bytes, *, timeout_seconds: float) -> dict[str, Any] | None:
+        """Read bottle details from a normalized image."""
+        ...
+
+
 BudgetExceeded = UsageBudgetExceeded
 
 
@@ -109,17 +119,9 @@ def _rfc3339(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _env_flag_is_set(name: str) -> bool:
-    return name in os.environ and os.environ[name] != ""
-
-
-def _validate_runtime_config() -> str:
-    environment = os.environ.get("ENVIRONMENT", "dev")
-    if environment != "local" and any(
-        _env_flag_is_set(name) for name in ("MOCK_AI", "MOCK_PLACES")
-    ):
-        raise RuntimeError("MOCK_AI and MOCK_PLACES are permitted only in local")
-    model_id = os.environ.get("BEDROCK_MODEL_ID", "")
+def _validate_runtime_config(model_id: str | None = None) -> str:
+    if model_id is None:
+        model_id = os.environ.get("BEDROCK_MODEL_ID", "")
     allowlist = {
         value.strip()
         for value in os.environ.get("BEDROCK_MODEL_ALLOWLIST", "").split(",")
@@ -265,52 +267,87 @@ def _remaining_budget_ms(context: Any, started: float) -> int:
     return min(wall_remaining, lambda_remaining) - INVOKE_SAFETY_MS
 
 
-def _bedrock_client(read_timeout: float):
-    config = Config(
-        connect_timeout=min(2.0, read_timeout),
-        read_timeout=read_timeout,
-        retries={"mode": "standard", "total_max_attempts": 1},
-    )
-    kwargs: dict[str, Any] = {"config": config}
-    region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
-    if region:
-        kwargs["region_name"] = region
-    return boto3.client("bedrock-runtime", **kwargs)
+class BedrockBottleReader:
+    """Amazon Bedrock adapter for bottle analysis."""
+
+    def __init__(self, model_id: str) -> None:
+        self._model_id = model_id
+
+    @staticmethod
+    def _bedrock_client(read_timeout: float):
+        config = Config(
+            connect_timeout=min(2.0, read_timeout),
+            read_timeout=read_timeout,
+            retries={"mode": "standard", "total_max_attempts": 1},
+        )
+        kwargs: dict[str, Any] = {"config": config}
+        region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
+        if region:
+            kwargs["region_name"] = region
+        return boto3.client("bedrock-runtime", **kwargs)
+
+    def read(self, image: bytes, *, timeout_seconds: float) -> dict[str, Any] | None:
+        """Read and validate an analysis result through Bedrock Converse."""
+        client = self._bedrock_client(timeout_seconds)
+        try:
+            response = client.converse(
+                modelId=self._model_id,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"image": {"format": "jpeg", "source": {"bytes": image}}},
+                            {"text": PROMPT},
+                        ],
+                    }
+                ],
+                inferenceConfig={"maxTokens": 512, "temperature": 0},
+            )
+            parsed = json.loads(strip_json_code_fence(_extract_response_text(response)))
+        except (BotoCoreError, ClientError):
+            return None
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return {}
+        return _validate_model_output(parsed) or {}
 
 
-def _invoke_model(model_id: str, image: bytes, context: Any, started: float) -> dict[str, Any] | None:
-    remaining_ms = _remaining_budget_ms(context, started)
-    if remaining_ms < MIN_INVOKE_BUDGET_MS:
-        return None
-    if os.environ.get("ENVIRONMENT") == "local" and _env_flag_is_set("MOCK_AI"):
+class LocalBottleReader:
+    """Deterministic local adapter for bottle analysis."""
+
+    def read(self, image: bytes, *, timeout_seconds: float) -> dict[str, Any] | None:
+        """Return the local bottle-analysis fixture."""
+        del image, timeout_seconds
         return {
             "whiskeys": [
-                {"name_ja": "モックウイスキー", "name_en": "Mock Whisky", "confidence": Decimal("0.9")}
+                {
+                    "name_ja": "モックウイスキー",
+                    "name_en": "Mock Whisky",
+                    "confidence": Decimal("0.9"),
+                }
             ],
             "serving_style": "NEAT",
             "glass_type": "tumbler",
         }
-    client = _bedrock_client(max(0.1, remaining_ms / 1000))
-    try:
-        response = client.converse(
-            modelId=model_id,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"image": {"format": "jpeg", "source": {"bytes": image}}},
-                        {"text": PROMPT},
-                    ],
-                }
-            ],
-            inferenceConfig={"maxTokens": 512, "temperature": 0},
-        )
-        parsed = json.loads(strip_json_code_fence(_extract_response_text(response)))
-    except (BotoCoreError, ClientError):
+
+
+def select_bottle_reader(model_id: str | None = None) -> BottleReader:
+    """Select a bottle reader from the current invocation environment."""
+    validate_mock_guard()
+    if os.environ.get("ENVIRONMENT") == "local" and environment_flag_is_set("MOCK_AI"):
+        return LocalBottleReader()
+    return BedrockBottleReader(model_id or os.environ.get("BEDROCK_MODEL_ID", ""))
+
+
+def _invoke_model(
+    reader: BottleReader,
+    image: bytes,
+    context: Any,
+    started: float,
+) -> dict[str, Any] | None:
+    remaining_ms = _remaining_budget_ms(context, started)
+    if remaining_ms < MIN_INVOKE_BUDGET_MS:
         return None
-    except (json.JSONDecodeError, TypeError, ValueError):
-        return {}
-    return _validate_model_output(parsed) or {}
+    return reader.read(image, timeout_seconds=max(0.1, remaining_ms / 1000))
 
 
 def _reset_master_cache() -> None:
@@ -464,6 +501,7 @@ def analyze_upload(
     user_id: str,
     s3_key: str,
     model_id: str,
+    bottle_reader: BottleReader,
     context: Any,
     started: float,
     logger: Any = None,
@@ -503,7 +541,7 @@ def analyze_upload(
             user_request=False,
             remaining_ms=lambda: _remaining_budget_ms(context, started),
         )
-        analysis = _invoke_model(model_id, normalized, context, started)
+        analysis = _invoke_model(bottle_reader, normalized, context, started)
         if analysis is None or analysis:
             break
     if not analysis:
@@ -579,7 +617,9 @@ def _request_id(event: Mapping[str, Any], context: Any) -> str:
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Handle POST /api/drink-logs/analyze."""
     started = time.monotonic()
-    model_id = _validate_runtime_config()
+    model_id = os.environ.get("BEDROCK_MODEL_ID", "")
+    bottle_reader = select_bottle_reader(model_id)
+    model_id = _validate_runtime_config(model_id)
     request_id = _request_id(event, context)
     logger = get_logger("drink-log-analyze", correlation_id=extract_correlation_id(event) or request_id)
     logger.log_api_request(
@@ -603,6 +643,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             user_id=user_id,
             s3_key=s3_key,
             model_id=model_id,
+            bottle_reader=bottle_reader,
             context=context,
             started=started,
             logger=logger,

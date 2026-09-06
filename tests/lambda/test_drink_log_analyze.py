@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 from PIL import Image
 
 from tests.lambda_module_loader import load_lambda_module
@@ -249,7 +249,11 @@ def _event(key):
 def _wire_handler(monkeypatch, dynamodb, s3, bedrock):
     monkeypatch.setattr(analyze, "get_dynamodb_resource", lambda: dynamodb)
     monkeypatch.setattr(analyze, "get_s3_client", lambda: s3)
-    monkeypatch.setattr(analyze, "_bedrock_client", lambda timeout: bedrock)
+    monkeypatch.setattr(
+        analyze.BedrockBottleReader,
+        "_bedrock_client",
+        staticmethod(lambda timeout: bedrock),
+    )
 
 
 @pytest.mark.parametrize(
@@ -261,11 +265,10 @@ def _wire_handler(monkeypatch, dynamodb, s3, bedrock):
 )
 def test_fenced_and_plain_json_are_accepted(monkeypatch, text):
     bedrock = Bedrock([text])
-    monkeypatch.setattr(analyze, "_bedrock_client", lambda timeout: bedrock)
+    reader = analyze.BedrockBottleReader(SONNET_MODEL_ID)
+    monkeypatch.setattr(reader, "_bedrock_client", lambda timeout: bedrock)
 
-    result = analyze._invoke_model(
-        SONNET_MODEL_ID, b"jpeg", Context(), analyze.time.monotonic()
-    )
+    result = reader.read(b"jpeg", timeout_seconds=20)
 
     assert result == {
         "whiskeys": [],
@@ -277,6 +280,39 @@ def test_fenced_and_plain_json_are_accepted(monkeypatch, text):
         "temperature": 0,
     }
     assert bedrock.calls[0]["modelId"] == SONNET_MODEL_ID
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        BotoCoreError(),
+        ClientError(
+            {"Error": {"Code": "ThrottlingException", "Message": "throttled"}},
+            "Converse",
+        ),
+    ],
+)
+def test_bedrock_reader_maps_aws_errors_to_none(monkeypatch, failure):
+    class FailingBedrock:
+        def converse(self, **kwargs):
+            del kwargs
+            raise failure
+
+    reader = analyze.BedrockBottleReader(SONNET_MODEL_ID)
+    monkeypatch.setattr(reader, "_bedrock_client", lambda timeout: FailingBedrock())
+
+    assert reader.read(b"jpeg", timeout_seconds=20) is None
+
+
+def test_bedrock_reader_maps_json_errors_to_empty_dict(monkeypatch):
+    reader = analyze.BedrockBottleReader(SONNET_MODEL_ID)
+    monkeypatch.setattr(
+        reader,
+        "_bedrock_client",
+        lambda timeout: Bedrock(["not-json"]),
+    )
+
+    assert reader.read(b"jpeg", timeout_seconds=20) == {}
 
 
 def test_prompt_requires_llm_first_multi_bottle_non_inventing_output():
@@ -1021,16 +1057,71 @@ def test_mock_ai_output_uses_valid_new_schema(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "local")
     monkeypatch.setenv("MOCK_AI", "1")
 
-    result = analyze._invoke_model(
-        SONNET_MODEL_ID,
-        b"jpeg",
-        Context(),
-        analyze.time.monotonic(),
-    )
+    result = analyze.LocalBottleReader().read(b"jpeg", timeout_seconds=20)
 
     assert set(result) == {"whiskeys", "serving_style", "glass_type"}
     assert result["whiskeys"][0]["name_ja"] == "モックウイスキー"
     assert analyze._validate_model_output(result) == result
+
+
+@pytest.mark.parametrize(
+    ("environment", "flag", "expected_type"),
+    [
+        ("local", "1", analyze.LocalBottleReader),
+        ("local", "", analyze.BedrockBottleReader),
+        ("dev", "", analyze.BedrockBottleReader),
+    ],
+)
+def test_bottle_reader_selector_uses_local_only_with_local_flag(
+    monkeypatch,
+    environment,
+    flag,
+    expected_type,
+):
+    monkeypatch.setenv("ENVIRONMENT", environment)
+    if flag:
+        monkeypatch.setenv("MOCK_AI", flag)
+    else:
+        monkeypatch.delenv("MOCK_AI", raising=False)
+
+    assert isinstance(analyze.select_bottle_reader(), expected_type)
+
+
+def test_bottle_reader_selector_rejects_mock_flag_outside_local(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "dev")
+    monkeypatch.setenv("MOCK_AI", "1")
+
+    with pytest.raises(
+        RuntimeError,
+        match="^MOCK_AI and MOCK_PLACES are permitted only in local$",
+    ):
+        analyze.select_bottle_reader()
+
+
+def test_bottle_reader_guard_runs_before_authentication(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "dev")
+    monkeypatch.setenv("MOCK_AI", "1")
+    event = _event(f"tmp/user-1/{uuid.uuid4()}.jpg")
+    event["requestContext"]["authorizer"] = {}
+
+    with pytest.raises(RuntimeError, match="local"):
+        analyze.lambda_handler(event, Context())
+
+
+def test_invoke_budget_exhaustion_skips_injected_reader():
+    class UnexpectedReader:
+        def read(self, image, *, timeout_seconds):
+            pytest.fail("reader must not be called")
+
+    assert (
+        analyze._invoke_model(
+            UnexpectedReader(),
+            b"jpeg",
+            Context(remaining=1_000),
+            analyze.time.monotonic(),
+        )
+        is None
+    )
 
 
 def test_master_snapshot_reads_every_page_and_uses_required_projection():
@@ -1199,9 +1290,9 @@ def test_invalid_magic_bytes_are_rejected_before_bedrock(monkeypatch):
     monkeypatch.setattr(analyze, "get_dynamodb_resource", lambda: dynamodb)
     monkeypatch.setattr(analyze, "get_s3_client", lambda: s3)
     monkeypatch.setattr(
-        analyze,
+        analyze.BedrockBottleReader,
         "_bedrock_client",
-        lambda timeout: pytest.fail("must not invoke"),
+        staticmethod(lambda timeout: pytest.fail("must not invoke")),
     )
 
     response = analyze.lambda_handler(_event(key), Context())
@@ -1223,9 +1314,9 @@ def test_counter_write_failure_is_fail_closed(monkeypatch):
     monkeypatch.setattr(analyze, "get_dynamodb_resource", lambda: dynamodb)
     monkeypatch.setattr(analyze, "get_s3_client", lambda: s3)
     monkeypatch.setattr(
-        analyze,
+        analyze.BedrockBottleReader,
         "_bedrock_client",
-        lambda timeout: pytest.fail("must not invoke"),
+        staticmethod(lambda timeout: pytest.fail("must not invoke")),
     )
 
     response = analyze.lambda_handler(_event(key), Context())
@@ -1239,9 +1330,9 @@ def test_low_remaining_time_consumes_user_request_but_returns_empty_200(monkeypa
     monkeypatch.setattr(analyze, "get_dynamodb_resource", lambda: dynamodb)
     monkeypatch.setattr(analyze, "get_s3_client", lambda: MemoryS3(key, _png_bytes()))
     monkeypatch.setattr(
-        analyze,
+        analyze.BedrockBottleReader,
         "_bedrock_client",
-        lambda timeout: pytest.fail("must not invoke"),
+        staticmethod(lambda timeout: pytest.fail("must not invoke")),
     )
 
     response = analyze.lambda_handler(_event(key), Context(remaining=1_000))

@@ -89,7 +89,11 @@ def environment(monkeypatch):
     monkeypatch.delenv("MOCK_AI", raising=False)
     monkeypatch.delenv("MOCK_PLACES", raising=False)
     monkeypatch.setattr(places, "_PLACES_API_KEY", None)
-    monkeypatch.setattr(places, "_load_api_key", lambda: "secret-key")
+    monkeypatch.setattr(
+        places.GooglePlaceDirectory,
+        "_load_api_key",
+        lambda self: "secret-key",
+    )
 
 
 def _event(path, body):
@@ -295,8 +299,13 @@ def test_secret_schema_is_strict_and_cached(monkeypatch):
     monkeypatch.setenv("PLACES_SECRET_NAME", "places-test")
     monkeypatch.setattr(places, "_PLACES_API_KEY", None)
     monkeypatch.setattr(places, "get_boto3_client", lambda service: Secrets())
-    assert places._load_api_key() == "abc"
-    assert places._load_api_key() == "abc"
+    monkeypatch.setattr(
+        places.requests,
+        "post",
+        lambda *args, **kwargs: FakeResponse({"places": []}),
+    )
+    assert places.GooglePlaceDirectory().search_nearby(35, 139) == []
+    assert places.GooglePlaceDirectory().search_nearby(35, 139) == []
     assert calls == [{"SecretId": "places-test"}]
 
 
@@ -315,6 +324,118 @@ def test_mock_guard_and_local_deterministic_flow(monkeypatch):
     )
     assert response["statusCode"] == 200
     assert json.loads(response["body"])[0]["place_id"] == "mock-place-1"
+
+
+def test_local_place_directory_returns_documented_fixtures():
+    directory = places.LocalPlaceDirectory()
+
+    assert directory.search_nearby(35, 139) == [
+        {
+            "place_id": "mock-place-1",
+            "display_name": "モックバー",
+            "formatted_address": "東京都モック区1-1",
+            "attributions": [],
+        }
+    ]
+    assert directory.place_detail("place-621", deadline=0) == {
+        "display_name": "モック店舗 place-621",
+        "attributions": [],
+    }
+
+
+@pytest.mark.parametrize(
+    ("environment", "flag", "expected_type"),
+    [
+        ("local", "1", places.LocalPlaceDirectory),
+        ("local", "", places.GooglePlaceDirectory),
+        ("dev", "", places.GooglePlaceDirectory),
+    ],
+)
+def test_place_directory_selector_uses_local_only_with_local_flag(
+    monkeypatch,
+    environment,
+    flag,
+    expected_type,
+):
+    monkeypatch.setenv("ENVIRONMENT", environment)
+    if flag:
+        monkeypatch.setenv("MOCK_PLACES", flag)
+    else:
+        monkeypatch.delenv("MOCK_PLACES", raising=False)
+
+    assert isinstance(places.select_place_directory(), expected_type)
+
+
+def test_place_directory_selector_rejects_mock_flag_outside_local(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "dev")
+    monkeypatch.setenv("MOCK_PLACES", "1")
+
+    with pytest.raises(
+        RuntimeError,
+        match="^MOCK_AI and MOCK_PLACES are permitted only in local$",
+    ):
+        places.select_place_directory()
+
+
+def test_mock_guard_runs_before_authentication(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "dev")
+    monkeypatch.setenv("MOCK_PLACES", "1")
+    event = _event("/api/drink-logs/places", {"lat": 35, "lng": 139})
+    event["requestContext"]["authorizer"] = {}
+
+    with pytest.raises(RuntimeError, match="local"):
+        places.lambda_handler(event, Context())
+
+
+def test_google_secret_lookup_stays_after_authentication(monkeypatch):
+    monkeypatch.setattr(
+        places.GooglePlaceDirectory,
+        "_load_api_key",
+        lambda self: pytest.fail("must not load secret"),
+    )
+    event = _event("/api/drink-logs/places", {"lat": 35, "lng": 139})
+    event["requestContext"]["authorizer"] = {}
+
+    response = places.lambda_handler(event, Context())
+
+    assert response["statusCode"] == 401
+
+
+def test_resolve_places_uses_injected_directory_without_mock_environment(monkeypatch):
+    records = [
+        {"id": "log-1", "user_id": "user-1", "store": {"place_id": "place-1"}}
+    ]
+    dynamodb = FakeDynamoDB(records)
+
+    class FakeDirectory:
+        def search_nearby(self, lat, lng, *, deadline=None):
+            raise AssertionError("nearby search is not used for resolution")
+
+        def place_detail(self, place_id, *, deadline):
+            assert place_id == "place-1"
+            return {"display_name": "注入した店舗", "attributions": []}
+
+    for name in ("ENVIRONMENT", "MOCK_AI", "MOCK_PLACES", "PLACES_SECRET_NAME"):
+        monkeypatch.delenv(name, raising=False)
+
+    result = places.resolve_places(
+        dynamodb,
+        drinklogs_table_name="DrinkLogs-test",
+        app_state_table_name="AppState-test",
+        user_id="user-1",
+        items=[{"log_id": "log-1", "place_id": "place-1"}],
+        directory=FakeDirectory(),
+        deadline=places.time.monotonic() + 5,
+    )
+
+    assert result == [
+        {
+            "log_id": "log-1",
+            "display_name": "注入した店舗",
+            "name_source": "google",
+            "attributions": [],
+        }
+    ]
 
 
 def test_places_counter_write_failure_is_fail_closed(monkeypatch):
@@ -368,4 +489,4 @@ def test_secret_schema_rejects_missing_malformed_and_extra_fields(monkeypatch, s
     monkeypatch.setattr(places, "_PLACES_API_KEY", None)
     monkeypatch.setattr(places, "get_boto3_client", lambda service: Secrets())
     with pytest.raises(RuntimeError):
-        places._load_api_key()
+        places.GooglePlaceDirectory().search_nearby(35, 139)
