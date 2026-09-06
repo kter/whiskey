@@ -28,7 +28,7 @@ try:
     from whiskey_common.images import ImageNormalizationError, normalize_image, sniff_format
     from whiskey_common.jwt_utils import extract_user_id_from_event
     from whiskey_common.logger import extract_correlation_id, get_logger
-    from whiskey_common.mock_guard import environment_flag_is_set, validate_mock_guard
+    from whiskey_common.mock_guard import local_fixture_enabled, validate_mock_guard
     from whiskey_common.responses import create_response
 except ModuleNotFoundError as exc:
     if exc.name != "whiskey_common":
@@ -46,7 +46,7 @@ except ModuleNotFoundError as exc:
     from whiskey_common.images import ImageNormalizationError, normalize_image, sniff_format
     from whiskey_common.jwt_utils import extract_user_id_from_event
     from whiskey_common.logger import extract_correlation_id, get_logger
-    from whiskey_common.mock_guard import environment_flag_is_set, validate_mock_guard
+    from whiskey_common.mock_guard import local_fixture_enabled, validate_mock_guard
     from whiskey_common.responses import create_response
 
 
@@ -100,11 +100,11 @@ class OwnershipError(Exception):
     """Raised when an upload key is outside the caller's namespace."""
 
 
-class BottleReader(Protocol):
-    """Bottle-reading interface used by the analysis workflow."""
+class AnalysisReader(Protocol):
+    """Analysis-reading interface used by the analysis workflow."""
 
     def read(self, image: bytes, *, timeout_seconds: float) -> dict[str, Any] | None:
-        """Read bottle details from a normalized image."""
+        """Return a raw Analysis Result payload for a normalized image."""
         ...
 
 
@@ -119,9 +119,8 @@ def _rfc3339(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _validate_runtime_config(model_id: str | None = None) -> str:
-    if model_id is None:
-        model_id = os.environ.get("BEDROCK_MODEL_ID", "")
+def _validate_runtime_config() -> str:
+    model_id = os.environ.get("BEDROCK_MODEL_ID", "")
     allowlist = {
         value.strip()
         for value in os.environ.get("BEDROCK_MODEL_ALLOWLIST", "").split(",")
@@ -267,8 +266,8 @@ def _remaining_budget_ms(context: Any, started: float) -> int:
     return min(wall_remaining, lambda_remaining) - INVOKE_SAFETY_MS
 
 
-class BedrockBottleReader:
-    """Amazon Bedrock adapter for bottle analysis."""
+class BedrockAnalysisReader:
+    """Amazon Bedrock adapter for Analysis Results."""
 
     def __init__(self, model_id: str) -> None:
         self._model_id = model_id
@@ -311,11 +310,11 @@ class BedrockBottleReader:
         return _validate_model_output(parsed) or {}
 
 
-class LocalBottleReader:
-    """Deterministic local adapter for bottle analysis."""
+class LocalAnalysisReader:
+    """Deterministic local adapter for Analysis Results."""
 
     def read(self, image: bytes, *, timeout_seconds: float) -> dict[str, Any] | None:
-        """Return the local bottle-analysis fixture."""
+        """Return the local Analysis Result fixture."""
         del image, timeout_seconds
         return {
             "whiskeys": [
@@ -330,16 +329,16 @@ class LocalBottleReader:
         }
 
 
-def select_bottle_reader(model_id: str | None = None) -> BottleReader:
-    """Select a bottle reader from the current invocation environment."""
+def select_analysis_reader(model_id: str) -> AnalysisReader:
+    """Select an Analysis Result reader from the current invocation environment."""
     validate_mock_guard()
-    if os.environ.get("ENVIRONMENT") == "local" and environment_flag_is_set("MOCK_AI"):
-        return LocalBottleReader()
-    return BedrockBottleReader(model_id or os.environ.get("BEDROCK_MODEL_ID", ""))
+    if local_fixture_enabled("MOCK_AI"):
+        return LocalAnalysisReader()
+    return BedrockAnalysisReader(model_id)
 
 
 def _invoke_model(
-    reader: BottleReader,
+    reader: AnalysisReader,
     image: bytes,
     context: Any,
     started: float,
@@ -501,7 +500,7 @@ def analyze_upload(
     user_id: str,
     s3_key: str,
     model_id: str,
-    bottle_reader: BottleReader,
+    reader: AnalysisReader,
     context: Any,
     started: float,
     logger: Any = None,
@@ -541,7 +540,7 @@ def analyze_upload(
             user_request=False,
             remaining_ms=lambda: _remaining_budget_ms(context, started),
         )
-        analysis = _invoke_model(bottle_reader, normalized, context, started)
+        analysis = _invoke_model(reader, normalized, context, started)
         if analysis is None or analysis:
             break
     if not analysis:
@@ -617,9 +616,8 @@ def _request_id(event: Mapping[str, Any], context: Any) -> str:
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Handle POST /api/drink-logs/analyze."""
     started = time.monotonic()
-    model_id = os.environ.get("BEDROCK_MODEL_ID", "")
-    bottle_reader = select_bottle_reader(model_id)
-    model_id = _validate_runtime_config(model_id)
+    model_id = _validate_runtime_config()
+    reader = select_analysis_reader(model_id)
     request_id = _request_id(event, context)
     logger = get_logger("drink-log-analyze", correlation_id=extract_correlation_id(event) or request_id)
     logger.log_api_request(
@@ -643,7 +641,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             user_id=user_id,
             s3_key=s3_key,
             model_id=model_id,
-            bottle_reader=bottle_reader,
+            reader=reader,
             context=context,
             started=started,
             logger=logger,

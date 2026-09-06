@@ -250,7 +250,7 @@ def _wire_handler(monkeypatch, dynamodb, s3, bedrock):
     monkeypatch.setattr(analyze, "get_dynamodb_resource", lambda: dynamodb)
     monkeypatch.setattr(analyze, "get_s3_client", lambda: s3)
     monkeypatch.setattr(
-        analyze.BedrockBottleReader,
+        analyze.BedrockAnalysisReader,
         "_bedrock_client",
         staticmethod(lambda timeout: bedrock),
     )
@@ -265,7 +265,7 @@ def _wire_handler(monkeypatch, dynamodb, s3, bedrock):
 )
 def test_fenced_and_plain_json_are_accepted(monkeypatch, text):
     bedrock = Bedrock([text])
-    reader = analyze.BedrockBottleReader(SONNET_MODEL_ID)
+    reader = analyze.BedrockAnalysisReader(SONNET_MODEL_ID)
     monkeypatch.setattr(reader, "_bedrock_client", lambda timeout: bedrock)
 
     result = reader.read(b"jpeg", timeout_seconds=20)
@@ -298,14 +298,14 @@ def test_bedrock_reader_maps_aws_errors_to_none(monkeypatch, failure):
             del kwargs
             raise failure
 
-    reader = analyze.BedrockBottleReader(SONNET_MODEL_ID)
+    reader = analyze.BedrockAnalysisReader(SONNET_MODEL_ID)
     monkeypatch.setattr(reader, "_bedrock_client", lambda timeout: FailingBedrock())
 
     assert reader.read(b"jpeg", timeout_seconds=20) is None
 
 
 def test_bedrock_reader_maps_json_errors_to_empty_dict(monkeypatch):
-    reader = analyze.BedrockBottleReader(SONNET_MODEL_ID)
+    reader = analyze.BedrockAnalysisReader(SONNET_MODEL_ID)
     monkeypatch.setattr(
         reader,
         "_bedrock_client",
@@ -1057,22 +1057,31 @@ def test_mock_ai_output_uses_valid_new_schema(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "local")
     monkeypatch.setenv("MOCK_AI", "1")
 
-    result = analyze.LocalBottleReader().read(b"jpeg", timeout_seconds=20)
+    result = analyze.LocalAnalysisReader().read(b"jpeg", timeout_seconds=20)
 
-    assert set(result) == {"whiskeys", "serving_style", "glass_type"}
-    assert result["whiskeys"][0]["name_ja"] == "モックウイスキー"
+    assert result == {
+        "whiskeys": [
+            {
+                "name_ja": "モックウイスキー",
+                "name_en": "Mock Whisky",
+                "confidence": Decimal("0.9"),
+            }
+        ],
+        "serving_style": "NEAT",
+        "glass_type": "tumbler",
+    }
     assert analyze._validate_model_output(result) == result
 
 
 @pytest.mark.parametrize(
     ("environment", "flag", "expected_type"),
     [
-        ("local", "1", analyze.LocalBottleReader),
-        ("local", "", analyze.BedrockBottleReader),
-        ("dev", "", analyze.BedrockBottleReader),
+        ("local", "1", analyze.LocalAnalysisReader),
+        ("local", "", analyze.BedrockAnalysisReader),
+        ("dev", "", analyze.BedrockAnalysisReader),
     ],
 )
-def test_bottle_reader_selector_uses_local_only_with_local_flag(
+def test_analysis_reader_selector_uses_local_only_with_local_flag(
     monkeypatch,
     environment,
     flag,
@@ -1084,10 +1093,10 @@ def test_bottle_reader_selector_uses_local_only_with_local_flag(
     else:
         monkeypatch.delenv("MOCK_AI", raising=False)
 
-    assert isinstance(analyze.select_bottle_reader(), expected_type)
+    assert isinstance(analyze.select_analysis_reader(SONNET_MODEL_ID), expected_type)
 
 
-def test_bottle_reader_selector_rejects_mock_flag_outside_local(monkeypatch):
+def test_analysis_reader_selector_rejects_mock_flag_outside_local(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "dev")
     monkeypatch.setenv("MOCK_AI", "1")
 
@@ -1095,10 +1104,10 @@ def test_bottle_reader_selector_rejects_mock_flag_outside_local(monkeypatch):
         RuntimeError,
         match="^MOCK_AI and MOCK_PLACES are permitted only in local$",
     ):
-        analyze.select_bottle_reader()
+        analyze.select_analysis_reader(SONNET_MODEL_ID)
 
 
-def test_bottle_reader_guard_runs_before_authentication(monkeypatch):
+def test_analysis_reader_guard_runs_before_authentication(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "dev")
     monkeypatch.setenv("MOCK_AI", "1")
     event = _event(f"tmp/user-1/{uuid.uuid4()}.jpg")
@@ -1270,6 +1279,18 @@ def test_non_allowlisted_model_and_nonlocal_mock_are_startup_errors(monkeypatch)
         analyze.lambda_handler(_event(f"tmp/user-1/{uuid.uuid4()}.jpg"), Context())
 
 
+def test_model_id_is_validated_before_reader_selection(monkeypatch):
+    monkeypatch.setenv("BEDROCK_MODEL_ID", "jp.unapproved")
+    monkeypatch.setattr(
+        analyze,
+        "select_analysis_reader",
+        lambda model_id: pytest.fail(f"must not select reader for {model_id}"),
+    )
+
+    with pytest.raises(RuntimeError, match="ALLOWLIST"):
+        analyze.lambda_handler(_event(f"tmp/user-1/{uuid.uuid4()}.jpg"), Context())
+
+
 def test_ownership_is_rejected_before_aws_calls(monkeypatch):
     key = f"tmp/other/{uuid.uuid4()}.jpg"
     monkeypatch.setattr(
@@ -1290,7 +1311,7 @@ def test_invalid_magic_bytes_are_rejected_before_bedrock(monkeypatch):
     monkeypatch.setattr(analyze, "get_dynamodb_resource", lambda: dynamodb)
     monkeypatch.setattr(analyze, "get_s3_client", lambda: s3)
     monkeypatch.setattr(
-        analyze.BedrockBottleReader,
+        analyze.BedrockAnalysisReader,
         "_bedrock_client",
         staticmethod(lambda timeout: pytest.fail("must not invoke")),
     )
@@ -1314,7 +1335,7 @@ def test_counter_write_failure_is_fail_closed(monkeypatch):
     monkeypatch.setattr(analyze, "get_dynamodb_resource", lambda: dynamodb)
     monkeypatch.setattr(analyze, "get_s3_client", lambda: s3)
     monkeypatch.setattr(
-        analyze.BedrockBottleReader,
+        analyze.BedrockAnalysisReader,
         "_bedrock_client",
         staticmethod(lambda timeout: pytest.fail("must not invoke")),
     )
@@ -1330,7 +1351,7 @@ def test_low_remaining_time_consumes_user_request_but_returns_empty_200(monkeypa
     monkeypatch.setattr(analyze, "get_dynamodb_resource", lambda: dynamodb)
     monkeypatch.setattr(analyze, "get_s3_client", lambda: MemoryS3(key, _png_bytes()))
     monkeypatch.setattr(
-        analyze.BedrockBottleReader,
+        analyze.BedrockAnalysisReader,
         "_bedrock_client",
         staticmethod(lambda timeout: pytest.fail("must not invoke")),
     )

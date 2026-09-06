@@ -6,7 +6,6 @@ import concurrent.futures
 import json
 import math
 import os
-import threading
 import time
 from pathlib import Path
 from typing import Any, Mapping, Protocol
@@ -19,7 +18,7 @@ try:
     from whiskey_common.cost_guard import UsageBudget, UsageBudgetExceeded
     from whiskey_common.jwt_utils import extract_user_id_from_event
     from whiskey_common.logger import extract_correlation_id, get_logger
-    from whiskey_common.mock_guard import environment_flag_is_set, validate_mock_guard
+    from whiskey_common.mock_guard import local_fixture_enabled, validate_mock_guard
     from whiskey_common.responses import create_response
 except ModuleNotFoundError as exc:
     if exc.name != "whiskey_common":
@@ -31,7 +30,7 @@ except ModuleNotFoundError as exc:
     from whiskey_common.cost_guard import UsageBudget, UsageBudgetExceeded
     from whiskey_common.jwt_utils import extract_user_id_from_event
     from whiskey_common.logger import extract_correlation_id, get_logger
-    from whiskey_common.mock_guard import environment_flag_is_set, validate_mock_guard
+    from whiskey_common.mock_guard import local_fixture_enabled, validate_mock_guard
     from whiskey_common.responses import create_response
 
 
@@ -44,7 +43,6 @@ HANDLER_DEADLINE_SECONDS = 8.5
 DEADLINE_SAFETY_SECONDS = 0.5
 PLACEHOLDER_NAME = "店舗情報を取得できません"
 _PLACES_API_KEY: str | None = None
-_PLACES_API_KEY_LOCK = threading.Lock()
 
 
 class ValidationError(ValueError):
@@ -72,6 +70,10 @@ class UpstreamTimeout(UpstreamError):
 
 class PlaceDirectory(Protocol):
     """Directory interface used by the Places Lambda handler."""
+
+    def prepare(self) -> None:
+        """Prepare the directory before processing a request."""
+        ...
 
     def search_nearby(
         self,
@@ -160,10 +162,14 @@ def validate_resolve_input(body: Mapping[str, Any]) -> list[dict[str, str]]:
 
 
 class GooglePlaceDirectory:
-    """Google Places adapter with lazy, execution-environment API-key caching."""
+    """Google Places adapter with execution-environment API-key caching."""
 
     def __init__(self) -> None:
         self._api_key: str | None = None
+
+    def prepare(self) -> None:
+        """Load and cache the Google Places API key."""
+        self._load_api_key()
 
     def _load_api_key(self) -> str:
         global _PLACES_API_KEY
@@ -172,36 +178,29 @@ class GooglePlaceDirectory:
         if _PLACES_API_KEY is not None:
             self._api_key = _PLACES_API_KEY
             return self._api_key
-        with _PLACES_API_KEY_LOCK:
-            if _PLACES_API_KEY is None:
-                secret_name = os.environ.get("PLACES_SECRET_NAME")
-                if not secret_name:
-                    raise RuntimeError("PLACES_SECRET_NAME is required")
-                response = get_boto3_client("secretsmanager").get_secret_value(
-                    SecretId=secret_name
-                )
-                secret_string = response.get("SecretString")
-                if not isinstance(secret_string, str):
-                    raise RuntimeError("Places secret must contain SecretString JSON")
-                try:
-                    secret = json.loads(secret_string)
-                except json.JSONDecodeError as exc:
-                    raise RuntimeError("Places secret is not valid JSON") from exc
-                if (
-                    not isinstance(secret, dict)
-                    or set(secret) != {"apiKey"}
-                    or not isinstance(secret.get("apiKey"), str)
-                    or not secret["apiKey"].strip()
-                ):
-                    raise RuntimeError(
-                        "Places secret must have exactly one non-empty apiKey"
-                    )
-                _PLACES_API_KEY = secret["apiKey"]
-            api_key = _PLACES_API_KEY
-            if api_key is None:  # Defensive only; the branch above always assigns it.
-                raise RuntimeError("PLACES_SECRET_NAME is required")
-            self._api_key = api_key
-            return self._api_key
+        secret_name = os.environ.get("PLACES_SECRET_NAME")
+        if not secret_name:
+            raise RuntimeError("PLACES_SECRET_NAME is required")
+        response = get_boto3_client("secretsmanager").get_secret_value(
+            SecretId=secret_name
+        )
+        secret_string = response.get("SecretString")
+        if not isinstance(secret_string, str):
+            raise RuntimeError("Places secret must contain SecretString JSON")
+        try:
+            secret = json.loads(secret_string)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("Places secret is not valid JSON") from exc
+        if (
+            not isinstance(secret, dict)
+            or set(secret) != {"apiKey"}
+            or not isinstance(secret.get("apiKey"), str)
+            or not secret["apiKey"].strip()
+        ):
+            raise RuntimeError("Places secret must have exactly one non-empty apiKey")
+        _PLACES_API_KEY = secret["apiKey"]
+        self._api_key = _PLACES_API_KEY
+        return self._api_key
 
     @staticmethod
     def _attributions(value: Any) -> list[Any]:
@@ -327,6 +326,10 @@ class GooglePlaceDirectory:
 class LocalPlaceDirectory:
     """Deterministic local adapter for Places development flows."""
 
+    def prepare(self) -> None:
+        """Prepare the local fixture adapter without external work."""
+        pass
+
     def search_nearby(
         self,
         lat: float,
@@ -354,9 +357,7 @@ class LocalPlaceDirectory:
 def select_place_directory() -> PlaceDirectory:
     """Select a Places adapter from the current invocation environment."""
     validate_mock_guard()
-    if os.environ.get("ENVIRONMENT") == "local" and environment_flag_is_set(
-        "MOCK_PLACES"
-    ):
+    if local_fixture_enabled("MOCK_PLACES"):
         return LocalPlaceDirectory()
     return GooglePlaceDirectory()
 
@@ -494,6 +495,9 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     user_id = extract_user_id_from_event(event)
     if not user_id:
         return create_response(401, {"error": "Authentication required"}, event=event, private=True)
+    # Prepare the Places directory only after the caller is authenticated, so
+    # unauthenticated requests never trigger a Secrets Manager lookup.
+    directory.prepare()
     try:
         request_body = _parse_json_body(event)
     except ValidationError as exc:

@@ -289,6 +289,7 @@ def test_resolve_rejects_foreign_or_mismatched_log_before_counter_and_http(monke
 
 def test_secret_schema_is_strict_and_cached(monkeypatch):
     calls = []
+    api_keys = []
 
     class Secrets:
         def get_secret_value(self, **kwargs):
@@ -299,14 +300,21 @@ def test_secret_schema_is_strict_and_cached(monkeypatch):
     monkeypatch.setenv("PLACES_SECRET_NAME", "places-test")
     monkeypatch.setattr(places, "_PLACES_API_KEY", None)
     monkeypatch.setattr(places, "get_boto3_client", lambda service: Secrets())
-    monkeypatch.setattr(
-        places.requests,
-        "post",
-        lambda *args, **kwargs: FakeResponse({"places": []}),
-    )
-    assert places.GooglePlaceDirectory().search_nearby(35, 139) == []
-    assert places.GooglePlaceDirectory().search_nearby(35, 139) == []
+
+    def post(*args, **kwargs):
+        del args
+        api_keys.append(kwargs["headers"]["X-Goog-Api-Key"])
+        return FakeResponse({"places": []})
+
+    monkeypatch.setattr(places.requests, "post", post)
+    first_directory = places.GooglePlaceDirectory()
+    first_directory.prepare()
+    assert first_directory.search_nearby(35, 139) == []
+    second_directory = places.GooglePlaceDirectory()
+    second_directory.prepare()
+    assert second_directory.search_nearby(35, 139) == []
     assert calls == [{"SecretId": "places-test"}]
+    assert api_keys == ["abc", "abc"]
 
 
 def test_mock_guard_and_local_deterministic_flow(monkeypatch):
@@ -399,6 +407,36 @@ def test_google_secret_lookup_stays_after_authentication(monkeypatch):
     response = places.lambda_handler(event, Context())
 
     assert response["statusCode"] == 401
+
+
+@pytest.mark.parametrize(
+    ("path", "body"),
+    [
+        ("/api/drink-logs/places", {"lat": 35, "lng": 139}),
+        (
+            "/api/drink-logs/places/resolve",
+            {"items": [{"log_id": "log-1", "place_id": "place-1"}]},
+        ),
+    ],
+)
+def test_secret_lookup_runtime_error_propagates(monkeypatch, path, body):
+    def fail_secret_lookup(self):
+        del self
+        raise RuntimeError("secret misconfigured")
+
+    monkeypatch.setattr(
+        places.GooglePlaceDirectory,
+        "_load_api_key",
+        fail_secret_lookup,
+    )
+    monkeypatch.setattr(
+        places,
+        "get_dynamodb_resource",
+        lambda: pytest.fail("must not create DynamoDB resource"),
+    )
+
+    with pytest.raises(RuntimeError, match="secret misconfigured"):
+        places.lambda_handler(_event(path, body), Context())
 
 
 def test_resolve_places_uses_injected_directory_without_mock_environment(monkeypatch):
