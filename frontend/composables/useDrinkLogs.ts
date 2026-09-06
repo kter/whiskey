@@ -1,6 +1,5 @@
 import { useApi } from '~/composables/useApi'
 
-
 export interface DrinkLogCandidate {
   brand_text: string
   name_ja?: string
@@ -177,6 +176,9 @@ export const mergeDrinkLogs = (...collections: DrinkLog[][]) => {
 
 export const useDrinkLogs = () => {
   const api = useApi()
+  // Deliberately no shared `loading` / `error` here, unlike the whiskey
+  // composables: `useState` is global across pages, so a per-page spinner or
+  // banner cannot be driven from it. Each page owns its own refs instead.
   const logs = useState<DrinkLog[]>('drink-logs', () => [])
 
   const getUploadUrl = (contentType: string) => api.request<UploadUrlResponse>('/api/drink-logs/upload-url', {
