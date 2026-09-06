@@ -3,35 +3,25 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import sys
 import time
-import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
-from botocore.exceptions import ClientError
-
 try:
     from whiskey_common.clients import get_dynamodb_resource, get_s3_client
     from whiskey_common.cost_guard import (
         BudgetTransactionConflict,
-        UsageBudget,
         UsageBudgetExceeded,
-    )
-    from whiskey_common.images import (
-        ImageNormalizationError,
-        normalize_image,
-        sniff_format,
     )
     from whiskey_common.jwt_utils import extract_user_id_from_event
     from whiskey_common.logger import extract_correlation_id, get_logger
     from whiskey_common.responses import create_response
-    from whiskey_common.scan_utils import decode_next_token, encode_next_token
+    from whiskey_common.scan_utils import decode_next_token
 except ModuleNotFoundError as exc:
     if exc.name != "whiskey_common":
         raise
@@ -39,19 +29,21 @@ except ModuleNotFoundError as exc:
     from whiskey_common.clients import get_dynamodb_resource, get_s3_client
     from whiskey_common.cost_guard import (
         BudgetTransactionConflict,
-        UsageBudget,
         UsageBudgetExceeded,
-    )
-    from whiskey_common.images import (
-        ImageNormalizationError,
-        normalize_image,
-        sniff_format,
     )
     from whiskey_common.jwt_utils import extract_user_id_from_event
     from whiskey_common.logger import extract_correlation_id, get_logger
     from whiskey_common.responses import create_response
-    from whiskey_common.scan_utils import decode_next_token, encode_next_token
+    from whiskey_common.scan_utils import decode_next_token
 
+from drink_log_store import (
+    ANALYSIS_ID_RE,
+    CONTENT_TYPES,
+    SERVING_STYLES,
+    AnalysisConflict,
+    DrinkLogStore,
+    ValidationError,
+)
 from lifecycle import (
     CreateConflict,
     DrinkLogLifecycle,
@@ -62,46 +54,13 @@ RateLimitExceeded = UsageBudgetExceeded
 TransientConflict = BudgetTransactionConflict
 
 
-SERVING_STYLES = {"NEAT", "ROCKS", "WATER", "SODA", "COCKTAIL"}
-CONTENT_TYPES = {
-    "image/jpeg": ("jpeg", "jpg"),
-    "image/png": ("png", "png"),
-    "image/webp": ("webp", "webp"),
-}
 UPDATE_FIELDS = {"brand_text", "store", "notes", "rating", "serving_style"}
 CREATE_FIELDS = {"analysis_id", "candidate_index", "datetime"} | UPDATE_FIELDS
-# Strip internal bookkeeping and raw bucket-key structure from API responses.
-# Clients receive a presigned `image_url` instead of the raw S3 keys; the quota
-# and delete-lifecycle fields are server-side reconciliation state only.
-INTERNAL_FIELDS = {
-    "_completion",
-    "content_type",
-    "tmp_etag",
-    "s3_image_key",
-    "tmp_s3_key",
-    "quota_allocated",
-    "delete_started_at",
-}
 DEFAULT_PAGE_LIMIT = 20
 MAX_PAGE_LIMIT = 50
-MAX_TIMELINE_PAGE_QUERIES = 10
-PRESIGNED_POST_SECONDS = 120
-PRESIGNED_GET_SECONDS = 900
-UUID_TEXT = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}"
-ANALYSIS_ID_RE = re.compile(rf"^(?:ai-result:([^:]+):)?({UUID_TEXT})$")
 RFC3339_WITH_OFFSET_RE = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$"
 )
-
-
-class ValidationError(ValueError):
-    def __init__(self, fields: Mapping[str, str]):
-        super().__init__("Validation failed")
-        self.fields = dict(fields)
-
-
-class AnalysisConflict(Exception):
-    pass
 
 
 def _utc_now() -> datetime:
@@ -318,620 +277,23 @@ def parse_timeline_query(
     return limit, start_key, filters
 
 
-def _analysis_identity(user_id: str, analysis_id: str) -> tuple[str, str]:
-    match = ANALYSIS_ID_RE.fullmatch(analysis_id)
-    if not match:
-        raise ValidationError({"analysis_id": "Must be a valid analysis result token"})
-    token_user, upload_uuid = match.groups()
-    if token_user is not None and token_user != user_id:
-        raise AnalysisConflict("Analysis result does not belong to caller")
-    upload_uuid = str(uuid.UUID(upload_uuid))
-    return f"ai-result:{user_id}:{upload_uuid}", upload_uuid
 
 
-def _extract_upload_uuid(s3_key: str, user_id: str) -> str:
-    pattern = re.compile(
-        rf"^tmp/{re.escape(user_id)}/({UUID_TEXT})\.(?:jpg|jpeg|png|webp)$"
-    )
-    match = pattern.fullmatch(s3_key)
-    if not match:
-        raise AnalysisConflict("Analysis result has an invalid upload key")
-    return str(uuid.UUID(match.group(1)))
 
 
-def create_upload_url(
-    dynamodb: Any,
-    s3: Any,
-    app_state_table_name: str,
-    bucket_name: str,
-    user_id: str,
-    content_type: str,
-) -> dict[str, Any]:
-    now_dt = _utc_now()
-    UsageBudget(dynamodb, app_state_table_name, _rfc3339).reserve_upload(
-        user_id,
-        now=now_dt,
-    )
-
-    _format, extension = CONTENT_TYPES[content_type]
-    key = f"tmp/{user_id}/{uuid.uuid4()}.{extension}"
-    max_bytes = int(os.environ.get("UPLOAD_MAX_BYTES", "3670016"))
-    # A captured form is pinned to one exact key. Reuse can only overwrite that
-    # object and cannot consume storage allocation or an expensive API. The
-    # residual risk is low-cost PUT requests during the 120-second validity
-    # window; request metrics and alarms monitor that unbounded request charge.
-    post = s3.generate_presigned_post(
-        Bucket=bucket_name,
-        Key=key,
-        Fields={"Content-Type": content_type},
-        Conditions=[
-            {"Content-Type": content_type},
-            ["content-length-range", 0, max_bytes],
-        ],
-        ExpiresIn=PRESIGNED_POST_SECONDS,
-    )
-    return {"upload_url": post["url"], "fields": post["fields"], "s3_key": key}
 
 
-def _candidate_brand(candidate: Any) -> str:
-    if isinstance(candidate, str):
-        brand = candidate
-    elif isinstance(candidate, Mapping):
-        brand = next(
-            (
-                candidate.get(key)
-                for key in ("brand_text", "name", "label")
-                if isinstance(candidate.get(key), str)
-            ),
-            "",
-        )
-    else:
-        brand = ""
-    if not brand or len(brand) > 200:
-        raise AnalysisConflict("Selected analysis candidate is invalid")
-    return brand
 
 
-def _completion_from_analysis(
-    result: Mapping[str, Any],
-    candidate: Any,
-    overrides: Mapping[str, Any],
-    *,
-    candidate_selected: bool,
-) -> dict[str, Any]:
-    brand_text = _candidate_brand(candidate) if candidate_selected else ""
-    whiskey_id = None
-    if isinstance(candidate, Mapping):
-        # The selected candidate is authoritative -- including when it has no
-        # match. analyze writes a top-level whiskey_id taken from candidates[0],
-        # so falling back to it makes picking the 2nd bottle in a multi-bottle
-        # photo inherit the 1st bottle's master ID and report brand_source
-        # "matched": the exact class of confidently-wrong record this design
-        # exists to prevent.
-        whiskey_id = candidate.get("whiskey_id") or candidate.get("matched_whiskey_id")
-    elif candidate_selected:
-        # Legacy analysis items whose candidate is not a Mapping (e.g. a bare
-        # string) still rely on the analysis-level value. Those sit in AppState
-        # under a 30-minute TTL, so the path has to keep working.
-        whiskey_id = result.get("whiskey_id") or result.get("matched_whiskey_id")
-    if whiskey_id is not None and (not isinstance(whiskey_id, str) or not whiskey_id):
-        raise AnalysisConflict("Matched whiskey ID is invalid")
-    serving_style = result.get("serving_style", "NEAT")
-    if serving_style not in SERVING_STYLES:
-        raise AnalysisConflict("Analysis serving style is invalid")
-
-    completion: dict[str, Any] = {
-        "brand_text": brand_text,
-        "brand_source": "manual" if not candidate_selected else ("matched" if whiskey_id else "ai"),
-        "serving_style": serving_style,
-        "store": {"name": ""},
-    }
-    if whiskey_id:
-        completion["whiskey_id"] = whiskey_id
-    model_id = result.get("model_id")
-    confidence = result.get("confidence")
-    if isinstance(candidate, Mapping) and candidate.get("confidence") is not None:
-        confidence = candidate.get("confidence")
-    if confidence is not None or (candidate_selected and model_id is not None):
-        if not isinstance(model_id, str) or not model_id:
-            raise AnalysisConflict("Analysis model ID is invalid")
-        try:
-            confidence_decimal = Decimal(str(confidence))
-        except (InvalidOperation, TypeError, ValueError) as exc:
-            raise AnalysisConflict("Analysis confidence is invalid") from exc
-        if not confidence_decimal.is_finite() or not Decimal("0") <= confidence_decimal <= Decimal("1"):
-            raise AnalysisConflict("Analysis confidence is invalid")
-        completion["ai"] = {"model_id": model_id, "confidence": confidence_decimal}
-
-    if "brand_text" in overrides:
-        completion["brand_text"] = overrides["brand_text"]
-        completion["brand_source"] = "manual"
-        completion.pop("whiskey_id", None)
-    if "serving_style" in overrides:
-        completion["serving_style"] = overrides["serving_style"]
-    if "store" in overrides:
-        store = {"name": ""}
-        if "name" in overrides["store"]:
-            store["name"] = overrides["store"]["name"]
-        place_id = overrides["store"].get("place_id")
-        if place_id is not None:
-            store["place_id"] = place_id
-        completion["store"] = store
-    for field in ("rating", "notes"):
-        if field in overrides:
-            completion[field] = overrides[field]
-    return completion
 
 
-def _prepare_initial_record(
-    dynamodb: Any,
-    s3: Any,
-    app_state_table_name: str,
-    bucket_name: str,
-    user_id: str,
-    analysis_pk: str,
-    upload_uuid: str,
-    candidate_index: int | None,
-    overrides: Mapping[str, Any] | None = None,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    result = dynamodb.Table(app_state_table_name).get_item(
-        Key={"pk": analysis_pk},
-        ConsistentRead=True,
-    ).get("Item")
-    now_epoch = int(_utc_now().timestamp())
-    if not result or result.get("user") != user_id:
-        raise AnalysisConflict("Analysis result is missing or already consumed")
-    try:
-        expires_at = int(result["expires_at"])
-    except (KeyError, TypeError, ValueError, OverflowError) as exc:
-        raise AnalysisConflict("Analysis result expiry is invalid") from exc
-    if expires_at <= now_epoch:
-        raise AnalysisConflict("Analysis result has expired; analyze the image again")
-    s3_key = result.get("s3_key")
-    if not isinstance(s3_key, str) or _extract_upload_uuid(s3_key, user_id) != upload_uuid:
-        raise AnalysisConflict("Analysis result upload binding is invalid")
-    etag_name = "ETag" if "ETag" in result else "etag"
-    etag = result.get(etag_name)
-    if not isinstance(etag, str) or not etag:
-        raise AnalysisConflict("Analysis result ETag is invalid")
-    candidate = None
-    if candidate_index is not None:
-        candidates = result.get("candidates")
-        if not isinstance(candidates, list) or candidate_index >= len(candidates):
-            raise AnalysisConflict("Selected analysis candidate is unavailable")
-        candidate = candidates[candidate_index]
-    completion = _completion_from_analysis(
-        result,
-        candidate,
-        overrides or {},
-        candidate_selected=candidate_index is not None,
-    )
-
-    try:
-        head = s3.head_object(Bucket=bucket_name, Key=s3_key)
-    except ClientError as exc:
-        if exc.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}:
-            raise AnalysisConflict("Uploaded image is missing; upload and analyze it again") from exc
-        raise
-    if head.get("ETag") != etag:
-        raise AnalysisConflict("Uploaded image changed after analysis")
-    content_type = head.get("ContentType")
-    if content_type not in CONTENT_TYPES:
-        raise AnalysisConflict("Uploaded image content type is unsupported")
-    if int(head.get("ContentLength", 0)) > int(os.environ.get("UPLOAD_MAX_BYTES", "3670016")):
-        raise AnalysisConflict("Uploaded image exceeds the upload limit")
-
-    now = _rfc3339(_utc_now())
-    pending = {
-        "id": derive_drink_log_id(user_id, upload_uuid),
-        "user_id": user_id,
-        "status": "pending",
-        "datetime": (overrides or {}).get("datetime", now),
-        "tmp_s3_key": s3_key,
-        "tmp_etag": etag,
-        "content_type": content_type,
-        "quota_allocated": True,
-        "_completion": completion,
-        "created_at": now,
-        "updated_at": now,
-    }
-    condition = "#user = :user AND s3_key = :s3_key AND #etag = :etag"
-    names = {"#user": "user", "#etag": etag_name}
-    values = {
-        ":user": user_id,
-        ":s3_key": s3_key,
-        ":etag": etag,
-        ":now_epoch": now_epoch,
-    }
-    if candidate_index is not None:
-        condition += f" AND #candidates[{candidate_index}] = :candidate"
-        names["#candidates"] = "candidates"
-        values[":candidate"] = candidate
-    condition += " AND expires_at > :now_epoch"
-    consume = {
-        "Delete": {
-            "TableName": app_state_table_name,
-            "Key": {"pk": analysis_pk},
-            "ConditionExpression": condition,
-            "ExpressionAttributeNames": names,
-            "ExpressionAttributeValues": values,
-        }
-    }
-    return pending, consume
-
-
-def _read_s3_body(s3: Any, *, bucket_name: str, key: str, etag: str) -> bytes:
-    response = s3.get_object(Bucket=bucket_name, Key=key, IfMatch=etag)
-    body = response["Body"]
-    try:
-        return body.read()
-    finally:
-        body.close()
-
-
-def _is_missing_s3_error(exc: ClientError) -> bool:
-    return exc.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}
-
-
-def _finish_pending_create(
-    dynamodb: Any,
-    s3: Any,
-    drinklogs_table_name: str,
-    app_state_table_name: str,
-    bucket_name: str,
-    record: Mapping[str, Any],
-) -> dict[str, Any]:
-    lifecycle = DrinkLogLifecycle(
-        dynamodb,
-        s3,
-        drinklogs_table_name,
-        app_state_table_name,
-        bucket_name,
-    )
-    tmp_key = record.get("tmp_s3_key")
-    etag = record.get("tmp_etag")
-    content_type = record.get("content_type")
-    if not isinstance(tmp_key, str) or not isinstance(etag, str) or content_type not in CONTENT_TYPES:
-        raise CreateConflict("Pending record is incomplete")
-
-    try:
-        raw = _read_s3_body(s3, bucket_name=bucket_name, key=tmp_key, etag=etag)
-        actual_format = sniff_format(raw[:16])
-        expected_format = CONTENT_TYPES[content_type][0]
-        if actual_format != expected_format:
-            raise ImageNormalizationError("Image bytes do not match the declared content type")
-        normalized = normalize_image(
-            raw,
-            max_bytes=int(os.environ.get("IMAGE_MAX_BYTES", "1572864")),
-        )
-    except ImageNormalizationError as exc:
-        compensated = lifecycle.compensate_create(record, now=_utc_now())
-        winner = lifecycle.get(record["id"])
-        if not compensated and winner and winner.get("status") == "complete":
-            return winner
-        if not compensated and winner:
-            raise RuntimeError("Terminal image failure was not compensated") from exc
-        if compensated:
-            try:
-                s3.delete_object(Bucket=bucket_name, Key=tmp_key)
-            except ClientError:
-                # The record no longer references this object. The explicit
-                # tmp/ reconciliation pass will retry this recoverable cleanup.
-                pass
-        raise ValidationError({"image": str(exc)}) from exc
-    except ClientError as exc:
-        if _is_missing_s3_error(exc) or exc.response.get("Error", {}).get("Code") in {
-            "PreconditionFailed",
-            "412",
-        }:
-            compensated = lifecycle.compensate_create(record, now=_utc_now())
-            winner = lifecycle.get(record["id"])
-            if not compensated and winner and winner.get("status") == "complete":
-                return winner
-            if not compensated and winner:
-                raise RuntimeError("Changed image failure was not compensated") from exc
-            if compensated:
-                try:
-                    s3.delete_object(Bucket=bucket_name, Key=tmp_key)
-                except ClientError:
-                    # The tmp/ reconciler owns retry after record compensation.
-                    pass
-            raise ValidationError({"image": "Uploaded image is missing or changed"}) from exc
-        raise
-
-    upload_uuid = _extract_upload_uuid(tmp_key, record["user_id"])
-    attempt = uuid.uuid4().hex
-    final_key = f"logs/{record['user_id']}/{upload_uuid}-{attempt}.jpg"
-    s3.put_object(
-        Bucket=bucket_name,
-        Key=final_key,
-        Body=normalized,
-        ContentType="image/jpeg",
-        CacheControl="private, no-store",
-    )
-    completed = lifecycle.complete_create(record, final_key, now=_utc_now())
-    if completed is None:
-        winner = lifecycle.get(record["id"])
-        if not winner or winner.get("user_id") != record["user_id"]:
-            raise CreateConflict("Drink log disappeared during creation")
-        if winner.get("status") != "complete":
-            raise CreateConflict("Drink log is no longer creatable")
-        completed = winner
-
-    s3.delete_object(Bucket=bucket_name, Key=tmp_key)
-    if not lifecycle.object_absent(tmp_key):
-        raise RuntimeError("Temporary image deletion was not confirmed")
-    cleaned = lifecycle.remove_tmp_reference(record["id"], record["user_id"], tmp_key)
-    return cleaned or lifecycle.get(record["id"]) or completed
-
-
-def create_drink_log(
-    dynamodb: Any,
-    s3: Any,
-    drinklogs_table_name: str,
-    app_state_table_name: str,
-    bucket_name: str,
-    user_id: str,
-    data: Mapping[str, Any],
-) -> tuple[dict[str, Any], bool]:
-    analysis_pk, upload_uuid = _analysis_identity(user_id, data["analysis_id"])
-    record_id = derive_drink_log_id(user_id, upload_uuid)
-    lifecycle = DrinkLogLifecycle(
-        dynamodb,
-        s3,
-        drinklogs_table_name,
-        app_state_table_name,
-        bucket_name,
-    )
-
-    existing = lifecycle.get(record_id)
-    if existing:
-        if existing.get("user_id") != user_id:
-            raise KeyError(record_id)
-        if existing.get("status") == "complete":
-            return existing, False
-        if existing.get("status") == "pending":
-            return _finish_pending_create(
-                dynamodb,
-                s3,
-                drinklogs_table_name,
-                app_state_table_name,
-                bucket_name,
-                existing,
-            ), False
-        raise CreateConflict("Drink log is being deleted")
-
-    pending, consume = _prepare_initial_record(
-        dynamodb,
-        s3,
-        app_state_table_name,
-        bucket_name,
-        user_id,
-        analysis_pk,
-        upload_uuid,
-        data.get("candidate_index"),
-        data,
-    )
-    client = dynamodb.meta.client
-    try:
-        lifecycle.start_create(pending, consume, now=_utc_now())
-        created = True
-        current = pending
-    except client.exceptions.TransactionCanceledException as exc:
-        current = lifecycle.get(record_id)
-        if current:
-            if current.get("user_id") != user_id:
-                raise KeyError(record_id) from exc
-            if current.get("status") == "complete":
-                return current, False
-            if current.get("status") == "pending":
-                return _finish_pending_create(
-                    dynamodb,
-                    s3,
-                    drinklogs_table_name,
-                    app_state_table_name,
-                    bucket_name,
-                    current,
-                ), False
-        reasons = exc.response.get("CancellationReasons", [])
-        if not reasons:
-            raise RateLimitExceeded("create", "daily") from exc
-        if len(reasons) > 5 and reasons[5].get("Code") == "ConditionalCheckFailed":
-            raise AnalysisConflict("Analysis result is stale or already consumed") from exc
-        if reasons[0].get("Code") == "ConditionalCheckFailed":
-            raise CreateConflict("Concurrent creation did not expose a winner") from exc
-        raise
-
-    return _finish_pending_create(
-        dynamodb,
-        s3,
-        drinklogs_table_name,
-        app_state_table_name,
-        bucket_name,
-        current,
-    ), created
-
-
-def _safe_image_key(item: Mapping[str, Any], user_id: str) -> str | None:
-    key = item.get("s3_image_key")
-    if item.get("status") != "complete" or not isinstance(key, str):
-        return None
-    return key if key.startswith(f"logs/{user_id}/") else None
-
-
-def _public_record(item: Mapping[str, Any], s3: Any, bucket_name: str, user_id: str) -> dict[str, Any]:
-    result = {key: value for key, value in item.items() if key not in INTERNAL_FIELDS}
-    image_key = _safe_image_key(item, user_id)
-    if image_key:
-        result["image_url"] = s3.generate_presigned_url(
-            "get_object",
-            Params={
-                "Bucket": bucket_name,
-                "Key": image_key,
-                "ResponseCacheControl": "private, no-store",
-            },
-            ExpiresIn=PRESIGNED_GET_SECONDS,
-        )
-    return result
-
-
-def get_timeline(
-    dynamodb: Any,
-    s3: Any,
-    drinklogs_table_name: str,
-    bucket_name: str,
-    user_id: str,
-    limit: int,
-    start_key: dict[str, Any] | None,
-    filters: Mapping[str, str],
-) -> tuple[list[dict[str, Any]], str | None]:
-    table = dynamodb.Table(drinklogs_table_name)
-    items: list[dict[str, Any]] = []
-    cursor = start_key
-    next_token: str | None = None
-    max_pages = max(1, int(os.environ.get("TIMELINE_MAX_PAGES", str(MAX_TIMELINE_PAGE_QUERIES))))
-    for _ in range(max_pages):
-        names = {"#status": "status"}
-        values: dict[str, Any] = {":user_id": user_id, ":complete": "complete"}
-        clauses = ["#status = :complete"]
-        if "brand" in filters:
-            names["#brand"] = "brand_text"
-            values[":brand"] = filters["brand"]
-            clauses.append("contains(#brand, :brand)")
-        if "store" in filters:
-            names.update({"#store": "store", "#name": "name"})
-            values[":store"] = filters["store"]
-            clauses.append("contains(#store.#name, :store)")
-        if "place_id" in filters:
-            names.update({"#store": "store", "#place_id": "place_id"})
-            values[":place_id"] = filters["place_id"]
-            clauses.append("#store.#place_id = :place_id")
-        kwargs: dict[str, Any] = {
-            "IndexName": "UserDatetimeIndex",
-            "KeyConditionExpression": "user_id = :user_id",
-            "FilterExpression": " AND ".join(clauses),
-            "ExpressionAttributeNames": names,
-            "ExpressionAttributeValues": values,
-            "ScanIndexForward": False,
-            "Limit": max(1, limit - len(items)),
-        }
-        if cursor:
-            kwargs["ExclusiveStartKey"] = cursor
-        response = table.query(**kwargs)
-        for item in response.get("Items", []):
-            if item.get("status") == "complete" and item.get("user_id") == user_id:
-                items.append(_public_record(item, s3, bucket_name, user_id))
-                if len(items) == limit:
-                    break
-        cursor = response.get("LastEvaluatedKey")
-        if not cursor:
-            next_token = None
-            break
-        next_token = encode_next_token(cursor)
-        if len(items) == limit:
-            break
-    return items, next_token
-
-
-def get_owned_drink_log(
-    table: Any,
-    s3: Any,
-    bucket_name: str,
-    user_id: str,
-    record_id: str,
-) -> dict[str, Any] | None:
-    item = table.get_item(Key={"id": record_id}, ConsistentRead=True).get("Item")
-    if not item or item.get("user_id") != user_id or item.get("status") != "complete":
-        return None
-    return _public_record(item, s3, bucket_name, user_id)
-
-
-def update_drink_log(
-    table: Any,
-    user_id: str,
-    record_id: str,
-    data: Mapping[str, Any],
-) -> dict[str, Any] | None:
-    names = {"#owner": "user_id", "#status": "status", "#updated_at": "updated_at"}
-    values: dict[str, Any] = {
-        ":caller": user_id,
-        ":complete": "complete",
-        ":updated_at": _rfc3339(_utc_now()),
-    }
-    sets = ["#updated_at = :updated_at"]
-    removes: list[str] = []
-    for field in ("brand_text", "notes", "rating", "serving_style"):
-        if field in data:
-            names[f"#{field}"] = field
-            values[f":{field}"] = data[field]
-            sets.append(f"#{field} = :{field}")
-    if "brand_text" in data:
-        names["#brand_source"] = "brand_source"
-        values[":manual"] = "manual"
-        sets.append("#brand_source = :manual")
-        # 手入力で銘柄を直したなら、それ以前に照合された whiskey_id は別の商品を
-        # 指している。作成時の _completion_from_analysis は破棄しているので、
-        # 更新側も揃える。残すと訂正名と誤った ID が同居する。
-        names["#whiskey_id"] = "whiskey_id"
-        removes.append("#whiskey_id")
-    if "store" in data:
-        names.update({"#store": "store", "#name": "name", "#place_id": "place_id"})
-        store = data["store"]
-        if "name" in store:
-            values[":store_name"] = store["name"]
-            sets.append("#store.#name = :store_name")
-        if "place_id" in store:
-            if store["place_id"] is None:
-                removes.append("#store.#place_id")
-            else:
-                values[":place_id"] = store["place_id"]
-                sets.append("#store.#place_id = :place_id")
-    expression = f"SET {', '.join(sets)}"
-    if removes:
-        expression += f" REMOVE {', '.join(removes)}"
-    try:
-        response = table.update_item(
-            Key={"id": record_id},
-            UpdateExpression=expression,
-            ConditionExpression="#owner = :caller AND #status = :complete",
-            ExpressionAttributeNames=names,
-            ExpressionAttributeValues=values,
-            ReturnValues="ALL_NEW",
-        )
-        return response.get("Attributes")
-    except table.meta.client.exceptions.ConditionalCheckFailedException:
-        return None
-
-
-def delete_drink_log(
-    dynamodb: Any,
-    s3: Any,
-    drinklogs_table_name: str,
-    app_state_table_name: str,
-    bucket_name: str,
-    user_id: str,
-    record_id: str,
-) -> bool:
-    lifecycle = DrinkLogLifecycle(
-        dynamodb,
-        s3,
-        drinklogs_table_name,
-        app_state_table_name,
-        bucket_name,
-    )
-    return lifecycle.delete(user_id, record_id, now=_utc_now())
 
 
 @dataclass(frozen=True)
 class _RouteContext:
     event: dict[str, Any]
     query: Mapping[str, Any]
-    dynamodb: Any
-    s3: Any
-    table: Any
-    drinklogs_table_name: str
-    app_state_table_name: str
-    bucket_name: str
+    store: DrinkLogStore
     user_id: str
     record_id: Any
 
@@ -971,14 +333,7 @@ def _handle_upload_url(context: _RouteContext) -> _RouteResult:
         _VALIDATION_ERRORS,
     )
     result = _invoke_route_step(
-        lambda: create_upload_url(
-            context.dynamodb,
-            context.s3,
-            context.app_state_table_name,
-            context.bucket_name,
-            context.user_id,
-            content_type,
-        ),
+        lambda: context.store.create_upload_url(context.user_id, content_type),
         _UPLOAD_ERRORS,
     )
     return 200, result
@@ -986,12 +341,7 @@ def _handle_upload_url(context: _RouteContext) -> _RouteResult:
 
 def _handle_create(context: _RouteContext) -> _RouteResult:
     record, created = _invoke_route_step(
-        lambda: create_drink_log(
-            context.dynamodb,
-            context.s3,
-            context.drinklogs_table_name,
-            context.app_state_table_name,
-            context.bucket_name,
+        lambda: context.store.create_drink_log(
             context.user_id,
             validate_create_input(_parse_json_body(context.event)),
         ),
@@ -999,23 +349,12 @@ def _handle_create(context: _RouteContext) -> _RouteResult:
     )
     return (
         201 if created else 200,
-        _public_record(
-            record,
-            context.s3,
-            context.bucket_name,
-            context.user_id,
-        ),
+        context.store._public_record(record, context.user_id),
     )
 
 
 def _handle_detail(context: _RouteContext) -> _RouteResult:
-    record = get_owned_drink_log(
-        context.table,
-        context.s3,
-        context.bucket_name,
-        context.user_id,
-        context.record_id,
-    )
+    record = context.store.get_owned(context.user_id, context.record_id)
     if not record:
         return 404, {"error": "Drink log not found"}
     return 200, record
@@ -1026,11 +365,7 @@ def _handle_timeline(context: _RouteContext) -> _RouteResult:
         lambda: parse_timeline_query(context.query),
         _VALIDATION_ERRORS,
     )
-    records, next_token = get_timeline(
-        context.dynamodb,
-        context.s3,
-        context.drinklogs_table_name,
-        context.bucket_name,
+    records, next_token = context.store.get_timeline(
         context.user_id,
         limit,
         start_key,
@@ -1049,8 +384,7 @@ def _handle_update(context: _RouteContext) -> _RouteResult:
         lambda: validate_update_input(_parse_json_body(context.event)),
         _VALIDATION_ERRORS,
     )
-    record = update_drink_log(
-        context.table,
+    record = context.store.update(
         context.user_id,
         context.record_id,
         data,
@@ -1059,25 +393,12 @@ def _handle_update(context: _RouteContext) -> _RouteResult:
         return 404, {"error": "Drink log not found"}
     return (
         200,
-        _public_record(
-            record,
-            context.s3,
-            context.bucket_name,
-            context.user_id,
-        ),
+        context.store._public_record(record, context.user_id),
     )
 
 
 def _handle_delete(context: _RouteContext) -> _RouteResult:
-    deleted = delete_drink_log(
-        context.dynamodb,
-        context.s3,
-        context.drinklogs_table_name,
-        context.app_state_table_name,
-        context.bucket_name,
-        context.user_id,
-        context.record_id,
-    )
+    deleted = context.store.delete(context.user_id, context.record_id)
     if not deleted:
         return 404, {"error": "Drink log not found"}
     return 204, ""
@@ -1167,10 +488,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     try:
         dynamodb = get_dynamodb_resource()
         s3 = get_s3_client()
-        drinklogs_table_name = os.environ["DRINKLOGS_TABLE"]
-        app_state_table_name = os.environ["APP_STATE_TABLE"]
-        bucket_name = os.environ["IMAGES_BUCKET"]
-        table = dynamodb.Table(drinklogs_table_name)
+        store = DrinkLogStore.from_environment(dynamodb, s3)
         record_id = (event.get("pathParameters") or {}).get("id")
         route = _route_key(method, path, record_id)
         status_code, body = _dispatch(
@@ -1178,12 +496,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             _RouteContext(
                 event=event,
                 query=query,
-                dynamodb=dynamodb,
-                s3=s3,
-                table=table,
-                drinklogs_table_name=drinklogs_table_name,
-                app_state_table_name=app_state_table_name,
-                bucket_name=bucket_name,
+                store=store,
                 user_id=user_id,
                 record_id=record_id,
             ),
