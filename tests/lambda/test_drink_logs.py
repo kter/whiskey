@@ -25,6 +25,7 @@ images = load_lambda_module(
     "lambda/common/python/whiskey_common/images.py",
 )
 drink_log_store = sys.modules["drink_log_store"]
+drink_log_lifecycle = sys.modules["lifecycle"]
 cost_guard = sys.modules["whiskey_common.cost_guard"]
 ROOT = Path(__file__).resolve().parents[2]
 requires_webp = pytest.mark.skipif(
@@ -35,12 +36,20 @@ requires_webp = pytest.mark.skipif(
 def _store(dynamodb, s3, *, table=None):
     return drink_log_store.DrinkLogStore(
         lifecycle=drink_logs.DrinkLogLifecycle(
-            dynamodb, s3, "DrinkLogs-test", "AppState-test", "images-test"
+            dynamodb,
+            s3,
+            "DrinkLogs-test",
+            "AppState-test",
+            "images-test",
+            table_handle=table,
         ),
-        budget=cost_guard.UsageBudget(dynamodb, "AppState-test", drink_log_store._rfc3339),
+        budget=cost_guard.UsageBudget(
+            dynamodb, "AppState-test", drink_log_lifecycle.rfc3339
+        ),
+        dynamodb=dynamodb,
+        app_state_table_name="AppState-test",
         s3=s3,
         bucket_name="images-test",
-        table=table,
     )
 
 
@@ -439,8 +448,7 @@ def test_create_datetime_is_normalized_without_replacing_audit_timestamps(monkey
     captured_with_offset = captured_utc.astimezone(
         timezone(timedelta(hours=9))
     ).isoformat()
-    monkeypatch.setattr(drink_logs, "_utc_now", lambda: fixed_now)
-    monkeypatch.setattr(drink_log_store, "_utc_now", lambda: fixed_now)
+    monkeypatch.setattr(drink_log_lifecycle, "utc_now", lambda: fixed_now)
 
     with mock_aws():
         dynamodb, s3, drinklogs, _app_state, analysis, _upload_uuid = (
@@ -457,8 +465,8 @@ def test_create_datetime_is_normalized_without_replacing_audit_timestamps(monkey
             ),
         )
 
-        expected_now = drink_logs._rfc3339(fixed_now)
-        expected_captured = drink_logs._rfc3339(captured_utc)
+        expected_now = drink_log_lifecycle.rfc3339(fixed_now)
+        expected_captured = drink_log_lifecycle.rfc3339(captured_utc)
         stored = drinklogs.get_item(Key={"id": record["id"]})["Item"]
         assert created is True
         assert record["datetime"] == expected_captured
@@ -474,8 +482,8 @@ def test_create_datetime_normalizes_to_the_literal_sort_key_format(monkeypatch):
     format change through unnoticed.
     """
     monkeypatch.setattr(
-        drink_logs,
-        "_utc_now",
+        drink_log_lifecycle,
+        "utc_now",
         lambda: datetime(2026, 8, 1, 12, 30, tzinfo=timezone.utc),
     )
 
@@ -491,7 +499,7 @@ def test_create_datetime_normalizes_to_the_literal_sort_key_format(monkeypatch):
 
 def test_create_datetime_defaults_to_server_time(monkeypatch):
     fixed_now = datetime.now(timezone.utc).replace(microsecond=654321)
-    monkeypatch.setattr(drink_log_store, "_utc_now", lambda: fixed_now)
+    monkeypatch.setattr(drink_log_lifecycle, "utc_now", lambda: fixed_now)
 
     with mock_aws():
         dynamodb, s3, _drinklogs, _app_state, analysis, _upload_uuid = (
@@ -504,7 +512,7 @@ def test_create_datetime_defaults_to_server_time(monkeypatch):
             ),
         )
 
-        assert record["datetime"] == drink_logs._rfc3339(fixed_now)
+        assert record["datetime"] == drink_log_lifecycle.rfc3339(fixed_now)
 
 
 @pytest.mark.parametrize(
@@ -519,9 +527,11 @@ def test_create_datetime_rejects_naive_and_out_of_range_values(
     monkeypatch, datetime_value
 ):
     fixed_now = datetime(2026, 8, 1, 12, 30, tzinfo=timezone.utc)
-    monkeypatch.setattr(drink_logs, "_utc_now", lambda: fixed_now)
+    monkeypatch.setattr(drink_log_lifecycle, "utc_now", lambda: fixed_now)
     if datetime_value == "future":
-        datetime_value = drink_logs._rfc3339(fixed_now + timedelta(hours=1))
+        datetime_value = drink_log_lifecycle.rfc3339(
+            fixed_now + timedelta(hours=1)
+        )
 
     with pytest.raises(drink_logs.ValidationError) as exc:
         drink_logs.validate_create_input(
@@ -807,7 +817,7 @@ def test_lifecycle_start_create_binds_analysis_and_all_budget_counters():
         "AppState-test",
         "images-test",
     )
-    lifecycle.start_create(pending, consume, now=drink_logs._utc_now())
+    lifecycle.start_create(pending, consume, now=drink_log_lifecycle.utc_now())
     transaction = client.transactions[0]
     assert len(transaction) == 6
     assert transaction[0]["Put"]["ConditionExpression"] == "attribute_not_exists(id)"
@@ -839,7 +849,12 @@ def test_response_loss_retry_returns_complete_without_consuming_quota_again():
         "user-1",
         {"analysis_id": upload_uuid, "candidate_index": 0},
     )
-    assert returned == record
+    assert returned == {
+        "id": record["id"],
+        "user_id": "user-1",
+        "status": "complete",
+        "image_url": f"https://image.example/{record['s3_image_key']}",
+    }
     assert created is False
     assert client.transactions == []
 
@@ -871,7 +886,12 @@ def test_transaction_loser_joins_winner_without_second_counter_charge(monkeypatc
         "user-1",
         {"analysis_id": upload_uuid, "candidate_index": 0},
     )
-    assert returned == winner
+    assert returned == {
+        "id": winner["id"],
+        "user_id": "user-1",
+        "status": "complete",
+        "image_url": f"https://image.example/{winner['s3_image_key']}",
+    }
     assert created is False
     assert len(client.transactions) == 1
 

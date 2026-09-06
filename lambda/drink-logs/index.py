@@ -44,6 +44,7 @@ from drink_log_store import (
     DrinkLogStore,
     ValidationError,
 )
+import lifecycle as lifecycle_module
 from lifecycle import (
     CreateConflict,
     DrinkLogLifecycle,
@@ -63,18 +64,6 @@ RFC3339_WITH_OFFSET_RE = re.compile(
 )
 
 
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _rfc3339(value: datetime) -> str:
-    return (
-        value.astimezone(timezone.utc)
-        .isoformat(timespec="milliseconds")
-        .replace("+00:00", "Z")
-    )
-
-
 def _validate_create_datetime(value: Any) -> str | None:
     if not isinstance(value, str) or not RFC3339_WITH_OFFSET_RE.fullmatch(value):
         return None
@@ -87,9 +76,9 @@ def _validate_create_datetime(value: Any) -> str | None:
     normalized = parsed.astimezone(timezone.utc)
     if normalized < datetime(2000, 1, 1, tzinfo=timezone.utc):
         return None
-    if normalized > _utc_now() + timedelta(minutes=5):
+    if normalized > lifecycle_module.utc_now() + timedelta(minutes=5):
         return None
-    return _rfc3339(normalized)
+    return lifecycle_module.rfc3339(normalized)
 
 
 def _request_id(event: Mapping[str, Any], context: Any) -> str:
@@ -347,10 +336,7 @@ def _handle_create(context: _RouteContext) -> _RouteResult:
         ),
         _CREATE_ERRORS,
     )
-    return (
-        201 if created else 200,
-        context.store._public_record(record, context.user_id),
-    )
+    return 201 if created else 200, record
 
 
 def _handle_detail(context: _RouteContext) -> _RouteResult:
@@ -391,10 +377,7 @@ def _handle_update(context: _RouteContext) -> _RouteResult:
     )
     if not record:
         return 404, {"error": "Drink log not found"}
-    return (
-        200,
-        context.store._public_record(record, context.user_id),
-    )
+    return 200, record
 
 
 def _handle_delete(context: _RouteContext) -> _RouteResult:

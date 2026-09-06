@@ -5,8 +5,7 @@ from __future__ import annotations
 import os
 import re
 import uuid
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping
 
@@ -16,6 +15,7 @@ from whiskey_common.cost_guard import UsageBudget, UsageBudgetExceeded
 from whiskey_common.images import ImageNormalizationError, normalize_image, sniff_format
 from whiskey_common.scan_utils import encode_next_token
 
+import lifecycle as lifecycle_module
 from lifecycle import CreateConflict, DrinkLogLifecycle, derive_drink_log_id
 
 
@@ -49,18 +49,6 @@ class ValidationError(ValueError):
 
 class AnalysisConflict(Exception):
     pass
-
-
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _rfc3339(value: datetime) -> str:
-    return (
-        value.astimezone(timezone.utc)
-        .isoformat(timespec="milliseconds")
-        .replace("+00:00", "Z")
-    )
 
 
 def _analysis_identity(user_id: str, analysis_id: str) -> tuple[str, str]:
@@ -181,19 +169,16 @@ def _safe_image_key(item: Mapping[str, Any], user_id: str) -> str | None:
     return key if key.startswith(f"logs/{user_id}/") else None
 
 
-def _is_missing_s3_error(exc: ClientError) -> bool:
-    return exc.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}
-
-
 @dataclass(frozen=True)
 class DrinkLogStore:
     """Expose Drink Log persistence operations with AWS wiring bound once."""
 
     lifecycle: DrinkLogLifecycle
     budget: UsageBudget
+    dynamodb: Any
+    app_state_table_name: str
     s3: Any
     bucket_name: str
-    table: Any | None = field(default=None, repr=False, compare=False)
 
     @classmethod
     def from_environment(cls, dynamodb: Any, s3: Any) -> "DrinkLogStore":
@@ -209,18 +194,16 @@ class DrinkLogStore:
         )
         return cls(
             lifecycle=lifecycle,
-            budget=UsageBudget(dynamodb, app_state_table_name, _rfc3339),
+            budget=UsageBudget(dynamodb, app_state_table_name, lifecycle_module.rfc3339),
+            dynamodb=dynamodb,
+            app_state_table_name=app_state_table_name,
             s3=s3,
             bucket_name=bucket_name,
-            # Keep the request adapter's existing one-time Table construction.
-            table=dynamodb.Table(drinklogs_table_name),
         )
 
-    def _table(self) -> Any:
-        return self.table if self.table is not None else self.lifecycle.table
-
     def create_upload_url(self, user_id: str, content_type: str) -> dict[str, Any]:
-        now_dt = _utc_now()
+        """Return an upload form; raise UsageBudgetExceeded when the Usage Budget is exhausted."""
+        now_dt = lifecycle_module.utc_now()
         self.budget.reserve_upload(user_id, now=now_dt)
 
         _format, extension = CONTENT_TYPES[content_type]
@@ -250,11 +233,11 @@ class DrinkLogStore:
         candidate_index: int | None,
         overrides: Mapping[str, Any] | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
-        result = self.budget.dynamodb.Table(self.budget.app_state_table_name).get_item(
+        result = self.dynamodb.Table(self.app_state_table_name).get_item(
             Key={"pk": analysis_pk},
             ConsistentRead=True,
         ).get("Item")
-        now_epoch = int(_utc_now().timestamp())
+        now_epoch = int(lifecycle_module.utc_now().timestamp())
         if not result or result.get("user") != user_id:
             raise AnalysisConflict("Analysis result is missing or already consumed")
         try:
@@ -286,7 +269,7 @@ class DrinkLogStore:
         try:
             head = self.s3.head_object(Bucket=self.bucket_name, Key=s3_key)
         except ClientError as exc:
-            if _is_missing_s3_error(exc):
+            if lifecycle_module._is_missing_s3_error(exc):
                 raise AnalysisConflict(
                     "Uploaded image is missing; upload and analyze it again"
                 ) from exc
@@ -301,7 +284,7 @@ class DrinkLogStore:
         ):
             raise AnalysisConflict("Uploaded image exceeds the upload limit")
 
-        now = _rfc3339(_utc_now())
+        now = lifecycle_module.rfc3339(lifecycle_module.utc_now())
         pending = {
             "id": derive_drink_log_id(user_id, upload_uuid),
             "user_id": user_id,
@@ -330,7 +313,7 @@ class DrinkLogStore:
         condition += " AND expires_at > :now_epoch"
         consume = {
             "Delete": {
-                "TableName": self.budget.app_state_table_name,
+                "TableName": self.app_state_table_name,
                 "Key": {"pk": analysis_pk},
                 "ConditionExpression": condition,
                 "ExpressionAttributeNames": names,
@@ -371,7 +354,9 @@ class DrinkLogStore:
                 max_bytes=int(os.environ.get("IMAGE_MAX_BYTES", "1572864")),
             )
         except ImageNormalizationError as exc:
-            compensated = self.lifecycle.compensate_create(record, now=_utc_now())
+            compensated = self.lifecycle.compensate_create(
+                record, now=lifecycle_module.utc_now()
+            )
             winner = self.lifecycle.get(record["id"])
             if not compensated and winner and winner.get("status") == "complete":
                 return winner
@@ -386,11 +371,15 @@ class DrinkLogStore:
                     pass
             raise ValidationError({"image": str(exc)}) from exc
         except ClientError as exc:
-            if _is_missing_s3_error(exc) or exc.response.get("Error", {}).get("Code") in {
+            if lifecycle_module._is_missing_s3_error(exc) or exc.response.get(
+                "Error", {}
+            ).get("Code") in {
                 "PreconditionFailed",
                 "412",
             }:
-                compensated = self.lifecycle.compensate_create(record, now=_utc_now())
+                compensated = self.lifecycle.compensate_create(
+                    record, now=lifecycle_module.utc_now()
+                )
                 winner = self.lifecycle.get(record["id"])
                 if not compensated and winner and winner.get("status") == "complete":
                     return winner
@@ -415,7 +404,9 @@ class DrinkLogStore:
             ContentType="image/jpeg",
             CacheControl="private, no-store",
         )
-        completed = self.lifecycle.complete_create(record, final_key, now=_utc_now())
+        completed = self.lifecycle.complete_create(
+            record, final_key, now=lifecycle_module.utc_now()
+        )
         if completed is None:
             winner = self.lifecycle.get(record["id"])
             if not winner or winner.get("user_id") != record["user_id"]:
@@ -439,6 +430,8 @@ class DrinkLogStore:
         user_id: str,
         data: Mapping[str, Any],
     ) -> tuple[dict[str, Any], bool]:
+        """Return ``(public_record, created)``; raise UsageBudgetExceeded,
+        AnalysisConflict, CreateConflict, or KeyError."""
         analysis_pk, upload_uuid = _analysis_identity(user_id, data["analysis_id"])
         record_id = derive_drink_log_id(user_id, upload_uuid)
 
@@ -447,9 +440,11 @@ class DrinkLogStore:
             if existing.get("user_id") != user_id:
                 raise KeyError(record_id)
             if existing.get("status") == "complete":
-                return existing, False
+                return self._public_record(existing, user_id), False
             if existing.get("status") == "pending":
-                return self._finish_pending_create(existing), False
+                return self._public_record(
+                    self._finish_pending_create(existing), user_id
+                ), False
             raise CreateConflict("Drink log is being deleted")
 
         pending, consume = self._prepare_initial_record(
@@ -461,7 +456,9 @@ class DrinkLogStore:
         )
         client = self.lifecycle.client
         try:
-            self.lifecycle.start_create(pending, consume, now=_utc_now())
+            self.lifecycle.start_create(
+                pending, consume, now=lifecycle_module.utc_now()
+            )
             created = True
             current = pending
         except client.exceptions.TransactionCanceledException as exc:
@@ -470,9 +467,11 @@ class DrinkLogStore:
                 if current.get("user_id") != user_id:
                     raise KeyError(record_id) from exc
                 if current.get("status") == "complete":
-                    return current, False
+                    return self._public_record(current, user_id), False
                 if current.get("status") == "pending":
-                    return self._finish_pending_create(current), False
+                    return self._public_record(
+                        self._finish_pending_create(current), user_id
+                    ), False
             reasons = exc.response.get("CancellationReasons", [])
             if not reasons:
                 raise UsageBudgetExceeded("create", "daily") from exc
@@ -482,7 +481,7 @@ class DrinkLogStore:
                 raise CreateConflict("Concurrent creation did not expose a winner") from exc
             raise
 
-        return self._finish_pending_create(current), created
+        return self._public_record(self._finish_pending_create(current), user_id), created
 
     def _public_record(
         self,
@@ -510,7 +509,8 @@ class DrinkLogStore:
         start_key: dict[str, Any] | None,
         filters: Mapping[str, str],
     ) -> tuple[list[dict[str, Any]], str | None]:
-        table = self._table()
+        """Return public Drink Logs and an optional continuation token."""
+        table = self.lifecycle.table
         items: list[dict[str, Any]] = []
         cursor = start_key
         next_token: str | None = None
@@ -566,7 +566,8 @@ class DrinkLogStore:
         return items, next_token
 
     def get_owned(self, user_id: str, record_id: str) -> dict[str, Any] | None:
-        item = self._table().get_item(
+        """Return a public Drink Log, or None when missing, foreign, or not complete."""
+        item = self.lifecycle.table.get_item(
             Key={"id": record_id},
             ConsistentRead=True,
         ).get("Item")
@@ -580,12 +581,13 @@ class DrinkLogStore:
         record_id: str,
         data: Mapping[str, Any],
     ) -> dict[str, Any] | None:
-        table = self._table()
+        """Return the updated public Drink Log, or None when the write is refused."""
+        table = self.lifecycle.table
         names = {"#owner": "user_id", "#status": "status", "#updated_at": "updated_at"}
         values: dict[str, Any] = {
             ":caller": user_id,
             ":complete": "complete",
-            ":updated_at": _rfc3339(_utc_now()),
+            ":updated_at": lifecycle_module.rfc3339(lifecycle_module.utc_now()),
         }
         sets = ["#updated_at = :updated_at"]
         removes: list[str] = []
@@ -627,9 +629,13 @@ class DrinkLogStore:
                 ExpressionAttributeValues=values,
                 ReturnValues="ALL_NEW",
             )
-            return response.get("Attributes")
+            attributes = response.get("Attributes")
+            return self._public_record(attributes, user_id) if attributes else None
         except table.meta.client.exceptions.ConditionalCheckFailedException:
             return None
 
     def delete(self, user_id: str, record_id: str) -> bool:
-        return self.lifecycle.delete(user_id, record_id, now=_utc_now())
+        """Return whether deletion completed; False means a conditional write was refused."""
+        return self.lifecycle.delete(
+            user_id, record_id, now=lifecycle_module.utc_now()
+        )

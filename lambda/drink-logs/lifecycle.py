@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping
 
@@ -51,10 +51,15 @@ class DrinkLogLifecycle:
     app_state_table_name: str
     bucket_name: str
     timestamp_format: Callable[[datetime], str] = rfc3339
+    table_handle: Any | None = field(default=None, repr=False, compare=False)
 
     @property
     def table(self) -> Any:
-        return self.dynamodb.Table(self.drinklogs_table_name)
+        handle = self.table_handle
+        if handle is None:
+            handle = self.dynamodb.Table(self.drinklogs_table_name)
+            object.__setattr__(self, "table_handle", handle)
+        return handle
 
     @property
     def client(self) -> Any:
