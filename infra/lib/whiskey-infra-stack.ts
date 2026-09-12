@@ -573,6 +573,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
         CREATE_GLOBAL_DAILY_LIMIT: '100',
         STORAGE_USER_LIMIT: '2000',
         STORAGE_GLOBAL_LIMIT: '20000',
+        // Keep in sync with tests/test_drink_log_contract.py.
         IMAGE_MAX_BYTES: '1572864',
         UPLOAD_MAX_BYTES: '3670016',
       },
@@ -602,6 +603,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
         // 超える（analyze だけで $12.7、places/ストレージと合わせて $18.3）。
         // 実請求で単価が判明するまでの暫定値。詳細は COST_MATRIX 参照。
         ANALYZE_GLOBAL_MONTHLY_LIMIT: '300',
+        // Keep in sync with tests/test_drink_log_contract.py.
         IMAGE_MAX_BYTES: '1572864',
         UPLOAD_MAX_BYTES: '3670016',
       },

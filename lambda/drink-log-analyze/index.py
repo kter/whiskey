@@ -509,6 +509,7 @@ def analyze_upload(
     head = s3.head_object(Bucket=bucket_name, Key=s3_key)
     content_length = head.get("ContentLength")
     etag = head.get("ETag")
+    # Keep in sync with tests/test_drink_log_contract.py.
     if (
         isinstance(content_length, bool)
         or not isinstance(content_length, int)
@@ -523,6 +524,7 @@ def analyze_upload(
     if sniff_format(prefix) not in {"jpeg", "png", "webp"}:
         raise ValidationError({"s3_key": "Uploaded file is not a supported image"})
     raw = _read_body(s3.get_object(Bucket=bucket_name, Key=s3_key, IfMatch=etag))
+    # Keep in sync with tests/test_drink_log_contract.py.
     normalized = normalize_image(raw, max_bytes=int(os.environ.get("IMAGE_MAX_BYTES", "1572864")))
 
     usage_budget = UsageBudget(dynamodb, app_state_table_name)

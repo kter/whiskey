@@ -266,18 +266,6 @@ def parse_timeline_query(
     return limit, start_key, filters
 
 
-
-
-
-
-
-
-
-
-
-
-
-
 @dataclass(frozen=True)
 class _RouteContext:
     event: dict[str, Any]

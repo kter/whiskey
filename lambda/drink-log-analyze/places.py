@@ -41,6 +41,7 @@ MAX_RESOLVE_ITEMS = 10
 MAX_BATCH_ATTEMPTS = 3
 HANDLER_DEADLINE_SECONDS = 8.5
 DEADLINE_SAFETY_SECONDS = 0.5
+# Keep in sync with tests/test_drink_log_contract.py.
 PLACEHOLDER_NAME = "店舗情報を取得できません"
 _PLACES_API_KEY: str | None = None
 

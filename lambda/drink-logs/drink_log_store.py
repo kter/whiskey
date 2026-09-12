@@ -208,6 +208,7 @@ class DrinkLogStore:
 
         _format, extension = CONTENT_TYPES[content_type]
         key = f"tmp/{user_id}/{uuid.uuid4()}.{extension}"
+        # Keep in sync with tests/test_drink_log_contract.py.
         max_bytes = int(os.environ.get("UPLOAD_MAX_BYTES", "3670016"))
         # A captured form is pinned to one exact key. Reuse can only overwrite that
         # object and cannot consume storage allocation or an expensive API. The
@@ -279,6 +280,7 @@ class DrinkLogStore:
         content_type = head.get("ContentType")
         if content_type not in CONTENT_TYPES:
             raise AnalysisConflict("Uploaded image content type is unsupported")
+        # Keep in sync with tests/test_drink_log_contract.py.
         if int(head.get("ContentLength", 0)) > int(
             os.environ.get("UPLOAD_MAX_BYTES", "3670016")
         ):
@@ -351,6 +353,7 @@ class DrinkLogStore:
                 )
             normalized = normalize_image(
                 raw,
+                # Keep in sync with tests/test_drink_log_contract.py.
                 max_bytes=int(os.environ.get("IMAGE_MAX_BYTES", "1572864")),
             )
         except ImageNormalizationError as exc:
