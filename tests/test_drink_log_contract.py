@@ -54,7 +54,7 @@ def _source_of_truth_value(name: str) -> int:
     [
         (
             "UPLOAD_MAX_BYTES",
-            "lambda/drink-logs/index.py",
+            "lambda/drink-logs/drink_log_store.py",
             _environment_default("UPLOAD_MAX_BYTES"),
         ),
         (
@@ -79,7 +79,7 @@ def _source_of_truth_value(name: str) -> int:
         ),
         (
             "IMAGE_MAX_BYTES",
-            "lambda/drink-logs/index.py",
+            "lambda/drink-logs/drink_log_store.py",
             _environment_default("IMAGE_MAX_BYTES"),
         ),
         (

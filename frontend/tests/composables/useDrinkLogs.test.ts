@@ -8,6 +8,7 @@ vi.mock('~/composables/useApi', async importOriginal => {
 })
 
 import { buildDrinkLogPayload, useDrinkLogs } from '~/composables/useDrinkLogs'
+import { normalizeDrinkLogError } from '~/utils/drinkLogs'
 
 const record = (id: string, datetime: string, brandText = id) => ({
   id,
@@ -54,6 +55,14 @@ describe('useDrinkLogs API contract', () => {
     })
   })
 
+  it('only creates and exposes the shared logs state', () => {
+    const drinkLogs = useDrinkLogs()
+
+    expect([...state.keys()]).toEqual(['drink-logs'])
+    expect(drinkLogs).not.toHaveProperty('loading')
+    expect(drinkLogs).not.toHaveProperty('error')
+  })
+
   it('maps capturedAt to datetime and omits the key when no capture time exists', () => {
     expect(buildDrinkLogPayload({
       analysisId: 'a1',
@@ -74,6 +83,12 @@ describe('useDrinkLogs API contract', () => {
         brandText: 'AI銘柄',
       })).not.toHaveProperty('datetime')
     }
+  })
+
+  it('uses an error message when present and the fallback otherwise', () => {
+    expect(normalizeDrinkLogError(new Error('request failed'), 'fallback')).toBe('request failed')
+    expect(normalizeDrinkLogError(new Error(''), 'fallback')).toBe('fallback')
+    expect(normalizeDrinkLogError('request failed', 'fallback')).toBe('fallback')
   })
 
   it('uses every list, detail, update, delete and Places endpoint with required auth', async () => {

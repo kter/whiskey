@@ -3,7 +3,12 @@ import { computed, onBeforeUnmount, onMounted, ref, type ComponentPublicInstance
 import { mergeDrinkLogs, sortDrinkLogs, useDrinkLogs, type DrinkLog } from '~/composables/useDrinkLogs'
 import { useAuth } from '~/composables/useAuth'
 import { useVisiblePlaceResolver } from '~/composables/useVisiblePlaceResolver'
-import { formatLocalLogTime, groupDrinkLogsByLocalDate, servingStyleLabel } from '~/utils/drinkLogs'
+import {
+  formatLocalLogTime,
+  groupDrinkLogsByLocalDate,
+  normalizeDrinkLogError,
+  servingStyleLabel,
+} from '~/utils/drinkLogs'
 
 const PAGE_SIZE = 20
 const route = useRoute()
@@ -27,10 +32,6 @@ let requestGeneration = 0
 
 const groups = computed(() => groupDrinkLogsByLocalDate(visibleLogs.value))
 const hasFilters = computed(() => Boolean(activeBrand.value || activeStore.value))
-
-const errorMessage = (cause: unknown, fallback: string) => cause instanceof Error && cause.message
-  ? cause.message
-  : fallback
 
 const loadLogs = async (append = false) => {
   if (append && (!nextToken.value || loadingMore.value)) return
@@ -60,7 +61,9 @@ const loadLogs = async (append = false) => {
     }
     nextToken.value = response.next_token
   } catch (cause) {
-    if (generation === requestGeneration) pageError.value = errorMessage(cause, '記録一覧の取得に失敗しました。')
+    if (generation === requestGeneration) {
+      pageError.value = normalizeDrinkLogError(cause, '記録一覧の取得に失敗しました。')
+    }
   } finally {
     if (generation === requestGeneration) {
       initialLoading.value = false

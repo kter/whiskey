@@ -10,7 +10,12 @@ import {
 import { useAuth } from '~/composables/useAuth'
 import { needsPlaceResolution, useVisiblePlaceResolver } from '~/composables/useVisiblePlaceResolver'
 import { SERVING_STYLES, type ServingStyle } from '~/types/whiskey'
-import { formatLocalLogDate, formatLocalLogTime, servingStyleLabel } from '~/utils/drinkLogs'
+import {
+  formatLocalLogDate,
+  formatLocalLogTime,
+  normalizeDrinkLogError,
+  servingStyleLabel,
+} from '~/utils/drinkLogs'
 
 const route = useRoute()
 const router = useRouter()
@@ -52,10 +57,6 @@ const styleLabels: Record<ServingStyle, string> = {
 const isOwner = computed(() => Boolean(log.value && currentUserId.value && log.value.user_id === currentUserId.value))
 const brandSourceLabels: Record<string, string> = { ai: 'AI候補', manual: '手入力', matched: '銘柄データ一致' }
 const brandSourceLabel = computed(() => brandSourceLabels[log.value?.brand_source || ''] || '不明')
-
-const errorMessage = (cause: unknown, fallback: string) => cause instanceof Error && cause.message
-  ? cause.message
-  : fallback
 
 const copyLogToForm = (record: DrinkLog) => {
   form.brandText = record.brand_text
@@ -112,7 +113,7 @@ const saveChanges = async () => {
     upsertLog(updated)
     editing.value = false
   } catch (cause) {
-    actionError.value = errorMessage(cause, '記録の更新に失敗しました。')
+    actionError.value = normalizeDrinkLogError(cause, '記録の更新に失敗しました。')
   } finally {
     saving.value = false
   }
@@ -127,7 +128,7 @@ const confirmDelete = async () => {
     removeLog(log.value.id)
     await router.push('/logs')
   } catch (cause) {
-    actionError.value = errorMessage(cause, '記録の削除に失敗しました。')
+    actionError.value = normalizeDrinkLogError(cause, '記録の削除に失敗しました。')
     showDeleteConfirmation.value = false
   } finally {
     deleting.value = false
@@ -149,7 +150,7 @@ onMounted(async () => {
   } catch (cause) {
     loadError.value = cause instanceof ApiError && cause.status === 404
       ? '記録が見つかりません。削除されたか、表示する権限がありません。'
-      : errorMessage(cause, '記録の取得に失敗しました。')
+      : normalizeDrinkLogError(cause, '記録の取得に失敗しました。')
   } finally {
     initialLoading.value = false
   }
