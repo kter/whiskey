@@ -126,3 +126,38 @@ def test_backend_store_name_placeholder_is_known_to_frontend() -> None:
     }
 
     assert placeholder_match.group("value") in frontend_placeholders
+
+
+def test_serving_styles_match_across_contracts() -> None:
+    # These cross-language duplicates are kept in step by this test, mirroring
+    # the UPLOAD_MAX_BYTES precedent above.
+    paths_and_patterns = {
+        "lambda/common/python/whiskey_common/serving_styles.py": (
+            r"\bSERVING_STYLES\s*=\s*\{(?P<values>.*?)\}",
+        ),
+        "frontend/types/whiskey.ts": (
+            r"\bSERVING_STYLES\s*=\s*\[(?P<values>.*?)\]",
+        ),
+        "swagger.yml": (
+            r"^    ServingStyle:\n      type: string\n      enum: \[(?P<values>.*?)\]",
+        ),
+    }
+    values_by_path: dict[str, set[str]] = {}
+    for relative_path, (pattern,) in paths_and_patterns.items():
+        source = (ROOT / relative_path).read_text(encoding="utf-8")
+        match = re.search(pattern, source, flags=re.DOTALL | re.MULTILINE)
+        assert match, f"{relative_path}: SERVING_STYLES was not found"
+        values_by_path[relative_path] = {
+            value_match.group("value") or value_match.group("value_unquoted")
+            for value_match in re.finditer(
+                r"(?P<quote>['\"])(?P<value>.*?)\1|(?P<value_unquoted>[A-Z_]+)",
+                match.group("values"),
+            )
+        }
+
+    python_path = "lambda/common/python/whiskey_common/serving_styles.py"
+    expected = values_by_path[python_path]
+    for relative_path, values in values_by_path.items():
+        assert values == expected, (
+            f"{relative_path}: SERVING_STYLES expected {sorted(expected)}, found {sorted(values)}"
+        )

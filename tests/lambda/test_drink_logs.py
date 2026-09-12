@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import boto3
 import pytest
@@ -1627,6 +1628,18 @@ def test_reconciler_all_phases_converge_and_second_run_is_idempotent():
         )
     )
     assert second == 0
+
+
+def test_reconciler_raises_when_shared_scan_page_limit_is_reached(monkeypatch):
+    table = Mock()
+    table.scan.return_value = {
+        "Items": [{"id": "record-1"}],
+        "LastEvaluatedKey": {"id": "record-1"},
+    }
+    monkeypatch.setattr(reconciler, "RECONCILER_MAX_SCAN_PAGES", 1)
+
+    with pytest.raises(RuntimeError, match="scan exceeded its page limit"):
+        reconciler._scan_all_or_raise(table, ConsistentRead=True)
 
 
 def test_handler_revalidates_authorizer_audience_and_token_use(monkeypatch):

@@ -19,7 +19,6 @@ from whiskey_common import scan_utils
 def environment(monkeypatch):
     monkeypatch.setenv("ALLOWED_ORIGINS", "https://app.example")
     monkeypatch.setenv("WHISKEY_SEARCH_TABLE", "WhiskeySearch-test")
-    monkeypatch.setenv("WHISKEYS_TABLE", "WhiskeySearch-test")
     monkeypatch.setenv("APP_STATE_TABLE", "AppState-test")
     monkeypatch.setenv("ENVIRONMENT", "test")
     monkeypatch.setenv("PUBLIC_SCAN_MAX_PAGES", "1")

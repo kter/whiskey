@@ -12,27 +12,25 @@ from typing import Any, Iterable, Mapping
 try:
     from whiskey_common.clients import get_dynamodb_resource, get_s3_client
     from whiskey_common.logger import get_logger
+    from whiskey_common.normalize import UUID_TEXT
+    from whiskey_common.scan_utils import scan_all_pages
+    from whiskey_common.timeutils import rfc3339, utc_now
 except ModuleNotFoundError as exc:
     if exc.name != "whiskey_common":
         raise
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "common" / "python"))
     from whiskey_common.clients import get_dynamodb_resource, get_s3_client
     from whiskey_common.logger import get_logger
+    from whiskey_common.normalize import UUID_TEXT
+    from whiskey_common.scan_utils import scan_all_pages
+    from whiskey_common.timeutils import rfc3339, utc_now
 
 from lifecycle import DrinkLogLifecycle, derive_drink_log_id
 
 
-UUID_TEXT = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}"
 LOG_KEY_RE = re.compile(rf"^logs/([^/]+)/({UUID_TEXT})-[0-9a-fA-F]+\.jpg$")
 MAX_BATCH_GET_ATTEMPTS = 3
-
-
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _rfc3339(value: datetime) -> str:
-    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+RECONCILER_MAX_SCAN_PAGES = 10_000
 
 
 def _parse_time(value: Any) -> datetime | None:
@@ -65,18 +63,15 @@ def _object_is_old(item: Mapping[str, Any], cutoff: datetime) -> bool:
     return timestamp is not None and timestamp < cutoff
 
 
-def _scan_all(table: Any, **kwargs: Any) -> list[dict[str, Any]]:
-    items: list[dict[str, Any]] = []
-    cursor = None
-    while True:
-        request = dict(kwargs)
-        if cursor:
-            request["ExclusiveStartKey"] = cursor
-        response = table.scan(**request)
-        items.extend(response.get("Items", []))
-        cursor = response.get("LastEvaluatedKey")
-        if not cursor:
-            return items
+def _scan_all_or_raise(table: Any, **kwargs: Any) -> list[dict[str, Any]]:
+    items, continuation_token = scan_all_pages(
+        table,
+        max_pages=RECONCILER_MAX_SCAN_PAGES,
+        **kwargs,
+    )
+    if continuation_token is not None:
+        raise RuntimeError("Drink-log reconciliation scan exceeded its page limit")
+    return items
 
 
 def _list_all_objects(s3: Any, bucket_name: str, prefix: str) -> list[dict[str, Any]]:
@@ -123,7 +118,7 @@ def reconcile_log_objects(
 ) -> int:
     table = dynamodb.Table(drinklogs_table_name)
     lifecycle = DrinkLogLifecycle(
-        dynamodb, s3, drinklogs_table_name, "", bucket_name, _rfc3339
+        dynamodb, s3, drinklogs_table_name, "", bucket_name, rfc3339
     )
     objects = [
         item
@@ -207,9 +202,9 @@ def reconcile_deleting_records(
         drinklogs_table_name,
         app_state_table_name,
         bucket_name,
-        _rfc3339,
+        rfc3339,
     )
-    records = _scan_all(
+    records = _scan_all_or_raise(
         table,
         ConsistentRead=True,
         FilterExpression="#status = :deleting",
@@ -221,7 +216,7 @@ def reconcile_deleting_records(
         if not _record_is_old(item, cutoff):
             continue
         lifecycle.delete_record_image(item)
-        if lifecycle.finalize_delete(item, now=_utc_now()):
+        if lifecycle.finalize_delete(item, now=utc_now()):
             completed += 1
     return completed
 
@@ -241,9 +236,9 @@ def reconcile_pending_records(
         drinklogs_table_name,
         app_state_table_name,
         bucket_name,
-        _rfc3339,
+        rfc3339,
     )
-    records = _scan_all(
+    records = _scan_all_or_raise(
         table,
         ConsistentRead=True,
         FilterExpression="#status = :pending",
@@ -258,7 +253,7 @@ def reconcile_pending_records(
         if not acquired:
             continue
         lifecycle.delete_record_image(acquired)
-        if lifecycle.finalize_delete(acquired, now=_utc_now()):
+        if lifecycle.finalize_delete(acquired, now=utc_now()):
             completed += 1
     return completed
 
@@ -272,9 +267,9 @@ def reconcile_tmp_objects(
 ) -> int:
     table = dynamodb.Table(drinklogs_table_name)
     lifecycle = DrinkLogLifecycle(
-        dynamodb, s3, drinklogs_table_name, "", bucket_name, _rfc3339
+        dynamodb, s3, drinklogs_table_name, "", bucket_name, rfc3339
     )
-    records = _scan_all(
+    records = _scan_all_or_raise(
         table,
         ConsistentRead=True,
         ProjectionExpression="id, tmp_s3_key",
@@ -303,9 +298,9 @@ def reconcile_complete_tmp_references(
 ) -> int:
     table = dynamodb.Table(drinklogs_table_name)
     lifecycle = DrinkLogLifecycle(
-        dynamodb, s3, drinklogs_table_name, "", bucket_name, _rfc3339
+        dynamodb, s3, drinklogs_table_name, "", bucket_name, rfc3339
     )
-    records = _scan_all(
+    records = _scan_all_or_raise(
         table,
         ConsistentRead=True,
         FilterExpression="#status = :complete AND attribute_exists(tmp_s3_key)",
@@ -342,7 +337,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     drinklogs_table_name = os.environ["DRINKLOGS_TABLE"]
     app_state_table_name = os.environ["APP_STATE_TABLE"]
     bucket_name = os.environ["IMAGES_BUCKET"]
-    cutoff = _utc_now() - timedelta(
+    cutoff = utc_now() - timedelta(
         hours=max(1, int(os.environ.get("RECONCILE_AGE_HOURS", "48")))
     )
 

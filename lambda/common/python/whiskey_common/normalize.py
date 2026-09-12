@@ -3,6 +3,9 @@
 import unicodedata
 
 
+UUID_TEXT = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}"
+
+
 def normalize_text(text: str) -> str:
     """Normalize case, width, whitespace, and Katakana for Japanese search."""
     if not text:

@@ -12,14 +12,16 @@ from typing import Any, Mapping
 from botocore.exceptions import ClientError
 
 from whiskey_common.cost_guard import UsageBudget, UsageBudgetExceeded
+from whiskey_common.errors import ValidationError
 from whiskey_common.images import ImageNormalizationError, normalize_image, sniff_format
+from whiskey_common.normalize import UUID_TEXT
 from whiskey_common.scan_utils import encode_next_token
+from whiskey_common.serving_styles import SERVING_STYLES
 
 import lifecycle as lifecycle_module
 from lifecycle import CreateConflict, DrinkLogLifecycle, derive_drink_log_id
 
 
-SERVING_STYLES = {"NEAT", "ROCKS", "WATER", "SODA", "COCKTAIL"}
 CONTENT_TYPES = {
     "image/jpeg": ("jpeg", "jpg"),
     "image/png": ("png", "png"),
@@ -37,14 +39,7 @@ INTERNAL_FIELDS = {
 MAX_TIMELINE_PAGE_QUERIES = 10
 PRESIGNED_POST_SECONDS = 120
 PRESIGNED_GET_SECONDS = 900
-UUID_TEXT = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}"
 ANALYSIS_ID_RE = re.compile(rf"^(?:ai-result:([^:]+):)?({UUID_TEXT})$")
-
-
-class ValidationError(ValueError):
-    def __init__(self, fields: Mapping[str, str]):
-        super().__init__("Validation failed")
-        self.fields = dict(fields)
 
 
 class AnalysisConflict(Exception):

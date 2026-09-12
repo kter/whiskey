@@ -29,7 +29,6 @@ def configure_local_environment() -> None:
     """Set an isolated local AWS environment before cold-importing handlers."""
     fixed = {
         "ENVIRONMENT": "local",
-        "WHISKEYS_TABLE": "WhiskeySearch-local",
         "WHISKEY_SEARCH_TABLE": "WhiskeySearch-local",
         "DRINKLOGS_TABLE": "DrinkLogs-local",
         "APP_STATE_TABLE": "AppState-local",

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 import sys
 import time
@@ -20,6 +19,7 @@ try:
     )
     from whiskey_common.jwt_utils import extract_user_id_from_event
     from whiskey_common.logger import extract_correlation_id, get_logger
+    from whiskey_common.requests import parse_json_body, request_id as shared_request_id
     from whiskey_common.responses import create_response
     from whiskey_common.scan_utils import decode_next_token
 except ModuleNotFoundError as exc:
@@ -33,6 +33,7 @@ except ModuleNotFoundError as exc:
     )
     from whiskey_common.jwt_utils import extract_user_id_from_event
     from whiskey_common.logger import extract_correlation_id, get_logger
+    from whiskey_common.requests import parse_json_body, request_id as shared_request_id
     from whiskey_common.responses import create_response
     from whiskey_common.scan_utils import decode_next_token
 
@@ -79,27 +80,6 @@ def _validate_create_datetime(value: Any) -> str | None:
     if normalized > lifecycle_module.utc_now() + timedelta(minutes=5):
         return None
     return lifecycle_module.rfc3339(normalized)
-
-
-def _request_id(event: Mapping[str, Any], context: Any) -> str:
-    return (
-        getattr(context, "aws_request_id", None)
-        or (event.get("requestContext") or {}).get("requestId")
-        or "unknown"
-    )
-
-
-def _parse_json_body(event: Mapping[str, Any]) -> dict[str, Any]:
-    raw_body = event.get("body")
-    if not isinstance(raw_body, str):
-        raise ValidationError({"body": "A JSON object is required"})
-    try:
-        body = json.loads(raw_body)
-    except json.JSONDecodeError as exc:
-        raise ValidationError({"body": "Malformed JSON"}) from exc
-    if not isinstance(body, dict):
-        raise ValidationError({"body": "A JSON object is required"})
-    return body
 
 
 def _validate_rating(value: Any) -> Decimal | None:
@@ -306,7 +286,7 @@ def _invoke_route_step(
 
 def _handle_upload_url(context: _RouteContext) -> _RouteResult:
     content_type = _invoke_route_step(
-        lambda: validate_upload_input(_parse_json_body(context.event)),
+        lambda: validate_upload_input(parse_json_body(context.event)),
         _VALIDATION_ERRORS,
     )
     result = _invoke_route_step(
@@ -320,7 +300,7 @@ def _handle_create(context: _RouteContext) -> _RouteResult:
     record, created = _invoke_route_step(
         lambda: context.store.create_drink_log(
             context.user_id,
-            validate_create_input(_parse_json_body(context.event)),
+            validate_create_input(parse_json_body(context.event)),
         ),
         _CREATE_ERRORS,
     )
@@ -347,7 +327,6 @@ def _handle_timeline(context: _RouteContext) -> _RouteResult:
     )
     return 200, {
         "results": records,
-        "drink_logs": records,
         "count": len(records),
         "next_token": next_token,
     }
@@ -355,7 +334,7 @@ def _handle_timeline(context: _RouteContext) -> _RouteResult:
 
 def _handle_update(context: _RouteContext) -> _RouteResult:
     data = _invoke_route_step(
-        lambda: validate_update_input(_parse_json_body(context.event)),
+        lambda: validate_update_input(parse_json_body(context.event)),
         _VALIDATION_ERRORS,
     )
     record = context.store.update(
@@ -445,7 +424,7 @@ def _dispatch(route: _RouteKey, context: _RouteContext) -> _RouteResult:
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     start_time = time.monotonic()
-    request_id = _request_id(event, context)
+    request_id = shared_request_id(event, context)
     logger = get_logger("drink-logs", correlation_id=extract_correlation_id(event) or request_id)
     method = event.get("httpMethod", "UNKNOWN")
     path = (event.get("path") or "").rstrip("/")

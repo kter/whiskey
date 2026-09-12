@@ -8,7 +8,7 @@ import re
 import threading
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Mapping, Protocol
@@ -25,11 +25,16 @@ try:
     )
     from whiskey_common.clients import get_dynamodb_resource, get_s3_client
     from whiskey_common.cost_guard import UsageBudget, UsageBudgetExceeded
+    from whiskey_common.errors import ValidationError
     from whiskey_common.images import ImageNormalizationError, normalize_image, sniff_format
     from whiskey_common.jwt_utils import extract_user_id_from_event
     from whiskey_common.logger import extract_correlation_id, get_logger
     from whiskey_common.mock_guard import local_fixture_enabled, validate_mock_guard
+    from whiskey_common.normalize import UUID_TEXT
+    from whiskey_common.requests import parse_json_body, request_id as shared_request_id
     from whiskey_common.responses import create_response
+    from whiskey_common.serving_styles import SERVING_STYLES
+    from whiskey_common.timeutils import utc_now
 except ModuleNotFoundError as exc:
     if exc.name != "whiskey_common":
         raise
@@ -43,16 +48,19 @@ except ModuleNotFoundError as exc:
     )
     from whiskey_common.clients import get_dynamodb_resource, get_s3_client
     from whiskey_common.cost_guard import UsageBudget, UsageBudgetExceeded
+    from whiskey_common.errors import ValidationError
     from whiskey_common.images import ImageNormalizationError, normalize_image, sniff_format
     from whiskey_common.jwt_utils import extract_user_id_from_event
     from whiskey_common.logger import extract_correlation_id, get_logger
     from whiskey_common.mock_guard import local_fixture_enabled, validate_mock_guard
+    from whiskey_common.normalize import UUID_TEXT
+    from whiskey_common.requests import parse_json_body, request_id as shared_request_id
     from whiskey_common.responses import create_response
+    from whiskey_common.serving_styles import SERVING_STYLES
+    from whiskey_common.timeutils import utc_now
 
 
-SERVING_STYLES = {"NEAT", "ROCKS", "WATER", "SODA", "COCKTAIL"}
 SERVING_STYLE_ALIASES = {"HIGHBALL": "SODA", "SODA": "SODA"}
-UUID_TEXT = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}"
 UPLOAD_KEY_RE = re.compile(rf"^tmp/([^/]+)/({UUID_TEXT})\.(jpg|jpeg|png|webp)$")
 MAX_CANDIDATES = 5
 MASTER_SNAPSHOT_TTL_SECONDS = 300
@@ -88,14 +96,6 @@ BRAND_CATALOG = BrandCatalog.from_file(Path(__file__).with_name("brands.json"))
 CANDIDATE_RESOLVER = CandidateResolver(BRAND_CATALOG)
 
 
-class ValidationError(ValueError):
-    """Raised for caller-controlled invalid input."""
-
-    def __init__(self, fields: Mapping[str, str]):
-        super().__init__("Validation failed")
-        self.fields = dict(fields)
-
-
 class OwnershipError(Exception):
     """Raised when an upload key is outside the caller's namespace."""
 
@@ -109,14 +109,6 @@ class AnalysisReader(Protocol):
 
 
 BudgetExceeded = UsageBudgetExceeded
-
-
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _rfc3339(value: datetime) -> str:
-    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _validate_runtime_config() -> str:
@@ -134,15 +126,7 @@ def _validate_runtime_config() -> str:
 
 
 def _parse_input(event: Mapping[str, Any]) -> str:
-    raw = event.get("body")
-    if not isinstance(raw, str):
-        raise ValidationError({"body": "A JSON object is required"})
-    try:
-        body = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise ValidationError({"body": "Malformed JSON"}) from exc
-    if not isinstance(body, dict):
-        raise ValidationError({"body": "A JSON object is required"})
+    body = parse_json_body(event)
     if set(body) != {"s3_key"}:
         fields = {name: "Field is not accepted" for name in sorted(set(body) - {"s3_key"})}
         if "s3_key" not in body:
@@ -578,7 +562,7 @@ def analyze_upload(
             master_snapshot_complete=snapshot["complete"],
             master_snapshot_size=snapshot["catalog"].size,
         )
-    expires_at = int((_utc_now() + timedelta(seconds=ANALYSIS_TTL_SECONDS)).timestamp())
+    expires_at = int((utc_now() + timedelta(seconds=ANALYSIS_TTL_SECONDS)).timestamp())
     analysis_id = f"ai-result:{user_id}:{upload_uuid}"
     item: dict[str, Any] = {
         "pk": analysis_id,
@@ -607,20 +591,12 @@ def analyze_upload(
     return response
 
 
-def _request_id(event: Mapping[str, Any], context: Any) -> str:
-    return (
-        getattr(context, "aws_request_id", None)
-        or (event.get("requestContext") or {}).get("requestId")
-        or "unknown"
-    )
-
-
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Handle POST /api/drink-logs/analyze."""
     started = time.monotonic()
     model_id = _validate_runtime_config()
     reader = select_analysis_reader(model_id)
-    request_id = _request_id(event, context)
+    request_id = shared_request_id(event, context)
     logger = get_logger("drink-log-analyze", correlation_id=extract_correlation_id(event) or request_id)
     logger.log_api_request(
         method=event.get("httpMethod", "UNKNOWN"),

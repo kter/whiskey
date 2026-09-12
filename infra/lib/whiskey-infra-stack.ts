@@ -520,7 +520,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
       role: listRole,
       logGroup: listLogGroup,
       environment: {
-        WHISKEYS_TABLE: whiskeySearchTable.tableName,
+        WHISKEY_SEARCH_TABLE: whiskeySearchTable.tableName,
         APP_STATE_TABLE: appStateTable.tableName,
         PUBLIC_SCAN_MAX_PAGES: '1',
         PUBLIC_SCAN_DAILY_LIMIT: '10000',
@@ -541,7 +541,6 @@ export class WhiskeyInfraStack extends cdk.Stack {
       role: searchRole,
       logGroup: searchLogGroup,
       environment: {
-        WHISKEYS_TABLE: whiskeySearchTable.tableName,
         WHISKEY_SEARCH_TABLE: whiskeySearchTable.tableName,
         APP_STATE_TABLE: appStateTable.tableName,
         PUBLIC_SCAN_MAX_PAGES: '5',

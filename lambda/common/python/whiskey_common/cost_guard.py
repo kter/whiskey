@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Mapping
 
 from whiskey_common.transactions import transact_write_with_retry
+from whiskey_common.timeutils import rfc3339
 
 
 class UsageBudgetExceeded(Exception):
@@ -37,10 +38,6 @@ class ScanBudgetExceeded(UsageBudgetExceeded):
 
 class BudgetTransactionConflict(Exception):
     """Raised when a reservation cannot converge after transaction retries."""
-
-
-def _rfc3339(value: datetime) -> str:
-    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _counter_update(
@@ -126,7 +123,7 @@ class UsageBudget:
 
     dynamodb: Any
     app_state_table_name: str
-    timestamp_format: Callable[[datetime], str] = _rfc3339
+    timestamp_format: Callable[[datetime], str] = rfc3339
 
     @property
     def client(self) -> Any:
