@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import boto3
 import pytest
@@ -988,7 +989,7 @@ def test_exhausted_create_conflict_raises_transient_conflict(monkeypatch):
     _stub_initial_create(monkeypatch, upload_uuid)
     _disable_transaction_retry_delays(monkeypatch)
 
-    with pytest.raises(drink_logs.TransientConflict):
+    with pytest.raises(drink_logs.BudgetTransactionConflict):
         _store(dynamodb, PresignS3()).create_drink_log(
             "user-1",
             {"analysis_id": upload_uuid, "candidate_index": 0},
@@ -1627,6 +1628,18 @@ def test_reconciler_all_phases_converge_and_second_run_is_idempotent():
         )
     )
     assert second == 0
+
+
+def test_reconciler_raises_when_shared_scan_page_limit_is_reached(monkeypatch):
+    table = Mock()
+    table.scan.return_value = {
+        "Items": [{"id": "record-1"}],
+        "LastEvaluatedKey": {"id": "record-1"},
+    }
+    monkeypatch.setattr(reconciler, "RECONCILER_MAX_SCAN_PAGES", 1)
+
+    with pytest.raises(RuntimeError, match="scan exceeded its page limit"):
+        reconciler._scan_all_or_raise(table, ConsistentRead=True)
 
 
 def test_handler_revalidates_authorizer_audience_and_token_use(monkeypatch):

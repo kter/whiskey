@@ -49,28 +49,80 @@ paths:
     post:
       security: [{bearerAuth: []}]
       summary: Create a temporary image upload URL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/UploadUrlRequest'}
       responses:
-        '501': {$ref: '#/components/responses/NotImplemented'}
+        '200':
+          description: Temporary upload URL and constrained form fields
+          content: {application/json: {schema: {$ref: '#/components/schemas/UploadUrl'}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+        '500': {$ref: '#/components/responses/InternalServerError'}
   /api/drink-logs/analyze:
     post:
       security: [{bearerAuth: []}]
       summary: Analyze a temporary drink image
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AnalyzeDrinkLogRequest'}
       responses:
-        '501': {$ref: '#/components/responses/NotImplemented'}
+        '200':
+          description: Analysis Result for the owned temporary upload
+          content: {application/json: {schema: {$ref: '#/components/schemas/DrinkLogAnalysis'}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+        '500': {$ref: '#/components/responses/InternalServerError'}
   /api/drink-logs/places:
     post:
       security: [{bearerAuth: []}]
       summary: Find nearby Places candidates from body coordinates
       description: GPS coordinates are accepted only in the request body and are never persisted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/NearbyPlacesRequest'}
       responses:
-        '501': {$ref: '#/components/responses/NotImplemented'}
+        '200':
+          description: Nearby Google Places candidates
+          content: {application/json: {schema: {$ref: '#/components/schemas/PlaceCandidates'}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '502': {$ref: '#/components/responses/BadGateway'}
+        '504': {$ref: '#/components/responses/GatewayTimeout'}
+        '500': {$ref: '#/components/responses/InternalServerError'}
   /api/drink-logs/places/resolve:
     post:
       security: [{bearerAuth: []}]
       summary: Resolve the optional Place ID of an owned drink log
       description: Google-provided display names are returned for display only and are never persisted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ResolvePlacesRequest'}
       responses:
-        '501': {$ref: '#/components/responses/NotImplemented'}
+        '200':
+          description: Resolved Google display names for owned Drink Logs
+          content: {application/json: {schema: {$ref: '#/components/schemas/ResolvedPlaces'}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '502': {$ref: '#/components/responses/BadGateway'}
+        '504': {$ref: '#/components/responses/GatewayTimeout'}
+        '500': {$ref: '#/components/responses/InternalServerError'}
   /api/drink-logs:
     post:
       security: [{bearerAuth: []}]
@@ -81,7 +133,19 @@ paths:
           application/json:
             schema: {$ref: '#/components/schemas/CreateDrinkLogRequest'}
       responses:
-        '501': {$ref: '#/components/responses/NotImplemented'}
+        '201':
+          description: Newly created Drink Log
+          content: {application/json: {schema: {$ref: '#/components/schemas/DrinkLog'}}}
+        '200':
+          description: Existing completed Drink Log returned by an idempotent create
+          content: {application/json: {schema: {$ref: '#/components/schemas/DrinkLog'}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+        '500': {$ref: '#/components/responses/InternalServerError'}
     get:
       security: [{bearerAuth: []}]
       summary: List the authenticated user's drink-log timeline
@@ -92,7 +156,12 @@ paths:
         - {name: store, in: query, schema: {type: string}}
         - {name: place_id, in: query, schema: {type: string}}
       responses:
-        '501': {$ref: '#/components/responses/NotImplemented'}
+        '200':
+          description: Drink Log timeline page
+          content: {application/json: {schema: {$ref: '#/components/schemas/DrinkLogPage'}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '500': {$ref: '#/components/responses/InternalServerError'}
   /api/drink-logs/{id}:
     parameters:
       - name: id
@@ -103,17 +172,31 @@ paths:
       security: [{bearerAuth: []}]
       summary: Get an owned drink log
       responses:
-        '501': {$ref: '#/components/responses/NotImplemented'}
+        '200':
+          description: Owned Drink Log
+          content: {application/json: {schema: {$ref: '#/components/schemas/DrinkLog'}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/InternalServerError'}
     put:
       security: [{bearerAuth: []}]
       summary: Update an owned drink log
       responses:
-        '501': {$ref: '#/components/responses/NotImplemented'}
+        '200':
+          description: Updated Drink Log
+          content: {application/json: {schema: {$ref: '#/components/schemas/DrinkLog'}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/InternalServerError'}
     delete:
       security: [{bearerAuth: []}]
       summary: Delete an owned drink log through the recoverable deletion flow
       responses:
-        '501': {$ref: '#/components/responses/NotImplemented'}
+        '204': {description: Drink Log deletion accepted with no response body}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/InternalServerError'}
 components:
   securitySchemes:
     bearerAuth:
@@ -125,7 +208,7 @@ components:
     Limit:
       name: limit
       in: query
-      schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      schema: {type: integer, minimum: 1, maximum: 50, default: 20}
     NextToken:
       name: next_token
       in: query
@@ -146,8 +229,38 @@ components:
       content:
         application/json:
           schema: {$ref: '#/components/schemas/Error'}
-    NotImplemented:
-      description: Phase 4 route stub; Tasks 07 and 08 install the implementation
+    Conflict:
+      description: The request conflicts with the current Drink Log state
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    RateLimited:
+      description: A daily Usage Budget limit was exceeded
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    ServiceUnavailable:
+      description: A monthly analysis Usage Budget was exhausted, or a drink-log budget transaction could not converge
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    Forbidden:
+      description: The owned-resource binding does not belong to the caller
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    BadGateway:
+      description: An upstream Places response was invalid
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    GatewayTimeout:
+      description: The Places operation exceeded its handler deadline
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    InternalServerError:
+      description: An unexpected server error occurred
       content:
         application/json:
           schema: {$ref: '#/components/schemas/Error'}
@@ -187,6 +300,111 @@ components:
             place_id: {type: string}
         notes: {type: string, maxLength: 2000}
         rating: {$ref: '#/components/schemas/Rating'}
+    UploadUrl:
+      type: object
+      required: [upload_url, fields, s3_key]
+      properties:
+        upload_url: {type: string, format: uri}
+        fields: {type: object, additionalProperties: {type: string}}
+        s3_key: {type: string, pattern: '^tmp/'}
+    UploadUrlRequest:
+      type: object
+      additionalProperties: false
+      required: [content_type]
+      properties:
+        content_type: {type: string, enum: [image/jpeg, image/png, image/webp]}
+    AnalyzeDrinkLogRequest:
+      type: object
+      additionalProperties: false
+      required: [s3_key]
+      properties:
+        s3_key:
+          type: string
+          pattern: '^tmp/[^/]+/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}\.(jpg|jpeg|png|webp)$'
+    NearbyPlacesRequest:
+      type: object
+      additionalProperties: false
+      required: [lat, lng]
+      properties:
+        lat: {type: number, minimum: -90, maximum: 90}
+        lng: {type: number, minimum: -180, maximum: 180}
+    ResolvePlacesRequest:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items:
+            type: object
+            additionalProperties: false
+            required: [log_id, place_id]
+            properties:
+              log_id: {type: string, minLength: 1, maxLength: 200, pattern: '^[ -~]+$'}
+              place_id: {type: string, minLength: 1, maxLength: 1000, pattern: '^[ -~]+$'}
+    DrinkLogCandidate:
+      type: object
+      required: [brand_text, name_ja, name_en, confidence, match_source]
+      properties:
+        brand_text: {type: string}
+        name_ja: {type: string}
+        name_en: {type: string}
+        brand_ja: {type: string}
+        brand_en: {type: string}
+        brand_key: {type: string}
+        distillery_ja: {type: string}
+        confidence: {type: number, minimum: 0, maximum: 1}
+        whiskey_id: {type: string}
+        match_source: {type: string}
+    DrinkLogAnalysis:
+      type: object
+      required: [analysis_id, candidates, model_id, confidence, multiple_detected]
+      properties:
+        analysis_id: {type: string}
+        candidates:
+          type: array
+          items: {$ref: '#/components/schemas/DrinkLogCandidate'}
+        serving_style: {$ref: '#/components/schemas/ServingStyle'}
+        model_id: {type: string}
+        confidence: {type: number, nullable: true, minimum: 0, maximum: 1}
+        multiple_detected: {type: boolean}
+    PlaceCandidate:
+      type: object
+      required: [place_id, display_name, formatted_address, attributions]
+      properties:
+        place_id: {type: string}
+        display_name: {type: string, description: Google-provided and never persisted}
+        formatted_address: {type: string}
+        attributions: {type: array, items: {}}
+    PlaceCandidates:
+      type: array
+      items: {$ref: '#/components/schemas/PlaceCandidate'}
+    ResolvedPlace:
+      type: object
+      required: [log_id, display_name, name_source, attributions]
+      properties:
+        log_id: {type: string}
+        display_name: {type: string, description: Google-provided and never persisted}
+        name_source: {type: string}
+        attributions: {type: array, items: {}}
+    ResolvedPlaces:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items: {$ref: '#/components/schemas/ResolvedPlace'}
+    DrinkLogPage:
+      type: object
+      required: [results, count, next_token]
+      properties:
+        results:
+          type: array
+          items: {$ref: '#/components/schemas/DrinkLog'}
+        count: {type: integer, minimum: 0}
+        next_token: {type: string, nullable: true}
     DrinkLog:
       type: object
       description: GPS coordinates and Google-provided display names are never stored.

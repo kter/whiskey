@@ -10,6 +10,7 @@ try:
     from whiskey_common.clients import get_dynamodb_resource
     from whiskey_common.cost_guard import ScanBudgetExceeded, UsageBudget
     from whiskey_common.logger import extract_correlation_id, get_logger
+    from whiskey_common.requests import request_id as shared_request_id
     from whiskey_common.responses import create_response, get_cors_headers
 except ModuleNotFoundError as exc:
     if exc.name != "whiskey_common":
@@ -18,6 +19,7 @@ except ModuleNotFoundError as exc:
     from whiskey_common.clients import get_dynamodb_resource
     from whiskey_common.cost_guard import ScanBudgetExceeded, UsageBudget
     from whiskey_common.logger import extract_correlation_id, get_logger
+    from whiskey_common.requests import request_id as shared_request_id
     from whiskey_common.responses import create_response, get_cors_headers
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "python"))
@@ -71,18 +73,13 @@ def handle_search_endpoint(query_params: dict[str, Any], logger: Any) -> dict[st
         "whiskeys": whiskeys,
         "count": len(whiskeys),
         "query": query,
-        "distillery": "",
         "next_token": next_token,
     }
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     start_time = time.monotonic()
-    request_id = (
-        getattr(context, "aws_request_id", None)
-        or (event.get("requestContext") or {}).get("requestId")
-        or "unknown"
-    )
+    request_id = shared_request_id(event, context)
     logger = get_logger("whiskeys-search", correlation_id=extract_correlation_id(event))
     logger.log_api_request(
         method=event.get("httpMethod", "UNKNOWN"),

@@ -54,12 +54,7 @@ def _source_of_truth_value(name: str) -> int:
     [
         (
             "UPLOAD_MAX_BYTES",
-            "lambda/drink-logs/drink_log_store.py",
-            _environment_default("UPLOAD_MAX_BYTES"),
-        ),
-        (
-            "UPLOAD_MAX_BYTES",
-            "lambda/drink-log-analyze/index.py",
+            "lambda/common/python/whiskey_common/upload_limits.py",
             _environment_default("UPLOAD_MAX_BYTES"),
         ),
         (
@@ -79,12 +74,7 @@ def _source_of_truth_value(name: str) -> int:
         ),
         (
             "IMAGE_MAX_BYTES",
-            "lambda/drink-logs/drink_log_store.py",
-            _environment_default("IMAGE_MAX_BYTES"),
-        ),
-        (
-            "IMAGE_MAX_BYTES",
-            "lambda/drink-log-analyze/index.py",
+            "lambda/common/python/whiskey_common/upload_limits.py",
             _environment_default("IMAGE_MAX_BYTES"),
         ),
     ],
@@ -97,6 +87,22 @@ def test_size_limits_match(
     assert all(value == expected for value in values), (
         f"{relative_path}: {constant_name} expected {expected}, found {values}"
     )
+
+
+def test_upload_limit_environment_reads_are_centralized() -> None:
+    """Handlers must use upload_limits rather than re-declaring environment defaults."""
+    environment_read = re.compile(
+        r"os\s*\.\s*environ\s*(?:\.\s*get\s*\(\s*|\[\s*)"
+        r"['\"](?:UPLOAD_MAX_BYTES|IMAGE_MAX_BYTES)['\"]"
+    )
+    limits_path = ROOT / "lambda/common/python/whiskey_common/upload_limits.py"
+    for source_path in (ROOT / "lambda").rglob("*.py"):
+        if source_path == limits_path:
+            continue
+        assert not environment_read.search(source_path.read_text(encoding="utf-8")), (
+            f"{source_path.relative_to(ROOT)}: upload-limit environment reads belong in "
+            "lambda/common/python/whiskey_common/upload_limits.py"
+        )
 
 
 def test_backend_store_name_placeholder_is_known_to_frontend() -> None:
@@ -126,3 +132,38 @@ def test_backend_store_name_placeholder_is_known_to_frontend() -> None:
     }
 
     assert placeholder_match.group("value") in frontend_placeholders
+
+
+def test_serving_styles_match_across_contracts() -> None:
+    # These cross-language duplicates are kept in step by this test, mirroring
+    # the UPLOAD_MAX_BYTES precedent above.
+    paths_and_patterns = {
+        "lambda/common/python/whiskey_common/serving_styles.py": (
+            r"\bSERVING_STYLES\s*=\s*\{(?P<values>.*?)\}",
+        ),
+        "frontend/types/whiskey.ts": (
+            r"\bSERVING_STYLES\s*=\s*\[(?P<values>.*?)\]",
+        ),
+        "swagger.yml": (
+            r"^    ServingStyle:\n      type: string\n      enum: \[(?P<values>.*?)\]",
+        ),
+    }
+    values_by_path: dict[str, set[str]] = {}
+    for relative_path, (pattern,) in paths_and_patterns.items():
+        source = (ROOT / relative_path).read_text(encoding="utf-8")
+        match = re.search(pattern, source, flags=re.DOTALL | re.MULTILINE)
+        assert match, f"{relative_path}: SERVING_STYLES was not found"
+        values_by_path[relative_path] = {
+            value_match.group("value") or value_match.group("value_unquoted")
+            for value_match in re.finditer(
+                r"(?P<quote>['\"])(?P<value>.*?)\1|(?P<value_unquoted>[A-Z_]+)",
+                match.group("values"),
+            )
+        }
+
+    python_path = "lambda/common/python/whiskey_common/serving_styles.py"
+    expected = values_by_path[python_path]
+    for relative_path, values in values_by_path.items():
+        assert values == expected, (
+            f"{relative_path}: SERVING_STYLES expected {sorted(expected)}, found {sorted(values)}"
+        )

@@ -21,7 +21,7 @@ pytest.importorskip("fastapi")
 LOCAL_USER_ID = "local-user"
 DRINKLOGS_TABLE = "DrinkLogs-local"
 APP_STATE_TABLE = "AppState-local"
-WHISKEYS_TABLE = "WhiskeySearch-local"
+WHISKEY_SEARCH_TABLE = "WhiskeySearch-local"
 IMAGES_BUCKET = "whiskey-images-local"
 
 
@@ -80,7 +80,7 @@ def _create_tables(dynamodb):
         BillingMode="PAY_PER_REQUEST",
     )
     dynamodb.create_table(
-        TableName=WHISKEYS_TABLE,
+        TableName=WHISKEY_SEARCH_TABLE,
         KeySchema=[{"AttributeName": "id", "KeyType": "HASH"}],
         AttributeDefinitions=[
             {"AttributeName": "id", "AttributeType": "S"},

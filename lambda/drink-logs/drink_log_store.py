@@ -12,14 +12,17 @@ from typing import Any, Mapping
 from botocore.exceptions import ClientError
 
 from whiskey_common.cost_guard import UsageBudget, UsageBudgetExceeded
+from whiskey_common.errors import ValidationError
 from whiskey_common.images import ImageNormalizationError, normalize_image, sniff_format
+from whiskey_common.normalize import UUID_TEXT
 from whiskey_common.scan_utils import encode_next_token
+from whiskey_common.serving_styles import SERVING_STYLES
+from whiskey_common.upload_limits import image_max_bytes, upload_max_bytes
 
 import lifecycle as lifecycle_module
 from lifecycle import CreateConflict, DrinkLogLifecycle, derive_drink_log_id
 
 
-SERVING_STYLES = {"NEAT", "ROCKS", "WATER", "SODA", "COCKTAIL"}
 CONTENT_TYPES = {
     "image/jpeg": ("jpeg", "jpg"),
     "image/png": ("png", "png"),
@@ -37,14 +40,7 @@ INTERNAL_FIELDS = {
 MAX_TIMELINE_PAGE_QUERIES = 10
 PRESIGNED_POST_SECONDS = 120
 PRESIGNED_GET_SECONDS = 900
-UUID_TEXT = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}"
 ANALYSIS_ID_RE = re.compile(rf"^(?:ai-result:([^:]+):)?({UUID_TEXT})$")
-
-
-class ValidationError(ValueError):
-    def __init__(self, fields: Mapping[str, str]):
-        super().__init__("Validation failed")
-        self.fields = dict(fields)
 
 
 class AnalysisConflict(Exception):
@@ -208,8 +204,7 @@ class DrinkLogStore:
 
         _format, extension = CONTENT_TYPES[content_type]
         key = f"tmp/{user_id}/{uuid.uuid4()}.{extension}"
-        # Keep in sync with tests/test_drink_log_contract.py.
-        max_bytes = int(os.environ.get("UPLOAD_MAX_BYTES", "3670016"))
+        max_bytes = upload_max_bytes()
         # A captured form is pinned to one exact key. Reuse can only overwrite that
         # object and cannot consume storage allocation or an expensive API. The
         # residual risk is low-cost PUT requests during the 120-second validity
@@ -280,10 +275,7 @@ class DrinkLogStore:
         content_type = head.get("ContentType")
         if content_type not in CONTENT_TYPES:
             raise AnalysisConflict("Uploaded image content type is unsupported")
-        # Keep in sync with tests/test_drink_log_contract.py.
-        if int(head.get("ContentLength", 0)) > int(
-            os.environ.get("UPLOAD_MAX_BYTES", "3670016")
-        ):
+        if int(head.get("ContentLength", 0)) > upload_max_bytes():
             raise AnalysisConflict("Uploaded image exceeds the upload limit")
 
         now = lifecycle_module.rfc3339(lifecycle_module.utc_now())
@@ -353,8 +345,7 @@ class DrinkLogStore:
                 )
             normalized = normalize_image(
                 raw,
-                # Keep in sync with tests/test_drink_log_contract.py.
-                max_bytes=int(os.environ.get("IMAGE_MAX_BYTES", "1572864")),
+                max_bytes=image_max_bytes(),
             )
         except ImageNormalizationError as exc:
             compensated = self.lifecycle.compensate_create(

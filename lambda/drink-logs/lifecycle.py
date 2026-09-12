@@ -4,31 +4,34 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Callable, Mapping
 
 from botocore.exceptions import ClientError
 
 from whiskey_common.cost_guard import UsageBudget
+from whiskey_common.timeutils import rfc3339_millis, utc_now
 
 
 NAMESPACE_DRINKLOG = uuid.UUID("7df1920f-5929-51ee-9860-164c1d4bc388")
 
+# Drink Log timestamps are written at millisecond precision, and callers reach
+# both clock helpers through this module (`lifecycle_module.utc_now()` /
+# `lifecycle_module.rfc3339()`) so a test can pin the clock in one place.
+rfc3339 = rfc3339_millis
+
+__all__ = [
+    "CreateConflict",
+    "DrinkLogLifecycle",
+    "NAMESPACE_DRINKLOG",
+    "derive_drink_log_id",
+    "rfc3339",
+    "utc_now",
+]
+
 
 class CreateConflict(Exception):
     pass
-
-
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def rfc3339(value: datetime) -> str:
-    return (
-        value.astimezone(timezone.utc)
-        .isoformat(timespec="milliseconds")
-        .replace("+00:00", "Z")
-    )
 
 
 def derive_drink_log_id(user_id: str, upload_uuid: str) -> str:

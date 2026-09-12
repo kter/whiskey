@@ -27,3 +27,15 @@ _Avoid_: Match, detection
 **Usage Budget**:
 The per-user or global allowance that limits costly operations and retained images so the application's spending remains bounded.
 _Avoid_: Rate limit, quota
+
+**Place**:
+The bar, shop, or other location where a Drink Log was made, represented by user-entered store information and an optional Place ID.
+_Avoid_: DrinkLogStore, venue record
+
+**Tombstone**:
+A `deleting` Drink Log record created by the reconciler for an orphan image with no record, so that image deletion uses the same conditional-write exclusion as the create path.
+_Avoid_: Lifecycle status, deleted record
+
+## Drink Log lifecycle
+
+A Drink Log starts `pending`, becomes `complete` when its image and Completion are finalised, and moves to `deleting` for recoverable deletion. The reconciler also creates a Tombstone as a `deleting` record for an orphan image, then removes the image and record through that same flow.

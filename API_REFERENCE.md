@@ -19,7 +19,7 @@ Access tokens are not accepted. API Gateway validates the token first, and each 
 
 Drink-log collection routes accept:
 
-- `limit`: 1–100, default 20
+- `limit`: 1–50, default 20
 - `next_token`: opaque continuation token returned by the previous response
 
 Collection responses use this shape:

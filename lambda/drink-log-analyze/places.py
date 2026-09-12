@@ -16,9 +16,11 @@ import requests
 try:
     from whiskey_common.clients import get_boto3_client, get_dynamodb_resource
     from whiskey_common.cost_guard import UsageBudget, UsageBudgetExceeded
+    from whiskey_common.errors import ValidationError
     from whiskey_common.jwt_utils import extract_user_id_from_event
     from whiskey_common.logger import extract_correlation_id, get_logger
     from whiskey_common.mock_guard import local_fixture_enabled, validate_mock_guard
+    from whiskey_common.requests import parse_json_body, request_id as shared_request_id
     from whiskey_common.responses import create_response
 except ModuleNotFoundError as exc:
     if exc.name != "whiskey_common":
@@ -28,9 +30,11 @@ except ModuleNotFoundError as exc:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "common" / "python"))
     from whiskey_common.clients import get_boto3_client, get_dynamodb_resource
     from whiskey_common.cost_guard import UsageBudget, UsageBudgetExceeded
+    from whiskey_common.errors import ValidationError
     from whiskey_common.jwt_utils import extract_user_id_from_event
     from whiskey_common.logger import extract_correlation_id, get_logger
     from whiskey_common.mock_guard import local_fixture_enabled, validate_mock_guard
+    from whiskey_common.requests import parse_json_body, request_id as shared_request_id
     from whiskey_common.responses import create_response
 
 
@@ -44,17 +48,6 @@ DEADLINE_SAFETY_SECONDS = 0.5
 # Keep in sync with tests/test_drink_log_contract.py.
 PLACEHOLDER_NAME = "店舗情報を取得できません"
 _PLACES_API_KEY: str | None = None
-
-
-class ValidationError(ValueError):
-    """Raised for caller-controlled invalid input."""
-
-    def __init__(self, fields: Mapping[str, str]):
-        super().__init__("Validation failed")
-        self.fields = dict(fields)
-
-
-BudgetExceeded = UsageBudgetExceeded
 
 
 class OwnershipError(Exception):
@@ -89,19 +82,6 @@ class PlaceDirectory(Protocol):
     def place_detail(self, place_id: str, *, deadline: float) -> dict[str, Any] | None:
         """Return display details for a place, or None when it is absent."""
         ...
-
-
-def _parse_json_body(event: Mapping[str, Any]) -> dict[str, Any]:
-    raw = event.get("body")
-    if not isinstance(raw, str):
-        raise ValidationError({"body": "A JSON object is required"})
-    try:
-        body = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise ValidationError({"body": "Malformed JSON"}) from exc
-    if not isinstance(body, dict):
-        raise ValidationError({"body": "A JSON object is required"})
-    return body
 
 
 def _finite_coordinate(value: Any, minimum: float, maximum: float) -> float | None:
@@ -477,19 +457,11 @@ def resolve_places(
     return results
 
 
-def _request_id(event: Mapping[str, Any], context: Any) -> str:
-    return (
-        getattr(context, "aws_request_id", None)
-        or (event.get("requestContext") or {}).get("requestId")
-        or "unknown"
-    )
-
-
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Own POST /places and POST /places/resolve exclusively."""
     started = time.monotonic()
     directory = select_place_directory()
-    request_id = _request_id(event, context)
+    request_id = shared_request_id(event, context)
     logger = get_logger("drink-log-places", correlation_id=extract_correlation_id(event) or request_id)
     method = event.get("httpMethod", "UNKNOWN")
     path = (event.get("path") or "").rstrip("/")
@@ -500,7 +472,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     # unauthenticated requests never trigger a Secrets Manager lookup.
     directory.prepare()
     try:
-        request_body = _parse_json_body(event)
+        request_body = parse_json_body(event)
     except ValidationError as exc:
         return create_response(
             400,
@@ -550,7 +522,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         )
     except OwnershipError:
         return create_response(403, {"error": "Place binding does not belong to caller"}, event=event, private=True)
-    except BudgetExceeded:
+    except UsageBudgetExceeded:
         return create_response(429, {"error": "Places request limit exceeded"}, event=event, private=True)
     except UpstreamTimeout:
         return create_response(504, {"error": "Places request timed out"}, event=event, private=True)

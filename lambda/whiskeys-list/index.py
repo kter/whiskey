@@ -9,6 +9,7 @@ try:
     from whiskey_common.clients import get_dynamodb_resource
     from whiskey_common.cost_guard import ScanBudgetExceeded, UsageBudget
     from whiskey_common.logger import extract_correlation_id, get_logger
+    from whiskey_common.requests import request_id as shared_request_id
     from whiskey_common.responses import create_response, get_cors_headers
     from whiskey_common.scan_utils import decode_next_token, scan_all_pages
 except ModuleNotFoundError as exc:
@@ -18,6 +19,7 @@ except ModuleNotFoundError as exc:
     from whiskey_common.clients import get_dynamodb_resource
     from whiskey_common.cost_guard import ScanBudgetExceeded, UsageBudget
     from whiskey_common.logger import extract_correlation_id, get_logger
+    from whiskey_common.requests import request_id as shared_request_id
     from whiskey_common.responses import create_response, get_cors_headers
     from whiskey_common.scan_utils import decode_next_token, scan_all_pages
 
@@ -33,11 +35,7 @@ def _parse_request(query: dict[str, Any]) -> tuple[int, dict[str, Any] | None]:
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
-    request_id = (
-        getattr(context, "aws_request_id", None)
-        or (event.get("requestContext") or {}).get("requestId")
-        or "unknown"
-    )
+    request_id = shared_request_id(event, context)
     logger = get_logger("whiskeys-list", correlation_id=extract_correlation_id(event) or request_id)
     headers = get_cors_headers(event)
     logger.log_api_request(
@@ -57,7 +55,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         if start_key:
             kwargs["ExclusiveStartKey"] = start_key
         items, next_token = scan_all_pages(
-            dynamodb.Table(os.environ["WHISKEYS_TABLE"]),
+            dynamodb.Table(os.environ["WHISKEY_SEARCH_TABLE"]),
             max_pages=int(os.environ.get("PUBLIC_SCAN_MAX_PAGES", "1")),
             **kwargs,
         )

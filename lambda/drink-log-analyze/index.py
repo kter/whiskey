@@ -8,7 +8,8 @@ import re
 import threading
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
+from dataclasses import dataclass
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Mapping, Protocol
@@ -25,11 +26,17 @@ try:
     )
     from whiskey_common.clients import get_dynamodb_resource, get_s3_client
     from whiskey_common.cost_guard import UsageBudget, UsageBudgetExceeded
+    from whiskey_common.errors import ValidationError
     from whiskey_common.images import ImageNormalizationError, normalize_image, sniff_format
     from whiskey_common.jwt_utils import extract_user_id_from_event
     from whiskey_common.logger import extract_correlation_id, get_logger
     from whiskey_common.mock_guard import local_fixture_enabled, validate_mock_guard
+    from whiskey_common.normalize import UUID_TEXT
+    from whiskey_common.requests import parse_json_body, request_id as shared_request_id
     from whiskey_common.responses import create_response
+    from whiskey_common.serving_styles import SERVING_STYLES
+    from whiskey_common.timeutils import utc_now
+    from whiskey_common.upload_limits import image_max_bytes, upload_max_bytes
 except ModuleNotFoundError as exc:
     if exc.name != "whiskey_common":
         raise
@@ -43,16 +50,20 @@ except ModuleNotFoundError as exc:
     )
     from whiskey_common.clients import get_dynamodb_resource, get_s3_client
     from whiskey_common.cost_guard import UsageBudget, UsageBudgetExceeded
+    from whiskey_common.errors import ValidationError
     from whiskey_common.images import ImageNormalizationError, normalize_image, sniff_format
     from whiskey_common.jwt_utils import extract_user_id_from_event
     from whiskey_common.logger import extract_correlation_id, get_logger
     from whiskey_common.mock_guard import local_fixture_enabled, validate_mock_guard
+    from whiskey_common.normalize import UUID_TEXT
+    from whiskey_common.requests import parse_json_body, request_id as shared_request_id
     from whiskey_common.responses import create_response
+    from whiskey_common.serving_styles import SERVING_STYLES
+    from whiskey_common.timeutils import utc_now
+    from whiskey_common.upload_limits import image_max_bytes, upload_max_bytes
 
 
-SERVING_STYLES = {"NEAT", "ROCKS", "WATER", "SODA", "COCKTAIL"}
 SERVING_STYLE_ALIASES = {"HIGHBALL": "SODA", "SODA": "SODA"}
-UUID_TEXT = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}"
 UPLOAD_KEY_RE = re.compile(rf"^tmp/([^/]+)/({UUID_TEXT})\.(jpg|jpeg|png|webp)$")
 MAX_CANDIDATES = 5
 MASTER_SNAPSHOT_TTL_SECONDS = 300
@@ -88,14 +99,6 @@ BRAND_CATALOG = BrandCatalog.from_file(Path(__file__).with_name("brands.json"))
 CANDIDATE_RESOLVER = CandidateResolver(BRAND_CATALOG)
 
 
-class ValidationError(ValueError):
-    """Raised for caller-controlled invalid input."""
-
-    def __init__(self, fields: Mapping[str, str]):
-        super().__init__("Validation failed")
-        self.fields = dict(fields)
-
-
 class OwnershipError(Exception):
     """Raised when an upload key is outside the caller's namespace."""
 
@@ -106,17 +109,6 @@ class AnalysisReader(Protocol):
     def read(self, image: bytes, *, timeout_seconds: float) -> dict[str, Any] | None:
         """Return a raw Analysis Result payload for a normalized image."""
         ...
-
-
-BudgetExceeded = UsageBudgetExceeded
-
-
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _rfc3339(value: datetime) -> str:
-    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _validate_runtime_config() -> str:
@@ -134,15 +126,7 @@ def _validate_runtime_config() -> str:
 
 
 def _parse_input(event: Mapping[str, Any]) -> str:
-    raw = event.get("body")
-    if not isinstance(raw, str):
-        raise ValidationError({"body": "A JSON object is required"})
-    try:
-        body = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise ValidationError({"body": "Malformed JSON"}) from exc
-    if not isinstance(body, dict):
-        raise ValidationError({"body": "A JSON object is required"})
+    body = parse_json_body(event)
     if set(body) != {"s3_key"}:
         fields = {name: "Field is not accepted" for name in sorted(set(body) - {"s3_key"})}
         if "s3_key" not in body:
@@ -259,11 +243,16 @@ def _extract_response_text(response: Mapping[str, Any]) -> str:
     return "".join(texts)
 
 
-def _remaining_budget_ms(context: Any, started: float) -> int:
-    wall_remaining = HANDLER_BUDGET_MS - int((time.monotonic() - started) * 1000)
-    get_remaining = getattr(context, "get_remaining_time_in_millis", None)
-    lambda_remaining = int(get_remaining()) if callable(get_remaining) else wall_remaining
-    return min(wall_remaining, lambda_remaining) - INVOKE_SAFETY_MS
+@dataclass(frozen=True)
+class HandlerDeadline:
+    context: Any
+    started: float
+
+    def remaining_budget_ms(self) -> int:
+        wall_remaining = HANDLER_BUDGET_MS - int((time.monotonic() - self.started) * 1000)
+        get_remaining = getattr(self.context, "get_remaining_time_in_millis", None)
+        lambda_remaining = int(get_remaining()) if callable(get_remaining) else wall_remaining
+        return min(wall_remaining, lambda_remaining) - INVOKE_SAFETY_MS
 
 
 class BedrockAnalysisReader:
@@ -340,10 +329,9 @@ def select_analysis_reader(model_id: str) -> AnalysisReader:
 def _invoke_model(
     reader: AnalysisReader,
     image: bytes,
-    context: Any,
-    started: float,
+    deadline: HandlerDeadline,
 ) -> dict[str, Any] | None:
-    remaining_ms = _remaining_budget_ms(context, started)
+    remaining_ms = deadline.remaining_budget_ms()
     if remaining_ms < MIN_INVOKE_BUDGET_MS:
         return None
     return reader.read(image, timeout_seconds=max(0.1, remaining_ms / 1000))
@@ -459,8 +447,7 @@ def _cached_master_snapshot(table_name: str) -> dict[str, Any] | None:
 def _master_snapshot_within_budget(
     table: Any,
     table_name: str,
-    context: Any,
-    started: float,
+    deadline: HandlerDeadline,
     logger: Any = None,
 ) -> dict[str, Any]:
     """Skip the catalog scan when there is not enough time left to afford it.
@@ -474,7 +461,7 @@ def _master_snapshot_within_budget(
     cached = _cached_master_snapshot(table_name)
     if cached is not None:
         return cached
-    if _remaining_budget_ms(context, started) >= MIN_INVOKE_BUDGET_MS:
+    if deadline.remaining_budget_ms() >= MIN_INVOKE_BUDGET_MS:
         return _get_master_snapshot(table, table_name, logger)
     if logger is not None:
         logger.warning("Skipped master snapshot scan", reason="insufficient_budget")
@@ -501,8 +488,7 @@ def analyze_upload(
     s3_key: str,
     model_id: str,
     reader: AnalysisReader,
-    context: Any,
-    started: float,
+    deadline: HandlerDeadline,
     logger: Any = None,
 ) -> dict[str, Any]:
     upload_uuid = _upload_identity(s3_key, user_id)
@@ -514,7 +500,7 @@ def analyze_upload(
         isinstance(content_length, bool)
         or not isinstance(content_length, int)
         or content_length <= 0
-        or content_length > int(os.environ.get("UPLOAD_MAX_BYTES", "3670016"))
+        or content_length > upload_max_bytes()
         or not isinstance(etag, str)
         or not etag
     ):
@@ -524,25 +510,24 @@ def analyze_upload(
     if sniff_format(prefix) not in {"jpeg", "png", "webp"}:
         raise ValidationError({"s3_key": "Uploaded file is not a supported image"})
     raw = _read_body(s3.get_object(Bucket=bucket_name, Key=s3_key, IfMatch=etag))
-    # Keep in sync with tests/test_drink_log_contract.py.
-    normalized = normalize_image(raw, max_bytes=int(os.environ.get("IMAGE_MAX_BYTES", "1572864")))
+    normalized = normalize_image(raw, max_bytes=image_max_bytes())
 
     usage_budget = UsageBudget(dynamodb, app_state_table_name)
     usage_budget.reserve_analysis(
         user_id,
         user_request=True,
-        remaining_ms=lambda: _remaining_budget_ms(context, started),
+        remaining_ms=deadline.remaining_budget_ms,
     )
     analysis: dict[str, Any] | None = None
     for _attempt in range(2):
-        if _remaining_budget_ms(context, started) < MIN_INVOKE_BUDGET_MS:
+        if deadline.remaining_budget_ms() < MIN_INVOKE_BUDGET_MS:
             break
         usage_budget.reserve_analysis(
             user_id,
             user_request=False,
-            remaining_ms=lambda: _remaining_budget_ms(context, started),
+            remaining_ms=deadline.remaining_budget_ms,
         )
-        analysis = _invoke_model(reader, normalized, context, started)
+        analysis = _invoke_model(reader, normalized, deadline)
         if analysis is None or analysis:
             break
     if not analysis:
@@ -555,8 +540,7 @@ def analyze_upload(
     snapshot = _master_snapshot_within_budget(
         dynamodb.Table(whiskey_table_name),
         whiskey_table_name,
-        context,
-        started,
+        deadline,
         logger,
     )
     candidates = CANDIDATE_RESOLVER.resolve(snapshot["catalog"], analysis)
@@ -578,7 +562,7 @@ def analyze_upload(
             master_snapshot_complete=snapshot["complete"],
             master_snapshot_size=snapshot["catalog"].size,
         )
-    expires_at = int((_utc_now() + timedelta(seconds=ANALYSIS_TTL_SECONDS)).timestamp())
+    expires_at = int((utc_now() + timedelta(seconds=ANALYSIS_TTL_SECONDS)).timestamp())
     analysis_id = f"ai-result:{user_id}:{upload_uuid}"
     item: dict[str, Any] = {
         "pk": analysis_id,
@@ -607,20 +591,12 @@ def analyze_upload(
     return response
 
 
-def _request_id(event: Mapping[str, Any], context: Any) -> str:
-    return (
-        getattr(context, "aws_request_id", None)
-        or (event.get("requestContext") or {}).get("requestId")
-        or "unknown"
-    )
-
-
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Handle POST /api/drink-logs/analyze."""
-    started = time.monotonic()
+    deadline = HandlerDeadline(context, time.monotonic())
     model_id = _validate_runtime_config()
     reader = select_analysis_reader(model_id)
-    request_id = _request_id(event, context)
+    request_id = shared_request_id(event, context)
     logger = get_logger("drink-log-analyze", correlation_id=extract_correlation_id(event) or request_id)
     logger.log_api_request(
         method=event.get("httpMethod", "UNKNOWN"),
@@ -644,8 +620,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             s3_key=s3_key,
             model_id=model_id,
             reader=reader,
-            context=context,
-            started=started,
+            deadline=deadline,
             logger=logger,
         )
         return create_response(200, result, event=event, private=True)
@@ -658,7 +633,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         )
     except OwnershipError:
         return create_response(403, {"error": "Upload does not belong to caller"}, event=event, private=True)
-    except BudgetExceeded as exc:
+    except UsageBudgetExceeded as exc:
         return create_response(exc.status_code, {"error": str(exc)}, event=event, private=True)
     except ImageNormalizationError:
         return create_response(400, {"error": "Uploaded image is invalid"}, event=event, private=True)
