@@ -8,7 +8,7 @@ import math
 import os
 import time
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Protocol
 from urllib.parse import quote
 
 import requests
@@ -18,6 +18,7 @@ try:
     from whiskey_common.cost_guard import UsageBudget, UsageBudgetExceeded
     from whiskey_common.jwt_utils import extract_user_id_from_event
     from whiskey_common.logger import extract_correlation_id, get_logger
+    from whiskey_common.mock_guard import local_fixture_enabled, validate_mock_guard
     from whiskey_common.responses import create_response
 except ModuleNotFoundError as exc:
     if exc.name != "whiskey_common":
@@ -29,6 +30,7 @@ except ModuleNotFoundError as exc:
     from whiskey_common.cost_guard import UsageBudget, UsageBudgetExceeded
     from whiskey_common.jwt_utils import extract_user_id_from_event
     from whiskey_common.logger import extract_correlation_id, get_logger
+    from whiskey_common.mock_guard import local_fixture_enabled, validate_mock_guard
     from whiskey_common.responses import create_response
 
 
@@ -66,51 +68,26 @@ class UpstreamTimeout(UpstreamError):
     """Raised when the Places deadline is exhausted."""
 
 
-def _env_flag_is_set(name: str) -> bool:
-    return name in os.environ and os.environ[name] != ""
+class PlaceDirectory(Protocol):
+    """Directory interface used by the Places Lambda handler."""
 
+    def prepare(self) -> None:
+        """Prepare the directory before processing a request."""
+        ...
 
-def _validate_mock_guard() -> None:
-    if os.environ.get("ENVIRONMENT", "dev") != "local" and any(
-        _env_flag_is_set(name) for name in ("MOCK_AI", "MOCK_PLACES")
-    ):
-        raise RuntimeError("MOCK_AI and MOCK_PLACES are permitted only in local")
+    def search_nearby(
+        self,
+        lat: float,
+        lng: float,
+        *,
+        deadline: float | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return nearby places for a coordinate."""
+        ...
 
-
-def _mock_places_enabled() -> bool:
-    return os.environ.get("ENVIRONMENT") == "local" and _env_flag_is_set("MOCK_PLACES")
-
-
-def _load_api_key() -> str:
-    global _PLACES_API_KEY
-    if _PLACES_API_KEY is not None:
-        return _PLACES_API_KEY
-    secret_name = os.environ.get("PLACES_SECRET_NAME")
-    if not secret_name:
-        raise RuntimeError("PLACES_SECRET_NAME is required")
-    response = get_boto3_client("secretsmanager").get_secret_value(SecretId=secret_name)
-    secret_string = response.get("SecretString")
-    if not isinstance(secret_string, str):
-        raise RuntimeError("Places secret must contain SecretString JSON")
-    try:
-        secret = json.loads(secret_string)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError("Places secret is not valid JSON") from exc
-    if (
-        not isinstance(secret, dict)
-        or set(secret) != {"apiKey"}
-        or not isinstance(secret.get("apiKey"), str)
-        or not secret["apiKey"].strip()
-    ):
-        raise RuntimeError("Places secret must have exactly one non-empty apiKey")
-    _PLACES_API_KEY = secret["apiKey"]
-    return _PLACES_API_KEY
-
-
-def _api_key() -> str:
-    if _mock_places_enabled():
-        return "local-mock-not-sent"
-    return _load_api_key()
+    def place_detail(self, place_id: str, *, deadline: float) -> dict[str, Any] | None:
+        """Return display details for a place, or None when it is absent."""
+        ...
 
 
 def _parse_json_body(event: Mapping[str, Any]) -> dict[str, Any]:
@@ -184,39 +161,184 @@ def validate_resolve_input(body: Mapping[str, Any]) -> list[dict[str, str]]:
     return validated
 
 
-def _attributions(value: Any) -> list[Any]:
-    if not isinstance(value, list):
-        raise UpstreamError("Places attributions are invalid")
-    return value
+class GooglePlaceDirectory:
+    """Google Places adapter with execution-environment API-key caching."""
+
+    def __init__(self) -> None:
+        self._api_key: str | None = None
+
+    def prepare(self) -> None:
+        """Load and cache the Google Places API key."""
+        self._load_api_key()
+
+    def _load_api_key(self) -> str:
+        global _PLACES_API_KEY
+        if self._api_key is not None:
+            return self._api_key
+        if _PLACES_API_KEY is not None:
+            self._api_key = _PLACES_API_KEY
+            return self._api_key
+        secret_name = os.environ.get("PLACES_SECRET_NAME")
+        if not secret_name:
+            raise RuntimeError("PLACES_SECRET_NAME is required")
+        response = get_boto3_client("secretsmanager").get_secret_value(
+            SecretId=secret_name
+        )
+        secret_string = response.get("SecretString")
+        if not isinstance(secret_string, str):
+            raise RuntimeError("Places secret must contain SecretString JSON")
+        try:
+            secret = json.loads(secret_string)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("Places secret is not valid JSON") from exc
+        if (
+            not isinstance(secret, dict)
+            or set(secret) != {"apiKey"}
+            or not isinstance(secret.get("apiKey"), str)
+            or not secret["apiKey"].strip()
+        ):
+            raise RuntimeError("Places secret must have exactly one non-empty apiKey")
+        _PLACES_API_KEY = secret["apiKey"]
+        self._api_key = _PLACES_API_KEY
+        return self._api_key
+
+    @staticmethod
+    def _attributions(value: Any) -> list[Any]:
+        if not isinstance(value, list):
+            raise UpstreamError("Places attributions are invalid")
+        return value
+
+    @staticmethod
+    def _display_name(value: Any) -> str:
+        if (
+            not isinstance(value, dict)
+            or not isinstance(value.get("text"), str)
+            or not value["text"]
+        ):
+            raise UpstreamError("Places displayName is invalid")
+        return value["text"]
+
+    @staticmethod
+    def _json_response(response: Any) -> Mapping[str, Any]:
+        try:
+            response.raise_for_status()
+            payload = response.json()
+        except requests.Timeout as exc:
+            raise UpstreamTimeout from exc
+        except (requests.RequestException, ValueError) as exc:
+            raise UpstreamError("Places returned an invalid response") from exc
+        if not isinstance(payload, dict):
+            raise UpstreamError("Places returned a non-object response")
+        return payload
+
+    def search_nearby(
+        self,
+        lat: float,
+        lng: float,
+        *,
+        deadline: float | None = None,
+    ) -> list[dict[str, Any]]:
+        """Search Google Places near a coordinate."""
+        api_key = self._load_api_key()
+        body = {
+            "includedTypes": ["bar", "restaurant"],
+            "rankPreference": "DISTANCE",
+            "maxResultCount": 8,
+            "languageCode": "ja",
+            "regionCode": "JP",
+            "locationRestriction": {
+                "circle": {
+                    "center": {"latitude": lat, "longitude": lng},
+                    "radius": 300,
+                }
+            },
+        }
+        headers = {
+            "X-Goog-Api-Key": api_key,
+            "X-Goog-FieldMask": NEARBY_FIELD_MASK,
+            "Content-Type": "application/json",
+        }
+        remaining = (deadline - time.monotonic()) if deadline is not None else 5.0
+        if remaining <= 0:
+            raise UpstreamTimeout
+        try:
+            response = requests.post(
+                f"{PLACES_BASE_URL}/places:searchNearby",
+                json=body,
+                headers=headers,
+                timeout=(min(2, remaining), min(5, remaining)),
+            )
+        except requests.Timeout as exc:
+            raise UpstreamTimeout from exc
+        except requests.RequestException as exc:
+            raise UpstreamError("Places nearby request failed") from exc
+        payload = self._json_response(response)
+        places = payload.get("places", [])
+        if not isinstance(places, list) or len(places) > 8:
+            raise UpstreamError("Places nearby payload is invalid")
+        results: list[dict[str, Any]] = []
+        for place in places:
+            if not isinstance(place, dict) or not _valid_identifier(
+                place.get("id"), maximum=1000
+            ):
+                raise UpstreamError("Places nearby item is invalid")
+            address = place.get("formattedAddress", "")
+            if not isinstance(address, str):
+                raise UpstreamError("Places formattedAddress is invalid")
+            results.append(
+                {
+                    "place_id": place["id"],
+                    "display_name": self._display_name(place.get("displayName")),
+                    "formatted_address": address,
+                    "attributions": self._attributions(place.get("attributions", [])),
+                }
+            )
+        return results
+
+    def place_detail(self, place_id: str, *, deadline: float) -> dict[str, Any] | None:
+        """Fetch Google Places display details for one place."""
+        api_key = self._load_api_key()
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise UpstreamTimeout
+        url = f"{PLACES_BASE_URL}/places/{quote(place_id, safe='')}"
+        headers = {"X-Goog-Api-Key": api_key, "X-Goog-FieldMask": DETAIL_FIELD_MASK}
+        try:
+            response = requests.get(
+                url,
+                params={"languageCode": "ja", "regionCode": "JP"},
+                headers=headers,
+                timeout=(min(2, remaining), min(5, remaining)),
+            )
+        except requests.Timeout as exc:
+            raise UpstreamTimeout from exc
+        except requests.RequestException as exc:
+            raise UpstreamError("Place Details request failed") from exc
+        if response.status_code == 404:
+            return None
+        payload = self._json_response(response)
+        return {
+            "display_name": self._display_name(payload.get("displayName")),
+            "attributions": self._attributions(payload.get("attributions", [])),
+        }
 
 
-def _display_name(value: Any) -> str:
-    if not isinstance(value, dict) or not isinstance(value.get("text"), str) or not value["text"]:
-        raise UpstreamError("Places displayName is invalid")
-    return value["text"]
+class LocalPlaceDirectory:
+    """Deterministic local adapter for Places development flows."""
 
+    def prepare(self) -> None:
+        """Prepare the local fixture adapter without external work."""
+        pass
 
-def _json_response(response: Any) -> Mapping[str, Any]:
-    try:
-        response.raise_for_status()
-        payload = response.json()
-    except requests.Timeout as exc:
-        raise UpstreamTimeout from exc
-    except (requests.RequestException, ValueError) as exc:
-        raise UpstreamError("Places returned an invalid response") from exc
-    if not isinstance(payload, dict):
-        raise UpstreamError("Places returned a non-object response")
-    return payload
-
-
-def search_nearby(
-    lat: float,
-    lng: float,
-    api_key: str,
-    *,
-    deadline: float | None = None,
-) -> list[dict[str, Any]]:
-    if _mock_places_enabled():
+    def search_nearby(
+        self,
+        lat: float,
+        lng: float,
+        *,
+        deadline: float | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return the local nearby-place fixture."""
+        del lat, lng, deadline
         return [
             {
                 "place_id": "mock-place-1",
@@ -225,58 +347,19 @@ def search_nearby(
                 "attributions": [],
             }
         ]
-    body = {
-        "includedTypes": ["bar", "restaurant"],
-        "rankPreference": "DISTANCE",
-        "maxResultCount": 8,
-        "languageCode": "ja",
-        "regionCode": "JP",
-        "locationRestriction": {
-            "circle": {
-                "center": {"latitude": lat, "longitude": lng},
-                "radius": 300,
-            }
-        },
-    }
-    headers = {
-        "X-Goog-Api-Key": api_key,
-        "X-Goog-FieldMask": NEARBY_FIELD_MASK,
-        "Content-Type": "application/json",
-    }
-    remaining = (deadline - time.monotonic()) if deadline is not None else 5.0
-    if remaining <= 0:
-        raise UpstreamTimeout
-    try:
-        response = requests.post(
-            f"{PLACES_BASE_URL}/places:searchNearby",
-            json=body,
-            headers=headers,
-            timeout=(min(2, remaining), min(5, remaining)),
-        )
-    except requests.Timeout as exc:
-        raise UpstreamTimeout from exc
-    except requests.RequestException as exc:
-        raise UpstreamError("Places nearby request failed") from exc
-    payload = _json_response(response)
-    places = payload.get("places", [])
-    if not isinstance(places, list) or len(places) > 8:
-        raise UpstreamError("Places nearby payload is invalid")
-    results: list[dict[str, Any]] = []
-    for place in places:
-        if not isinstance(place, dict) or not _valid_identifier(place.get("id"), maximum=1000):
-            raise UpstreamError("Places nearby item is invalid")
-        address = place.get("formattedAddress", "")
-        if not isinstance(address, str):
-            raise UpstreamError("Places formattedAddress is invalid")
-        results.append(
-            {
-                "place_id": place["id"],
-                "display_name": _display_name(place.get("displayName")),
-                "formatted_address": address,
-                "attributions": _attributions(place.get("attributions", [])),
-            }
-        )
-    return results
+
+    def place_detail(self, place_id: str, *, deadline: float) -> dict[str, Any] | None:
+        """Return the local place-detail fixture."""
+        del deadline
+        return {"display_name": f"モック店舗 {place_id}", "attributions": []}
+
+
+def select_place_directory() -> PlaceDirectory:
+    """Select a Places adapter from the current invocation environment."""
+    validate_mock_guard()
+    if local_fixture_enabled("MOCK_PLACES"):
+        return LocalPlaceDirectory()
+    return GooglePlaceDirectory()
 
 
 def _deadline(context: Any, started: float) -> float:
@@ -339,34 +422,6 @@ def _placeholder(log_id: str) -> dict[str, Any]:
     }
 
 
-def _place_detail(place_id: str, api_key: str, deadline: float) -> dict[str, Any] | None:
-    if _mock_places_enabled():
-        return {"display_name": f"モック店舗 {place_id}", "attributions": []}
-    remaining = deadline - time.monotonic()
-    if remaining <= 0:
-        raise UpstreamTimeout
-    url = f"{PLACES_BASE_URL}/places/{quote(place_id, safe='')}"
-    headers = {"X-Goog-Api-Key": api_key, "X-Goog-FieldMask": DETAIL_FIELD_MASK}
-    try:
-        response = requests.get(
-            url,
-            params={"languageCode": "ja", "regionCode": "JP"},
-            headers=headers,
-            timeout=(min(2, remaining), min(5, remaining)),
-        )
-    except requests.Timeout as exc:
-        raise UpstreamTimeout from exc
-    except requests.RequestException as exc:
-        raise UpstreamError("Place Details request failed") from exc
-    if response.status_code == 404:
-        return None
-    payload = _json_response(response)
-    return {
-        "display_name": _display_name(payload.get("displayName")),
-        "attributions": _attributions(payload.get("attributions", [])),
-    }
-
-
 def resolve_places(
     dynamodb: Any,
     *,
@@ -374,7 +429,7 @@ def resolve_places(
     app_state_table_name: str,
     user_id: str,
     items: list[dict[str, str]],
-    api_key: str,
+    directory: PlaceDirectory,
     deadline: float,
 ) -> list[dict[str, Any]]:
     log_ids = list(dict.fromkeys(item["log_id"] for item in items))
@@ -386,7 +441,7 @@ def resolve_places(
     details: dict[str, dict[str, Any] | None] = {}
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(place_ids)))
     futures = {
-        executor.submit(_place_detail, place_id, api_key, deadline): place_id
+        executor.submit(directory.place_detail, place_id, deadline=deadline): place_id
         for place_id in place_ids
     }
     try:
@@ -432,7 +487,7 @@ def _request_id(event: Mapping[str, Any], context: Any) -> str:
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Own POST /places and POST /places/resolve exclusively."""
     started = time.monotonic()
-    _validate_mock_guard()
+    directory = select_place_directory()
     request_id = _request_id(event, context)
     logger = get_logger("drink-log-places", correlation_id=extract_correlation_id(event) or request_id)
     method = event.get("httpMethod", "UNKNOWN")
@@ -440,9 +495,9 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     user_id = extract_user_id_from_event(event)
     if not user_id:
         return create_response(401, {"error": "Authentication required"}, event=event, private=True)
-    # Fetch the Places secret only after the caller is authenticated, so
+    # Prepare the Places directory only after the caller is authenticated, so
     # unauthenticated requests never trigger a Secrets Manager lookup.
-    api_key = _api_key()
+    directory.prepare()
     try:
         request_body = _parse_json_body(event)
     except ValidationError as exc:
@@ -467,7 +522,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 app_state_table_name=app_state_table_name,
                 user_id=user_id,
                 items=items,
-                api_key=api_key,
+                directory=directory,
                 deadline=_deadline(context, started),
             )
             return create_response(200, {"results": results}, event=event, private=True)
@@ -476,7 +531,11 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             UsageBudget(dynamodb, app_state_table_name).reserve_places(user_id, 1)
             return create_response(
                 200,
-                search_nearby(lat, lng, api_key, deadline=_deadline(context, started)),
+                directory.search_nearby(
+                    lat,
+                    lng,
+                    deadline=_deadline(context, started),
+                ),
                 event=event,
                 private=True,
             )
