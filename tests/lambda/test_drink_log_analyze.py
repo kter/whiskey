@@ -1129,8 +1129,7 @@ def test_invoke_budget_exhaustion_skips_injected_reader():
         analyze._invoke_model(
             UnexpectedReader(),
             b"jpeg",
-            Context(remaining=1_000),
-            analyze.time.monotonic(),
+            analyze.HandlerDeadline(Context(remaining=1_000), analyze.time.monotonic()),
         )
         is None
     )
@@ -1369,7 +1368,9 @@ def test_low_remaining_time_consumes_user_request_but_returns_empty_200(monkeypa
 
 
 def test_handler_budget_gives_sonnet_twenty_seconds_and_keeps_four_second_safety():
-    remaining = analyze._remaining_budget_ms(Context(remaining=28_000), analyze.time.monotonic())
+    remaining = analyze.HandlerDeadline(
+        Context(remaining=28_000), analyze.time.monotonic()
+    ).remaining_budget_ms()
 
     assert analyze.HANDLER_BUDGET_MS == 24_000
     assert analyze.INVOKE_SAFETY_MS == 4_000
@@ -1392,7 +1393,7 @@ def test_usage_budget_monthly_analysis_limit_is_a_503_circuit_breaker():
     dynamodb = FakeDynamoDB()
     dynamodb.meta.client = MonthlyLimitClient()
 
-    with pytest.raises(analyze.BudgetExceeded) as exc:
+    with pytest.raises(analyze.UsageBudgetExceeded) as exc:
         analyze.UsageBudget(dynamodb, "AppState-test").reserve_analysis(
             "user-1",
             user_request=False,

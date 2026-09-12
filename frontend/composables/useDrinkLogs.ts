@@ -11,8 +11,6 @@ export interface DrinkLogCandidate {
   confidence: number
   whiskey_id?: string
   match_source?: string
-  ai_name_ja?: string
-  ai_name_en?: string
 }
 
 export interface DrinkLogAnalysis {
@@ -24,7 +22,7 @@ export interface DrinkLogAnalysis {
   multiple_detected?: boolean
 }
 
-export interface DrinkLogStore {
+export interface DrinkLogPlace {
   name: string
   place_id?: string
 }
@@ -37,7 +35,7 @@ export interface DrinkLog {
   brand_text: string
   brand_source: 'ai' | 'manual' | 'matched'
   serving_style?: string
-  store: DrinkLogStore
+  store: DrinkLogPlace
   datetime: string
   notes?: string
   rating?: number
@@ -52,7 +50,7 @@ export interface CreateDrinkLogPayload {
   candidate_index?: number
   brand_text?: string
   serving_style?: string
-  store?: DrinkLogStore
+  store?: DrinkLogPlace
   notes?: string
   rating?: number
 }

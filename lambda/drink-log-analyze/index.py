@@ -8,6 +8,7 @@ import re
 import threading
 import time
 import uuid
+from dataclasses import dataclass
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -35,6 +36,7 @@ try:
     from whiskey_common.responses import create_response
     from whiskey_common.serving_styles import SERVING_STYLES
     from whiskey_common.timeutils import utc_now
+    from whiskey_common.upload_limits import image_max_bytes, upload_max_bytes
 except ModuleNotFoundError as exc:
     if exc.name != "whiskey_common":
         raise
@@ -58,6 +60,7 @@ except ModuleNotFoundError as exc:
     from whiskey_common.responses import create_response
     from whiskey_common.serving_styles import SERVING_STYLES
     from whiskey_common.timeutils import utc_now
+    from whiskey_common.upload_limits import image_max_bytes, upload_max_bytes
 
 
 SERVING_STYLE_ALIASES = {"HIGHBALL": "SODA", "SODA": "SODA"}
@@ -106,9 +109,6 @@ class AnalysisReader(Protocol):
     def read(self, image: bytes, *, timeout_seconds: float) -> dict[str, Any] | None:
         """Return a raw Analysis Result payload for a normalized image."""
         ...
-
-
-BudgetExceeded = UsageBudgetExceeded
 
 
 def _validate_runtime_config() -> str:
@@ -243,11 +243,16 @@ def _extract_response_text(response: Mapping[str, Any]) -> str:
     return "".join(texts)
 
 
-def _remaining_budget_ms(context: Any, started: float) -> int:
-    wall_remaining = HANDLER_BUDGET_MS - int((time.monotonic() - started) * 1000)
-    get_remaining = getattr(context, "get_remaining_time_in_millis", None)
-    lambda_remaining = int(get_remaining()) if callable(get_remaining) else wall_remaining
-    return min(wall_remaining, lambda_remaining) - INVOKE_SAFETY_MS
+@dataclass(frozen=True)
+class HandlerDeadline:
+    context: Any
+    started: float
+
+    def remaining_budget_ms(self) -> int:
+        wall_remaining = HANDLER_BUDGET_MS - int((time.monotonic() - self.started) * 1000)
+        get_remaining = getattr(self.context, "get_remaining_time_in_millis", None)
+        lambda_remaining = int(get_remaining()) if callable(get_remaining) else wall_remaining
+        return min(wall_remaining, lambda_remaining) - INVOKE_SAFETY_MS
 
 
 class BedrockAnalysisReader:
@@ -324,10 +329,9 @@ def select_analysis_reader(model_id: str) -> AnalysisReader:
 def _invoke_model(
     reader: AnalysisReader,
     image: bytes,
-    context: Any,
-    started: float,
+    deadline: HandlerDeadline,
 ) -> dict[str, Any] | None:
-    remaining_ms = _remaining_budget_ms(context, started)
+    remaining_ms = deadline.remaining_budget_ms()
     if remaining_ms < MIN_INVOKE_BUDGET_MS:
         return None
     return reader.read(image, timeout_seconds=max(0.1, remaining_ms / 1000))
@@ -443,8 +447,7 @@ def _cached_master_snapshot(table_name: str) -> dict[str, Any] | None:
 def _master_snapshot_within_budget(
     table: Any,
     table_name: str,
-    context: Any,
-    started: float,
+    deadline: HandlerDeadline,
     logger: Any = None,
 ) -> dict[str, Any]:
     """Skip the catalog scan when there is not enough time left to afford it.
@@ -458,7 +461,7 @@ def _master_snapshot_within_budget(
     cached = _cached_master_snapshot(table_name)
     if cached is not None:
         return cached
-    if _remaining_budget_ms(context, started) >= MIN_INVOKE_BUDGET_MS:
+    if deadline.remaining_budget_ms() >= MIN_INVOKE_BUDGET_MS:
         return _get_master_snapshot(table, table_name, logger)
     if logger is not None:
         logger.warning("Skipped master snapshot scan", reason="insufficient_budget")
@@ -485,8 +488,7 @@ def analyze_upload(
     s3_key: str,
     model_id: str,
     reader: AnalysisReader,
-    context: Any,
-    started: float,
+    deadline: HandlerDeadline,
     logger: Any = None,
 ) -> dict[str, Any]:
     upload_uuid = _upload_identity(s3_key, user_id)
@@ -498,7 +500,7 @@ def analyze_upload(
         isinstance(content_length, bool)
         or not isinstance(content_length, int)
         or content_length <= 0
-        or content_length > int(os.environ.get("UPLOAD_MAX_BYTES", "3670016"))
+        or content_length > upload_max_bytes()
         or not isinstance(etag, str)
         or not etag
     ):
@@ -508,25 +510,24 @@ def analyze_upload(
     if sniff_format(prefix) not in {"jpeg", "png", "webp"}:
         raise ValidationError({"s3_key": "Uploaded file is not a supported image"})
     raw = _read_body(s3.get_object(Bucket=bucket_name, Key=s3_key, IfMatch=etag))
-    # Keep in sync with tests/test_drink_log_contract.py.
-    normalized = normalize_image(raw, max_bytes=int(os.environ.get("IMAGE_MAX_BYTES", "1572864")))
+    normalized = normalize_image(raw, max_bytes=image_max_bytes())
 
     usage_budget = UsageBudget(dynamodb, app_state_table_name)
     usage_budget.reserve_analysis(
         user_id,
         user_request=True,
-        remaining_ms=lambda: _remaining_budget_ms(context, started),
+        remaining_ms=deadline.remaining_budget_ms,
     )
     analysis: dict[str, Any] | None = None
     for _attempt in range(2):
-        if _remaining_budget_ms(context, started) < MIN_INVOKE_BUDGET_MS:
+        if deadline.remaining_budget_ms() < MIN_INVOKE_BUDGET_MS:
             break
         usage_budget.reserve_analysis(
             user_id,
             user_request=False,
-            remaining_ms=lambda: _remaining_budget_ms(context, started),
+            remaining_ms=deadline.remaining_budget_ms,
         )
-        analysis = _invoke_model(reader, normalized, context, started)
+        analysis = _invoke_model(reader, normalized, deadline)
         if analysis is None or analysis:
             break
     if not analysis:
@@ -539,8 +540,7 @@ def analyze_upload(
     snapshot = _master_snapshot_within_budget(
         dynamodb.Table(whiskey_table_name),
         whiskey_table_name,
-        context,
-        started,
+        deadline,
         logger,
     )
     candidates = CANDIDATE_RESOLVER.resolve(snapshot["catalog"], analysis)
@@ -593,7 +593,7 @@ def analyze_upload(
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Handle POST /api/drink-logs/analyze."""
-    started = time.monotonic()
+    deadline = HandlerDeadline(context, time.monotonic())
     model_id = _validate_runtime_config()
     reader = select_analysis_reader(model_id)
     request_id = shared_request_id(event, context)
@@ -620,8 +620,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             s3_key=s3_key,
             model_id=model_id,
             reader=reader,
-            context=context,
-            started=started,
+            deadline=deadline,
             logger=logger,
         )
         return create_response(200, result, event=event, private=True)
@@ -634,7 +633,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         )
     except OwnershipError:
         return create_response(403, {"error": "Upload does not belong to caller"}, event=event, private=True)
-    except BudgetExceeded as exc:
+    except UsageBudgetExceeded as exc:
         return create_response(exc.status_code, {"error": str(exc)}, event=event, private=True)
     except ImageNormalizationError:
         return create_response(400, {"error": "Uploaded image is invalid"}, event=event, private=True)

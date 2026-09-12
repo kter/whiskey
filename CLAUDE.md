@@ -245,7 +245,7 @@ curl "https://api.dev.whiskeybar.site/api/whiskeys/search/?q="
 ### Lambda Environment Variables（主なもの）
 ```bash
 ENVIRONMENT=dev                                    # Environment name
-WHISKEY_SEARCH_TABLE=WhiskeySearch-dev            # Search-optimized table
+WHISKEY_SEARCH_TABLE=WhiskeySearch-dev            # Search-optimized table; only supported variable name
 DRINKLOGS_TABLE=DrinkLogs-dev                      # Drink logs table
 APP_STATE_TABLE=AppState-dev                       # Abuse/cost counters
 IMAGES_BUCKET=whiskey-images-dev-<account>         # Drink log images bucket

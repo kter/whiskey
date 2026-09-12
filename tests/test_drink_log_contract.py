@@ -54,12 +54,7 @@ def _source_of_truth_value(name: str) -> int:
     [
         (
             "UPLOAD_MAX_BYTES",
-            "lambda/drink-logs/drink_log_store.py",
-            _environment_default("UPLOAD_MAX_BYTES"),
-        ),
-        (
-            "UPLOAD_MAX_BYTES",
-            "lambda/drink-log-analyze/index.py",
+            "lambda/common/python/whiskey_common/upload_limits.py",
             _environment_default("UPLOAD_MAX_BYTES"),
         ),
         (
@@ -79,12 +74,7 @@ def _source_of_truth_value(name: str) -> int:
         ),
         (
             "IMAGE_MAX_BYTES",
-            "lambda/drink-logs/drink_log_store.py",
-            _environment_default("IMAGE_MAX_BYTES"),
-        ),
-        (
-            "IMAGE_MAX_BYTES",
-            "lambda/drink-log-analyze/index.py",
+            "lambda/common/python/whiskey_common/upload_limits.py",
             _environment_default("IMAGE_MAX_BYTES"),
         ),
     ],
@@ -97,6 +87,22 @@ def test_size_limits_match(
     assert all(value == expected for value in values), (
         f"{relative_path}: {constant_name} expected {expected}, found {values}"
     )
+
+
+def test_upload_limit_environment_reads_are_centralized() -> None:
+    """Handlers must use upload_limits rather than re-declaring environment defaults."""
+    environment_read = re.compile(
+        r"os\s*\.\s*environ\s*(?:\.\s*get\s*\(\s*|\[\s*)"
+        r"['\"](?:UPLOAD_MAX_BYTES|IMAGE_MAX_BYTES)['\"]"
+    )
+    limits_path = ROOT / "lambda/common/python/whiskey_common/upload_limits.py"
+    for source_path in (ROOT / "lambda").rglob("*.py"):
+        if source_path == limits_path:
+            continue
+        assert not environment_read.search(source_path.read_text(encoding="utf-8")), (
+            f"{source_path.relative_to(ROOT)}: upload-limit environment reads belong in "
+            "lambda/common/python/whiskey_common/upload_limits.py"
+        )
 
 
 def test_backend_store_name_placeholder_is_known_to_frontend() -> None:

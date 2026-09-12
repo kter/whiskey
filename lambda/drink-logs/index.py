@@ -52,10 +52,6 @@ from lifecycle import (
     derive_drink_log_id,
 )
 
-RateLimitExceeded = UsageBudgetExceeded
-TransientConflict = BudgetTransactionConflict
-
-
 UPDATE_FIELDS = {"brand_text", "store", "notes", "rating", "serving_style"}
 CREATE_FIELDS = {"analysis_id", "candidate_index", "datetime"} | UPDATE_FIELDS
 DEFAULT_PAGE_LIMIT = 20
@@ -267,7 +263,7 @@ _RouteHandler = Callable[[_RouteContext], _RouteResult]
 _ErrorMapper = Callable[[Exception, _RouteKey], _RouteResult]
 
 _VALIDATION_ERRORS = (ValidationError,)
-_UPLOAD_ERRORS = (RateLimitExceeded, TransientConflict)
+_UPLOAD_ERRORS = (UsageBudgetExceeded, BudgetTransactionConflict)
 _CREATE_ERRORS = _VALIDATION_ERRORS + _UPLOAD_ERRORS + (
     AnalysisConflict,
     CreateConflict,
@@ -397,8 +393,8 @@ def _not_found_error(_exc: Exception, _route: _RouteKey) -> _RouteResult:
 
 _EXCEPTION_MAPPERS: tuple[tuple[type[Exception], _ErrorMapper], ...] = (
     (ValidationError, _validation_error),
-    (RateLimitExceeded, _rate_limit_error),
-    (TransientConflict, _transient_conflict_error),
+    (UsageBudgetExceeded, _rate_limit_error),
+    (BudgetTransactionConflict, _transient_conflict_error),
     (AnalysisConflict, _conflict_error),
     (CreateConflict, _conflict_error),
     (KeyError, _not_found_error),

@@ -50,9 +50,6 @@ PLACEHOLDER_NAME = "店舗情報を取得できません"
 _PLACES_API_KEY: str | None = None
 
 
-BudgetExceeded = UsageBudgetExceeded
-
-
 class OwnershipError(Exception):
     """Raised when a requested log is absent, foreign, or bound to another place."""
 
@@ -525,7 +522,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         )
     except OwnershipError:
         return create_response(403, {"error": "Place binding does not belong to caller"}, event=event, private=True)
-    except BudgetExceeded:
+    except UsageBudgetExceeded:
         return create_response(429, {"error": "Places request limit exceeded"}, event=event, private=True)
     except UpstreamTimeout:
         return create_response(504, {"error": "Places request timed out"}, event=event, private=True)

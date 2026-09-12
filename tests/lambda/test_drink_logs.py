@@ -989,7 +989,7 @@ def test_exhausted_create_conflict_raises_transient_conflict(monkeypatch):
     _stub_initial_create(monkeypatch, upload_uuid)
     _disable_transaction_retry_delays(monkeypatch)
 
-    with pytest.raises(drink_logs.TransientConflict):
+    with pytest.raises(drink_logs.BudgetTransactionConflict):
         _store(dynamodb, PresignS3()).create_drink_log(
             "user-1",
             {"analysis_id": upload_uuid, "candidate_index": 0},

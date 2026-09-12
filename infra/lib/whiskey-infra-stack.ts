@@ -52,6 +52,21 @@ export class WhiskeyInfraStack extends cdk.Stack {
   public readonly restApiName: string;
   /** Functions billed per invocation by an external service; each gets its own Errors alarm. */
   public readonly errorAlarmFunctionNames: string[];
+  private readonly settings: {
+    environment: string;
+    envConfig: (typeof environments)[string];
+    props: WhiskeyInfraStackProps;
+    retainResources: boolean;
+    removalPolicy: cdk.RemovalPolicy;
+    allowedOrigins: string[];
+    enableCustomDomain: boolean;
+    enableGoogleAuth: boolean;
+    tableNames: { whiskeySearch: string; appState: string; drinkLogs: string };
+    lambdaFunctionNames: {
+      whiskeyList: string; whiskeySearch: string; drinkLogs: string;
+      drinkLogAnalyze: string; drinkLogPlaces: string; drinkLogReconciler: string;
+    };
+  };
 
   constructor(scope: Construct, id: string, props: WhiskeyInfraStackProps) {
     super(scope, id, props);
@@ -83,6 +98,18 @@ export class WhiskeyInfraStack extends cdk.Stack {
       drinkLogPlaces: `drink-log-places-${environment}`,
       drinkLogReconciler: `drink-log-reconciler-${environment}`,
     };
+    this.settings = {
+      environment,
+      envConfig,
+      props,
+      retainResources,
+      removalPolicy,
+      allowedOrigins,
+      enableCustomDomain,
+      enableGoogleAuth,
+      tableNames,
+      lambdaFunctionNames,
+    };
     this.errorAlarmFunctionNames = [
       lambdaFunctionNames.drinkLogAnalyze,
       lambdaFunctionNames.drinkLogPlaces,
@@ -93,111 +120,9 @@ export class WhiskeyInfraStack extends cdk.Stack {
       throw new Error('Custom domains require domain configuration, a hosted zone, and a CloudFront certificate.');
     }
 
-    const bucketDefaults = {
-      versioned: false,
-      encryption: s3.BucketEncryption.S3_MANAGED,
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      enforceSSL: true,
-      removalPolicy,
-      autoDeleteObjects: !retainResources,
-    };
-
-    const imagesBucket = new s3.Bucket(this, 'WhiskeyImagesBucket', {
-      ...bucketDefaults,
-      bucketName: `whiskey-images-${environment}-${this.account}`,
-      lifecycleRules: [{ prefix: 'tmp/', expiration: cdk.Duration.days(2) }],
-      // Paid, best-effort request metrics expose PostRequests/BytesUploaded for tmp and
-      // GetRequests/BytesDownloaded for logs; AppState counters enforce the cost ceilings.
-      metrics: [
-        { id: 'tmp', prefix: 'tmp/' },
-        { id: 'logs', prefix: 'logs/' },
-      ],
-      cors: [{
-        allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.PUT, s3.HttpMethods.POST],
-        allowedOrigins,
-        allowedHeaders: ['*'],
-        exposedHeaders: ['ETag'],
-      }],
-    });
+    const { imagesBucket, webAppBucket, distribution } = this.createStorageAndDistribution();
     this.imagesBucketName = imagesBucket.bucketName;
-
-    const webAppBucket = new s3.Bucket(this, 'WhiskeyWebAppBucket', {
-      ...bucketDefaults,
-      bucketName: `whiskey-webapp-${environment}-${this.account}`,
-    });
-
-    const responseHeadersPolicy = new cloudfront.ResponseHeadersPolicy(this, 'SecurityHeadersPolicy', {
-      responseHeadersPolicyName: `whiskey-security-headers-${environment}`,
-      securityHeadersBehavior: {
-        strictTransportSecurity: {
-          accessControlMaxAge: cdk.Duration.days(730),
-          includeSubdomains: true,
-          preload: true,
-          override: true,
-        },
-        contentTypeOptions: { override: true },
-        // X-Frame-Options DENY is the non-CSP equivalent of frame-ancestors 'none'.
-        // The content-dependent CSP remains owned by the frontend build.
-        frameOptions: { frameOption: cloudfront.HeadersFrameOption.DENY, override: true },
-        referrerPolicy: {
-          referrerPolicy: cloudfront.HeadersReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN,
-          override: true,
-        },
-      },
-    });
-
-    const webCertificate = enableCustomDomain
-      ? acm.Certificate.fromCertificateArn(this, 'WebCertificate', props.cloudFrontCertificateArn!)
-      : undefined;
-
-    const distribution = new cloudfront.Distribution(this, 'WhiskeyWebDistribution', {
-      defaultBehavior: {
-        origin: origins.S3BucketOrigin.withOriginAccessControl(webAppBucket),
-        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-        allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
-        cachedMethods: cloudfront.CachedMethods.CACHE_GET_HEAD,
-        cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
-        responseHeadersPolicy,
-      },
-      defaultRootObject: 'index.html',
-      errorResponses: [
-        { httpStatus: 404, responseHttpStatus: 200, responsePagePath: '/index.html' },
-        { httpStatus: 403, responseHttpStatus: 200, responsePagePath: '/index.html' },
-      ],
-      ...(enableCustomDomain ? {
-        domainNames: [envConfig.domain!],
-        certificate: webCertificate,
-      } : {}),
-    });
-
-    const whiskeySearchTable = new dynamodb.Table(this, 'WhiskeySearchTable', {
-      tableName: tableNames.whiskeySearch,
-      partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy,
-    });
-    whiskeySearchTable.addGlobalSecondaryIndex({
-      indexName: 'NameIndex',
-      partitionKey: { name: 'normalized_name', type: dynamodb.AttributeType.STRING },
-    });
-    const appStateTable = new dynamodb.Table(this, 'AppStateTable', {
-      tableName: tableNames.appState,
-      partitionKey: { name: 'pk', type: dynamodb.AttributeType.STRING },
-      timeToLiveAttribute: 'ttl',
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy,
-    });
-    const drinkLogsTable = new dynamodb.Table(this, 'DrinkLogsTable', {
-      tableName: tableNames.drinkLogs,
-      partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy,
-    });
-    drinkLogsTable.addGlobalSecondaryIndex({
-      indexName: 'UserDatetimeIndex',
-      partitionKey: { name: 'user_id', type: dynamodb.AttributeType.STRING },
-      sortKey: { name: 'datetime', type: dynamodb.AttributeType.STRING },
-    });
+    const { whiskeySearchTable, appStateTable, drinkLogsTable } = this.createTables();
 
     const placesSecret = secretsmanager.Secret.fromSecretNameV2(
       this,
@@ -205,82 +130,47 @@ export class WhiskeyInfraStack extends cdk.Stack {
       `whiskey-places-${environment}`,
     );
 
-    const userPool = new cognito.UserPool(this, 'WhiskeyUserPool', {
-      userPoolName: `whiskey-users-${environment}`,
-      selfSignUpEnabled: true,
-      signInAliases: { email: true, username: true },
-      autoVerify: { email: true },
-      standardAttributes: {
-        email: { required: true, mutable: true },
-        givenName: { required: false, mutable: true },
-        familyName: { required: false, mutable: true },
-      },
-      passwordPolicy: {
-        minLength: 8,
-        requireLowercase: true,
-        requireUppercase: true,
-        requireDigits: true,
-        requireSymbols: false,
-      },
-      accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
-      removalPolicy,
+    const { userPool, userPoolClient } = this.createCognitoResources();
+
+    const { listRole, searchRole, drinkLogsRole, drinkLogAnalyzeRole, drinkLogPlacesRole, drinkLogReconcilerRole, bedrockModels,
+      listLogGroup, searchLogGroup, drinkLogsLogGroup, drinkLogAnalyzeLogGroup, drinkLogPlacesLogGroup,
+      drinkLogReconcilerLogGroup } = this.createLambdaRolesAndLogGroups({
+      whiskeySearchTable, appStateTable, drinkLogsTable, imagesBucket, placesSecret,
     });
 
-    new cognito.UserPoolDomain(this, 'WhiskeyUserPoolDomain', {
-      userPool,
-      cognitoDomain: { domainPrefix: envConfig.cognitoDomainPrefix },
+    const { whiskeyListLambda, whiskeySearchLambda, drinkLogsLambda, drinkLogAnalyzeLambda,
+      drinkLogPlacesLambda, drinkLogReconcilerLambda } = this.createLambdaFunctions({
+      whiskeySearchTable, appStateTable, drinkLogsTable, imagesBucket, userPool, userPoolClient,
+      listRole, searchRole, drinkLogsRole, drinkLogAnalyzeRole, drinkLogPlacesRole, drinkLogReconcilerRole,
+      listLogGroup, searchLogGroup, drinkLogsLogGroup, drinkLogAnalyzeLogGroup, drinkLogPlacesLogGroup,
+      drinkLogReconcilerLogGroup, bedrockModels,
+    });
+    this.drinkLogReconcilerFunctionName = drinkLogReconcilerLambda.functionName;
+
+    this.createReconcilerSchedule(drinkLogReconcilerLambda);
+
+    const api = this.createRestApi({
+      userPool, userPoolClient, whiskeyListLambda, whiskeySearchLambda, drinkLogsLambda,
+      drinkLogAnalyzeLambda, drinkLogPlacesLambda,
     });
 
-    let googleProvider: cognito.UserPoolIdentityProviderGoogle | undefined;
-    if (enableGoogleAuth) {
-      const googleClientId = ssm.StringParameter.valueForStringParameter(
-        this,
-        `/whiskey/${environment}/google-client-id`,
-      );
-      const googleSecret = secretsmanager.Secret.fromSecretNameV2(
-        this,
-        'GoogleClientSecret',
-        `whiskey-app-secrets-${environment}`,
-      );
-      googleProvider = new cognito.UserPoolIdentityProviderGoogle(this, 'GoogleProvider', {
-        userPool,
-        clientId: googleClientId,
-        clientSecretValue: googleSecret.secretValueFromJson('GOOGLE_CLIENT_SECRET'),
-        scopes: ['email', 'profile', 'openid'],
-        attributeMapping: {
-          email: cognito.ProviderAttribute.GOOGLE_EMAIL,
-          givenName: cognito.ProviderAttribute.GOOGLE_GIVEN_NAME,
-          familyName: cognito.ProviderAttribute.GOOGLE_FAMILY_NAME,
-          profilePicture: cognito.ProviderAttribute.GOOGLE_PICTURE,
-        },
-      });
-    }
-
-    const callbackUrls = allowedOrigins.flatMap((origin) => [origin, `${origin}/auth/callback`]);
-    const userPoolClient = new cognito.UserPoolClient(this, 'WhiskeyUserPoolClient', {
-      userPool,
-      userPoolClientName: `whiskey-app-client-${environment}`,
-      generateSecret: false,
-      authFlows: { userSrp: true, userPassword: false },
-      preventUserExistenceErrors: true,
-      supportedIdentityProviders: [
-        cognito.UserPoolClientIdentityProvider.COGNITO,
-        ...(enableGoogleAuth ? [cognito.UserPoolClientIdentityProvider.GOOGLE] : []),
-      ],
-      oAuth: {
-        flows: { authorizationCodeGrant: true },
-        scopes: [cognito.OAuthScope.EMAIL, cognito.OAuthScope.PROFILE, cognito.OAuthScope.OPENID],
-        callbackUrls,
-        logoutUrls: allowedOrigins,
-      },
-      refreshTokenValidity: cdk.Duration.days(30),
-      accessTokenValidity: cdk.Duration.hours(1),
-      idTokenValidity: cdk.Duration.hours(1),
+    this.createCustomDomainRecordsAndOutputs({
+      imagesBucket, webAppBucket, distribution, whiskeySearchTable, appStateTable, drinkLogsTable,
+      listRole, searchRole, drinkLogsRole, drinkLogAnalyzeRole, drinkLogPlacesRole, drinkLogReconcilerRole,
+      placesSecret, whiskeyListLambda, whiskeySearchLambda, drinkLogsLambda, drinkLogAnalyzeLambda,
+      drinkLogPlacesLambda, drinkLogReconcilerLambda, api, userPool, userPoolClient,
     });
-    if (googleProvider) {
-      userPoolClient.node.addDependency(googleProvider);
-    }
+  }
 
+  private createLambdaRolesAndLogGroups(resources: {
+    whiskeySearchTable: dynamodb.Table;
+    appStateTable: dynamodb.Table;
+    drinkLogsTable: dynamodb.Table;
+    imagesBucket: s3.Bucket;
+    placesSecret: secretsmanager.ISecret;
+  }) {
+    const { whiskeySearchTable, appStateTable, drinkLogsTable, imagesBucket, placesSecret } = resources;
+    const { environment, retainResources } = this.settings;
     const logRemovalPolicy = retainResources ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY;
     const logRetention = retainResources ? logs.RetentionDays.ONE_MONTH : logs.RetentionDays.ONE_WEEK;
     const listLogGroup = new logs.LogGroup(this, 'WhiskeyListLogGroup', {
@@ -460,6 +350,42 @@ export class WhiskeyInfraStack extends cdk.Stack {
     for (const statement of bedrockInvokeStatements(bedrockModels)) {
       drinkLogAnalyzeRole.addToPolicy(statement);
     }
+
+    return {
+      listRole, searchRole, drinkLogsRole, drinkLogAnalyzeRole, drinkLogPlacesRole, drinkLogReconcilerRole,
+      listLogGroup, searchLogGroup, drinkLogsLogGroup, drinkLogAnalyzeLogGroup, drinkLogPlacesLogGroup,
+      drinkLogReconcilerLogGroup, bedrockModels,
+    };
+  }
+
+  private createLambdaFunctions(resources: {
+    whiskeySearchTable: dynamodb.Table;
+    appStateTable: dynamodb.Table;
+    drinkLogsTable: dynamodb.Table;
+    imagesBucket: s3.Bucket;
+    userPool: cognito.UserPool;
+    userPoolClient: cognito.UserPoolClient;
+    listRole: iam.Role;
+    searchRole: iam.Role;
+    drinkLogsRole: iam.Role;
+    drinkLogAnalyzeRole: iam.Role;
+    drinkLogPlacesRole: iam.Role;
+    drinkLogReconcilerRole: iam.Role;
+    listLogGroup: logs.LogGroup;
+    searchLogGroup: logs.LogGroup;
+    drinkLogsLogGroup: logs.LogGroup;
+    drinkLogAnalyzeLogGroup: logs.LogGroup;
+    drinkLogPlacesLogGroup: logs.LogGroup;
+    drinkLogReconcilerLogGroup: logs.LogGroup;
+    bedrockModels: readonly BedrockModel[];
+  }) {
+    const {
+      whiskeySearchTable, appStateTable, drinkLogsTable, imagesBucket, userPool, userPoolClient,
+      listRole, searchRole, drinkLogsRole, drinkLogAnalyzeRole, drinkLogPlacesRole, drinkLogReconcilerRole,
+      listLogGroup, searchLogGroup, drinkLogsLogGroup, drinkLogAnalyzeLogGroup, drinkLogPlacesLogGroup,
+      drinkLogReconcilerLogGroup, bedrockModels,
+    } = resources;
+    const { environment, envConfig, allowedOrigins, lambdaFunctionNames } = this.settings;
 
     const bundledPythonCode = (directory: string): lambda.AssetCode => {
       const sourceDirectory = path.join(__dirname, '..', '..', 'lambda', directory);
@@ -649,53 +575,26 @@ export class WhiskeyInfraStack extends cdk.Stack {
         RECONCILE_AGE_HOURS: '48',
       },
     });
-    this.drinkLogReconcilerFunctionName = drinkLogReconcilerLambda.functionName;
+    return {
+      whiskeyListLambda, whiskeySearchLambda, drinkLogsLambda, drinkLogAnalyzeLambda,
+      drinkLogPlacesLambda, drinkLogReconcilerLambda,
+    };
+  }
 
-    const drinkLogReconcilerScheduleDlq = new sqs.Queue(this, 'DrinkLogReconcilerScheduleDlq', {
-      queueName: `drink-log-reconciler-dlq-${environment}`,
-      encryption: sqs.QueueEncryption.SQS_MANAGED,
-      retentionPeriod: cdk.Duration.days(14),
-      removalPolicy,
-    });
-    const drinkLogReconcilerScheduleGroup = new scheduler.CfnScheduleGroup(
-      this,
-      'DrinkLogReconcilerScheduleGroup',
-      { name: `drink-log-reconciler-${environment}` },
-    );
-    const drinkLogReconcilerScheduleRole = new iam.Role(this, 'DrinkLogReconcilerScheduleTargetRole', {
-      roleName: `drink-log-reconciler-scheduler-target-role-${environment}`,
-      assumedBy: new iam.ServicePrincipal('scheduler.amazonaws.com', {
-        conditions: {
-          ArnEquals: { 'aws:SourceArn': drinkLogReconcilerScheduleGroup.attrArn },
-          StringEquals: { 'aws:SourceAccount': this.account },
-        },
-      }),
-    });
-    drinkLogReconcilerScheduleRole.addToPolicy(new iam.PolicyStatement({
-      actions: ['lambda:InvokeFunction'],
-      resources: [drinkLogReconcilerLambda.functionArn],
-    }));
-    drinkLogReconcilerScheduleRole.addToPolicy(new iam.PolicyStatement({
-      actions: ['sqs:SendMessage'],
-      resources: [drinkLogReconcilerScheduleDlq.queueArn],
-    }));
-    const drinkLogReconcilerSchedule = new scheduler.CfnSchedule(this, 'DrinkLogReconcilerSchedule', {
-      name: `drink-log-reconciler-daily-${environment}`,
-      groupName: drinkLogReconcilerScheduleGroup.name,
-      scheduleExpression: 'rate(1 day)',
-      flexibleTimeWindow: { mode: 'OFF' },
-      target: {
-        arn: drinkLogReconcilerLambda.functionArn,
-        roleArn: drinkLogReconcilerScheduleRole.roleArn,
-        input: '{}',
-        deadLetterConfig: { arn: drinkLogReconcilerScheduleDlq.queueArn },
-        retryPolicy: {
-          maximumEventAgeInSeconds: 3600,
-          maximumRetryAttempts: 3,
-        },
-      },
-    });
-    drinkLogReconcilerSchedule.addDependency(drinkLogReconcilerScheduleGroup);
+  private createRestApi(resources: {
+    userPool: cognito.UserPool;
+    userPoolClient: cognito.UserPoolClient;
+    whiskeyListLambda: lambda.Function;
+    whiskeySearchLambda: lambda.Function;
+    drinkLogsLambda: lambda.Function;
+    drinkLogAnalyzeLambda: lambda.Function;
+    drinkLogPlacesLambda: lambda.Function;
+  }): apigateway.RestApi {
+    const {
+      userPool, userPoolClient, whiskeyListLambda, whiskeySearchLambda, drinkLogsLambda,
+      drinkLogAnalyzeLambda, drinkLogPlacesLambda,
+    } = resources;
+    const { environment, envConfig, props, allowedOrigins, enableCustomDomain } = this.settings;
 
     let apiCertificate: acm.Certificate | undefined;
     if (enableCustomDomain) {
@@ -820,6 +719,41 @@ export class WhiskeyInfraStack extends cdk.Stack {
     drinkLogByIdResource.addMethod('PUT', integration(drinkLogsLambda), authenticated);
     drinkLogByIdResource.addMethod('DELETE', integration(drinkLogsLambda), authenticated);
 
+    return api;
+  }
+
+  private createCustomDomainRecordsAndOutputs(resources: {
+    imagesBucket: s3.Bucket;
+    webAppBucket: s3.Bucket;
+    distribution: cloudfront.Distribution;
+    whiskeySearchTable: dynamodb.Table;
+    appStateTable: dynamodb.Table;
+    drinkLogsTable: dynamodb.Table;
+    listRole: iam.Role;
+    searchRole: iam.Role;
+    drinkLogsRole: iam.Role;
+    drinkLogAnalyzeRole: iam.Role;
+    drinkLogPlacesRole: iam.Role;
+    drinkLogReconcilerRole: iam.Role;
+    placesSecret: secretsmanager.ISecret;
+    whiskeyListLambda: lambda.Function;
+    whiskeySearchLambda: lambda.Function;
+    drinkLogsLambda: lambda.Function;
+    drinkLogAnalyzeLambda: lambda.Function;
+    drinkLogPlacesLambda: lambda.Function;
+    drinkLogReconcilerLambda: lambda.Function;
+    api: apigateway.RestApi;
+    userPool: cognito.UserPool;
+    userPoolClient: cognito.UserPoolClient;
+  }): void {
+    const {
+      imagesBucket, webAppBucket, distribution, whiskeySearchTable, appStateTable, drinkLogsTable,
+      listRole, searchRole, drinkLogsRole, drinkLogAnalyzeRole, drinkLogPlacesRole, drinkLogReconcilerRole,
+      placesSecret, whiskeyListLambda, whiskeySearchLambda, drinkLogsLambda, drinkLogAnalyzeLambda,
+      drinkLogPlacesLambda, drinkLogReconcilerLambda, api, userPool, userPoolClient,
+    } = resources;
+    const { envConfig, props, enableCustomDomain } = this.settings;
+
     if (enableCustomDomain) {
       new route53.ARecord(this, 'DomainARecord', {
         zone: props.hostedZone!,
@@ -869,5 +803,241 @@ export class WhiskeyInfraStack extends cdk.Stack {
       new cdk.CfnOutput(this, 'ApiDomainName', { value: envConfig.apiDomain! });
       new cdk.CfnOutput(this, 'ApiUrl', { value: `https://${envConfig.apiDomain}` });
     }
+  }
+
+  private createReconcilerSchedule(drinkLogReconcilerLambda: lambda.Function): void {
+    const { environment, removalPolicy } = this.settings;
+    const drinkLogReconcilerScheduleDlq = new sqs.Queue(this, 'DrinkLogReconcilerScheduleDlq', {
+      queueName: `drink-log-reconciler-dlq-${environment}`,
+      encryption: sqs.QueueEncryption.SQS_MANAGED,
+      retentionPeriod: cdk.Duration.days(14),
+      removalPolicy,
+    });
+    const drinkLogReconcilerScheduleGroup = new scheduler.CfnScheduleGroup(
+      this,
+      'DrinkLogReconcilerScheduleGroup',
+      { name: `drink-log-reconciler-${environment}` },
+    );
+    const drinkLogReconcilerScheduleRole = new iam.Role(this, 'DrinkLogReconcilerScheduleTargetRole', {
+      roleName: `drink-log-reconciler-scheduler-target-role-${environment}`,
+      assumedBy: new iam.ServicePrincipal('scheduler.amazonaws.com', {
+        conditions: {
+          ArnEquals: { 'aws:SourceArn': drinkLogReconcilerScheduleGroup.attrArn },
+          StringEquals: { 'aws:SourceAccount': this.account },
+        },
+      }),
+    });
+    drinkLogReconcilerScheduleRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['lambda:InvokeFunction'],
+      resources: [drinkLogReconcilerLambda.functionArn],
+    }));
+    drinkLogReconcilerScheduleRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['sqs:SendMessage'],
+      resources: [drinkLogReconcilerScheduleDlq.queueArn],
+    }));
+    const drinkLogReconcilerSchedule = new scheduler.CfnSchedule(this, 'DrinkLogReconcilerSchedule', {
+      name: `drink-log-reconciler-daily-${environment}`,
+      groupName: drinkLogReconcilerScheduleGroup.name,
+      scheduleExpression: 'rate(1 day)',
+      flexibleTimeWindow: { mode: 'OFF' },
+      target: {
+        arn: drinkLogReconcilerLambda.functionArn,
+        roleArn: drinkLogReconcilerScheduleRole.roleArn,
+        input: '{}',
+        deadLetterConfig: { arn: drinkLogReconcilerScheduleDlq.queueArn },
+        retryPolicy: {
+          maximumEventAgeInSeconds: 3600,
+          maximumRetryAttempts: 3,
+        },
+      },
+    });
+    drinkLogReconcilerSchedule.addDependency(drinkLogReconcilerScheduleGroup);
+  }
+
+  private createCognitoResources(): { userPool: cognito.UserPool; userPoolClient: cognito.UserPoolClient } {
+    const { environment, envConfig, removalPolicy, allowedOrigins, enableGoogleAuth } = this.settings;
+    const userPool = new cognito.UserPool(this, 'WhiskeyUserPool', {
+      userPoolName: `whiskey-users-${environment}`,
+      selfSignUpEnabled: true,
+      signInAliases: { email: true, username: true },
+      autoVerify: { email: true },
+      standardAttributes: {
+        email: { required: true, mutable: true },
+        givenName: { required: false, mutable: true },
+        familyName: { required: false, mutable: true },
+      },
+      passwordPolicy: {
+        minLength: 8,
+        requireLowercase: true,
+        requireUppercase: true,
+        requireDigits: true,
+        requireSymbols: false,
+      },
+      accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
+      removalPolicy,
+    });
+
+    new cognito.UserPoolDomain(this, 'WhiskeyUserPoolDomain', {
+      userPool,
+      cognitoDomain: { domainPrefix: envConfig.cognitoDomainPrefix },
+    });
+
+    let googleProvider: cognito.UserPoolIdentityProviderGoogle | undefined;
+    if (enableGoogleAuth) {
+      const googleClientId = ssm.StringParameter.valueForStringParameter(
+        this,
+        `/whiskey/${environment}/google-client-id`,
+      );
+      const googleSecret = secretsmanager.Secret.fromSecretNameV2(
+        this,
+        'GoogleClientSecret',
+        `whiskey-app-secrets-${environment}`,
+      );
+      googleProvider = new cognito.UserPoolIdentityProviderGoogle(this, 'GoogleProvider', {
+        userPool,
+        clientId: googleClientId,
+        clientSecretValue: googleSecret.secretValueFromJson('GOOGLE_CLIENT_SECRET'),
+        scopes: ['email', 'profile', 'openid'],
+        attributeMapping: {
+          email: cognito.ProviderAttribute.GOOGLE_EMAIL,
+          givenName: cognito.ProviderAttribute.GOOGLE_GIVEN_NAME,
+          familyName: cognito.ProviderAttribute.GOOGLE_FAMILY_NAME,
+          profilePicture: cognito.ProviderAttribute.GOOGLE_PICTURE,
+        },
+      });
+    }
+
+    const callbackUrls = allowedOrigins.flatMap((origin) => [origin, `${origin}/auth/callback`]);
+    const userPoolClient = new cognito.UserPoolClient(this, 'WhiskeyUserPoolClient', {
+      userPool,
+      userPoolClientName: `whiskey-app-client-${environment}`,
+      generateSecret: false,
+      authFlows: { userSrp: true, userPassword: false },
+      preventUserExistenceErrors: true,
+      supportedIdentityProviders: [
+        cognito.UserPoolClientIdentityProvider.COGNITO,
+        ...(enableGoogleAuth ? [cognito.UserPoolClientIdentityProvider.GOOGLE] : []),
+      ],
+      oAuth: {
+        flows: { authorizationCodeGrant: true },
+        scopes: [cognito.OAuthScope.EMAIL, cognito.OAuthScope.PROFILE, cognito.OAuthScope.OPENID],
+        callbackUrls,
+        logoutUrls: allowedOrigins,
+      },
+      refreshTokenValidity: cdk.Duration.days(30),
+      accessTokenValidity: cdk.Duration.hours(1),
+      idTokenValidity: cdk.Duration.hours(1),
+    });
+    if (googleProvider) {
+      userPoolClient.node.addDependency(googleProvider);
+    }
+    return { userPool, userPoolClient };
+  }
+
+  private createStorageAndDistribution(): { imagesBucket: s3.Bucket; webAppBucket: s3.Bucket; distribution: cloudfront.Distribution } {
+    const {
+      environment, envConfig, props, retainResources, removalPolicy, allowedOrigins, enableCustomDomain,
+    } = this.settings;
+    const bucketDefaults = {
+      versioned: false,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      enforceSSL: true,
+      removalPolicy,
+      autoDeleteObjects: !retainResources,
+    };
+    const imagesBucket = new s3.Bucket(this, 'WhiskeyImagesBucket', {
+      ...bucketDefaults,
+      bucketName: `whiskey-images-${environment}-${this.account}`,
+      lifecycleRules: [{ prefix: 'tmp/', expiration: cdk.Duration.days(2) }],
+      // Paid, best-effort request metrics expose PostRequests/BytesUploaded for tmp and
+      // GetRequests/BytesDownloaded for logs; AppState counters enforce the cost ceilings.
+      metrics: [{ id: 'tmp', prefix: 'tmp/' }, { id: 'logs', prefix: 'logs/' }],
+      cors: [{
+        allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.PUT, s3.HttpMethods.POST],
+        allowedOrigins,
+        allowedHeaders: ['*'],
+        exposedHeaders: ['ETag'],
+      }],
+    });
+    const webAppBucket = new s3.Bucket(this, 'WhiskeyWebAppBucket', {
+      ...bucketDefaults,
+      bucketName: `whiskey-webapp-${environment}-${this.account}`,
+    });
+    const responseHeadersPolicy = new cloudfront.ResponseHeadersPolicy(this, 'SecurityHeadersPolicy', {
+      responseHeadersPolicyName: `whiskey-security-headers-${environment}`,
+      securityHeadersBehavior: {
+        strictTransportSecurity: {
+          accessControlMaxAge: cdk.Duration.days(730),
+          includeSubdomains: true,
+          preload: true,
+          override: true,
+        },
+        contentTypeOptions: { override: true },
+        // X-Frame-Options DENY is the non-CSP equivalent of frame-ancestors 'none'.
+        // The content-dependent CSP remains owned by the frontend build.
+        frameOptions: { frameOption: cloudfront.HeadersFrameOption.DENY, override: true },
+        referrerPolicy: {
+          referrerPolicy: cloudfront.HeadersReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN,
+          override: true,
+        },
+      },
+    });
+    const webCertificate = enableCustomDomain
+      ? acm.Certificate.fromCertificateArn(this, 'WebCertificate', props.cloudFrontCertificateArn!)
+      : undefined;
+    const distribution = new cloudfront.Distribution(this, 'WhiskeyWebDistribution', {
+      defaultBehavior: {
+        origin: origins.S3BucketOrigin.withOriginAccessControl(webAppBucket),
+        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
+        cachedMethods: cloudfront.CachedMethods.CACHE_GET_HEAD,
+        cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+        responseHeadersPolicy,
+      },
+      defaultRootObject: 'index.html',
+      errorResponses: [
+        { httpStatus: 404, responseHttpStatus: 200, responsePagePath: '/index.html' },
+        { httpStatus: 403, responseHttpStatus: 200, responsePagePath: '/index.html' },
+      ],
+      ...(enableCustomDomain ? {
+        domainNames: [envConfig.domain!],
+        certificate: webCertificate,
+      } : {}),
+    });
+    return { imagesBucket, webAppBucket, distribution };
+  }
+
+  private createTables(): { whiskeySearchTable: dynamodb.Table; appStateTable: dynamodb.Table; drinkLogsTable: dynamodb.Table } {
+    const { tableNames, removalPolicy } = this.settings;
+    const whiskeySearchTable = new dynamodb.Table(this, 'WhiskeySearchTable', {
+      tableName: tableNames.whiskeySearch,
+      partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy,
+    });
+    whiskeySearchTable.addGlobalSecondaryIndex({
+      indexName: 'NameIndex',
+      partitionKey: { name: 'normalized_name', type: dynamodb.AttributeType.STRING },
+    });
+    const appStateTable = new dynamodb.Table(this, 'AppStateTable', {
+      tableName: tableNames.appState,
+      partitionKey: { name: 'pk', type: dynamodb.AttributeType.STRING },
+      timeToLiveAttribute: 'ttl',
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy,
+    });
+    const drinkLogsTable = new dynamodb.Table(this, 'DrinkLogsTable', {
+      tableName: tableNames.drinkLogs,
+      partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy,
+    });
+    drinkLogsTable.addGlobalSecondaryIndex({
+      indexName: 'UserDatetimeIndex',
+      partitionKey: { name: 'user_id', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'datetime', type: dynamodb.AttributeType.STRING },
+    });
+    return { whiskeySearchTable, appStateTable, drinkLogsTable };
   }
 }
