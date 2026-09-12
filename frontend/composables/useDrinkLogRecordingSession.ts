@@ -3,7 +3,6 @@ import { ApiError } from '~/composables/useApi'
 import {
   buildDrinkLogPayload,
   candidateIndexAfterBrandEdit,
-  normalizeDrinkLogError,
   useDrinkLogs,
   type DrinkLog,
   type DrinkLogAnalysis,
@@ -13,6 +12,7 @@ import {
 import { SERVING_STYLES, type ServingStyle } from '~/types/whiskey'
 import { readExifCapturedAt } from '~/utils/exifCapturedAt'
 import { readExifGps, type Coordinates } from '~/utils/exifLocation'
+import { normalizeDrinkLogError } from '~/utils/drinkLogs'
 import { ImageTooLargeError, resizeImage } from '~/utils/imageResize'
 
 export const MAX_RECORDING_SESSION_SIZE = 10
@@ -351,10 +351,6 @@ export const useDrinkLogRecordingSession = (provided?: RecordingSessionDependenc
     if (firstItem) copyStoreToPendingItems(readyItems.value, firstItem)
   }
 
-  const errorMessage = (cause: unknown, fallback: string) => cause instanceof Error && cause.message
-    ? cause.message
-    : fallback
-
   const searchNearbyPlaces = async (position: Coordinates, fromExif = false) => {
     placeError.value = ''
     placeNotice.value = ''
@@ -368,7 +364,7 @@ export const useDrinkLogRecordingSession = (provided?: RecordingSessionDependenc
     } catch (cause) {
       places.value = []
       clearPendingItemPlaceIds(items.value)
-      placeError.value = errorMessage(
+      placeError.value = normalizeDrinkLogError(
         cause,
         '近くの店を検索できませんでした。店名は手入力できます。',
       )

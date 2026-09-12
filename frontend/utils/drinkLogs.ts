@@ -1,5 +1,9 @@
 import type { DrinkLog } from '~/composables/useDrinkLogs'
 
+export const normalizeDrinkLogError = (cause: unknown, fallback: string) => (
+  cause instanceof Error && cause.message ? cause.message : fallback
+)
+
 export interface DrinkLogDateGroup {
   key: string
   label: string
