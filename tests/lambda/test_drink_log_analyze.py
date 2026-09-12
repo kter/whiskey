@@ -15,6 +15,9 @@ from tests.lambda_module_loader import load_lambda_module
 
 analyze = load_lambda_module("drink_log_analyze_tests", "lambda/drink-log-analyze/index.py")
 drink_logs = load_lambda_module("drink_logs_analysis_contract_tests", "lambda/drink-logs/index.py")
+drink_log_store = sys.modules["drink_log_store"]
+drink_log_lifecycle = sys.modules["lifecycle"]
+from whiskey_common.cost_guard import UsageBudget  # noqa: E402
 cost_guard = sys.modules["whiskey_common.cost_guard"]
 
 SONNET_MODEL_ID = "jp.anthropic.claude-sonnet-4-6"
@@ -911,16 +914,16 @@ def test_handler_saves_exact_model_text_decimal_and_round_trips_to_create(monkey
     assert "shortlist" not in saved
     assert [len(transaction) for transaction in dynamodb.meta.client.transactions] == [1, 2]
 
-    pending, consume = drink_logs._prepare_initial_record(
-        dynamodb,
-        s3,
-        "AppState-test",
-        "images-test",
-        "user-1",
-        analysis_id,
-        upload_uuid,
-        0,
-    )
+    pending, consume = drink_log_store.DrinkLogStore(
+        lifecycle=drink_logs.DrinkLogLifecycle(
+            dynamodb, s3, "DrinkLogs-test", "AppState-test", "images-test"
+        ),
+        budget=UsageBudget(dynamodb, "AppState-test", drink_log_lifecycle.rfc3339),
+        dynamodb=dynamodb,
+        app_state_table_name="AppState-test",
+        s3=s3,
+        bucket_name="images-test",
+    )._prepare_initial_record("user-1", analysis_id, upload_uuid, 0)
     assert pending["_completion"]["brand_text"] == "カリラ 12年"
     assert pending["_completion"]["whiskey_id"] == "caol-ila-12"
     assert consume["Delete"]["ExpressionAttributeValues"][":candidate"] == saved["candidates"][0]

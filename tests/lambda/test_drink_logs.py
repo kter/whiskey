@@ -24,11 +24,33 @@ images = load_lambda_module(
     "drink_logs_images_tests",
     "lambda/common/python/whiskey_common/images.py",
 )
+drink_log_store = sys.modules["drink_log_store"]
+drink_log_lifecycle = sys.modules["lifecycle"]
 cost_guard = sys.modules["whiskey_common.cost_guard"]
 ROOT = Path(__file__).resolve().parents[2]
 requires_webp = pytest.mark.skipif(
     not features.check("webp"), reason="Pillow built without WEBP support"
 )
+
+
+def _store(dynamodb, s3, *, table=None):
+    return drink_log_store.DrinkLogStore(
+        lifecycle=drink_logs.DrinkLogLifecycle(
+            dynamodb,
+            s3,
+            "DrinkLogs-test",
+            "AppState-test",
+            "images-test",
+            table_handle=table,
+        ),
+        budget=cost_guard.UsageBudget(
+            dynamodb, "AppState-test", drink_log_lifecycle.rfc3339
+        ),
+        dynamodb=dynamodb,
+        app_state_table_name="AppState-test",
+        s3=s3,
+        bucket_name="images-test",
+    )
 
 
 class TransactionCanceled(Exception):
@@ -273,13 +295,15 @@ def test_normalize_reports_unreachable_byte_budget():
 
 
 def test_upload_url_consumes_atomic_limits_and_pins_form(monkeypatch):
-    monkeypatch.setattr(drink_logs.uuid, "uuid4", lambda: uuid.UUID("11111111-1111-4111-8111-111111111111"))
+    monkeypatch.setattr(
+        drink_log_store.uuid,
+        "uuid4",
+        lambda: uuid.UUID("11111111-1111-4111-8111-111111111111"),
+    )
     client = RecordingClient()
     dynamodb = FakeDynamoDB({}, client)
     s3 = PresignS3()
-    result = drink_logs.create_upload_url(
-        dynamodb, s3, "AppState-test", "images-test", "user-1", "image/png"
-    )
+    result = _store(dynamodb, s3).create_upload_url("user-1", "image/png")
     assert result["s3_key"] == "tmp/user-1/11111111-1111-4111-8111-111111111111.png"
     assert client.transactions[0][0]["Update"]["Key"]["pk"].startswith(
         "drinklog-counter#upload#user#user-1#"
@@ -424,18 +448,13 @@ def test_create_datetime_is_normalized_without_replacing_audit_timestamps(monkey
     captured_with_offset = captured_utc.astimezone(
         timezone(timedelta(hours=9))
     ).isoformat()
-    monkeypatch.setattr(drink_logs, "_utc_now", lambda: fixed_now)
+    monkeypatch.setattr(drink_log_lifecycle, "utc_now", lambda: fixed_now)
 
     with mock_aws():
         dynamodb, s3, drinklogs, _app_state, analysis, _upload_uuid = (
             _moto_create_dependencies()
         )
-        record, created = drink_logs.create_drink_log(
-            dynamodb,
-            s3,
-            "DrinkLogs-test",
-            "AppState-test",
-            "images-test",
+        record, created = _store(dynamodb, s3).create_drink_log(
             "user-1",
             drink_logs.validate_create_input(
                 {
@@ -446,8 +465,8 @@ def test_create_datetime_is_normalized_without_replacing_audit_timestamps(monkey
             ),
         )
 
-        expected_now = drink_logs._rfc3339(fixed_now)
-        expected_captured = drink_logs._rfc3339(captured_utc)
+        expected_now = drink_log_lifecycle.rfc3339(fixed_now)
+        expected_captured = drink_log_lifecycle.rfc3339(captured_utc)
         stored = drinklogs.get_item(Key={"id": record["id"]})["Item"]
         assert created is True
         assert record["datetime"] == expected_captured
@@ -463,8 +482,8 @@ def test_create_datetime_normalizes_to_the_literal_sort_key_format(monkeypatch):
     format change through unnoticed.
     """
     monkeypatch.setattr(
-        drink_logs,
-        "_utc_now",
+        drink_log_lifecycle,
+        "utc_now",
         lambda: datetime(2026, 8, 1, 12, 30, tzinfo=timezone.utc),
     )
 
@@ -480,25 +499,20 @@ def test_create_datetime_normalizes_to_the_literal_sort_key_format(monkeypatch):
 
 def test_create_datetime_defaults_to_server_time(monkeypatch):
     fixed_now = datetime.now(timezone.utc).replace(microsecond=654321)
-    monkeypatch.setattr(drink_logs, "_utc_now", lambda: fixed_now)
+    monkeypatch.setattr(drink_log_lifecycle, "utc_now", lambda: fixed_now)
 
     with mock_aws():
         dynamodb, s3, _drinklogs, _app_state, analysis, _upload_uuid = (
             _moto_create_dependencies()
         )
-        record, _created = drink_logs.create_drink_log(
-            dynamodb,
-            s3,
-            "DrinkLogs-test",
-            "AppState-test",
-            "images-test",
+        record, _created = _store(dynamodb, s3).create_drink_log(
             "user-1",
             drink_logs.validate_create_input(
                 {"analysis_id": analysis["pk"], "candidate_index": 0}
             ),
         )
 
-        assert record["datetime"] == drink_logs._rfc3339(fixed_now)
+        assert record["datetime"] == drink_log_lifecycle.rfc3339(fixed_now)
 
 
 @pytest.mark.parametrize(
@@ -513,9 +527,11 @@ def test_create_datetime_rejects_naive_and_out_of_range_values(
     monkeypatch, datetime_value
 ):
     fixed_now = datetime(2026, 8, 1, 12, 30, tzinfo=timezone.utc)
-    monkeypatch.setattr(drink_logs, "_utc_now", lambda: fixed_now)
+    monkeypatch.setattr(drink_log_lifecycle, "utc_now", lambda: fixed_now)
     if datetime_value == "future":
-        datetime_value = drink_logs._rfc3339(fixed_now + timedelta(hours=1))
+        datetime_value = drink_log_lifecycle.rfc3339(
+            fixed_now + timedelta(hours=1)
+        )
 
     with pytest.raises(drink_logs.ValidationError) as exc:
         drink_logs.validate_create_input(
@@ -536,15 +552,7 @@ def test_empty_candidates_can_create_complete_manual_brand():
         data = drink_logs.validate_create_input(
             {"analysis_id": analysis["pk"], "brand_text": "自家製ハイボール"}
         )
-        record, created = drink_logs.create_drink_log(
-            dynamodb,
-            s3,
-            "DrinkLogs-test",
-            "AppState-test",
-            "images-test",
-            "user-1",
-            data,
-        )
+        record, created = _store(dynamodb, s3).create_drink_log("user-1", data)
 
         assert created is True
         assert record["status"] == "complete"
@@ -568,24 +576,8 @@ def test_candidate_brand_override_is_manual_and_analysis_is_consumed_once():
                 "brand_text": "Edited Bottle",
             }
         )
-        record, created = drink_logs.create_drink_log(
-            dynamodb,
-            s3,
-            "DrinkLogs-test",
-            "AppState-test",
-            "images-test",
-            "user-1",
-            data,
-        )
-        retried, retry_created = drink_logs.create_drink_log(
-            dynamodb,
-            s3,
-            "DrinkLogs-test",
-            "AppState-test",
-            "images-test",
-            "user-1",
-            data,
-        )
+        record, created = _store(dynamodb, s3).create_drink_log("user-1", data)
+        retried, retry_created = _store(dynamodb, s3).create_drink_log("user-1", data)
 
         assert created is True
         assert record["brand_text"] == "Edited Bottle"
@@ -605,12 +597,7 @@ def test_candidate_only_brand_derivation_regression(candidate_index, brand_sourc
         dynamodb, s3, _drinklogs, _app_state, analysis, _upload_uuid = (
             _moto_create_dependencies()
         )
-        record, created = drink_logs.create_drink_log(
-            dynamodb,
-            s3,
-            "DrinkLogs-test",
-            "AppState-test",
-            "images-test",
+        record, created = _store(dynamodb, s3).create_drink_log(
             "user-1",
             drink_logs.validate_create_input(
                 {"analysis_id": analysis["pk"], "candidate_index": candidate_index}
@@ -639,12 +626,7 @@ def test_candidate_with_brand_metadata_can_be_consumed():
             _moto_create_dependencies(candidates=[candidate])
         )
 
-        record, created = drink_logs.create_drink_log(
-            dynamodb,
-            s3,
-            "DrinkLogs-test",
-            "AppState-test",
-            "images-test",
+        record, created = _store(dynamodb, s3).create_drink_log(
             "user-1",
             drink_logs.validate_create_input(
                 {"analysis_id": analysis["pk"], "candidate_index": 0}
@@ -666,12 +648,7 @@ def test_legacy_candidate_without_brand_metadata_can_still_be_consumed():
             _moto_create_dependencies(candidates=[legacy_candidate])
         )
 
-        record, created = drink_logs.create_drink_log(
-            dynamodb,
-            s3,
-            "DrinkLogs-test",
-            "AppState-test",
-            "images-test",
+        record, created = _store(dynamodb, s3).create_drink_log(
             "user-1",
             drink_logs.validate_create_input(
                 {"analysis_id": analysis["pk"], "candidate_index": 0}
@@ -688,12 +665,7 @@ def test_create_confirmation_overrides_are_written_to_completed_record():
         dynamodb, s3, _drinklogs, _app_state, analysis, _upload_uuid = (
             _moto_create_dependencies()
         )
-        record, _created = drink_logs.create_drink_log(
-            dynamodb,
-            s3,
-            "DrinkLogs-test",
-            "AppState-test",
-            "images-test",
+        record, _created = _store(dynamodb, s3).create_drink_log(
             "user-1",
             drink_logs.validate_create_input(
                 {
@@ -724,11 +696,7 @@ def test_manual_consume_condition_keeps_image_binding_without_candidate_claim():
     s3 = MemoryS3(
         {result["s3_key"]: {"body": body, "content_type": "image/png", "etag": '"etag-1"'}}
     )
-    pending, consume = drink_logs._prepare_initial_record(
-        dynamodb,
-        s3,
-        "AppState-test",
-        "images-test",
+    pending, consume = _store(dynamodb, s3)._prepare_initial_record(
         "user-1",
         result["pk"],
         upload_uuid,
@@ -764,12 +732,7 @@ def test_create_rejects_changed_image_for_manual_and_candidate_paths(candidate_i
             payload["candidate_index"] = candidate_index
 
         with pytest.raises(drink_logs.AnalysisConflict, match="changed after analysis"):
-            drink_logs.create_drink_log(
-                dynamodb,
-                s3,
-                "DrinkLogs-test",
-                "AppState-test",
-                "images-test",
+            _store(dynamodb, s3).create_drink_log(
                 "user-1",
                 drink_logs.validate_create_input(payload),
             )
@@ -796,12 +759,7 @@ def test_create_rejects_expired_analysis_for_manual_and_candidate_paths(candidat
             payload["candidate_index"] = candidate_index
 
         with pytest.raises(drink_logs.AnalysisConflict, match="expired"):
-            drink_logs.create_drink_log(
-                dynamodb,
-                s3,
-                "DrinkLogs-test",
-                "AppState-test",
-                "images-test",
+            _store(dynamodb, s3).create_drink_log(
                 "user-1",
                 drink_logs.validate_create_input(payload),
             )
@@ -828,12 +786,7 @@ def test_candidate_consumption_rejects_candidate_tampering(monkeypatch):
             tamper_then_transact,
         )
         with pytest.raises(drink_logs.AnalysisConflict, match="stale or already consumed"):
-            drink_logs.create_drink_log(
-                dynamodb,
-                s3,
-                "DrinkLogs-test",
-                "AppState-test",
-                "images-test",
+            _store(dynamodb, s3).create_drink_log(
                 "user-1",
                 drink_logs.validate_create_input(
                     {"analysis_id": analysis["pk"], "candidate_index": 0}
@@ -851,11 +804,7 @@ def test_lifecycle_start_create_binds_analysis_and_all_budget_counters():
     s3 = MemoryS3(
         {result["s3_key"]: {"body": body, "content_type": "image/png", "etag": '"etag-1"'}}
     )
-    pending, consume = drink_logs._prepare_initial_record(
-        dynamodb,
-        s3,
-        "AppState-test",
-        "images-test",
+    pending, consume = _store(dynamodb, s3)._prepare_initial_record(
         "user-1",
         result["pk"],
         upload_uuid,
@@ -868,7 +817,7 @@ def test_lifecycle_start_create_binds_analysis_and_all_budget_counters():
         "AppState-test",
         "images-test",
     )
-    lifecycle.start_create(pending, consume, now=drink_logs._utc_now())
+    lifecycle.start_create(pending, consume, now=drink_log_lifecycle.utc_now())
     transaction = client.transactions[0]
     assert len(transaction) == 6
     assert transaction[0]["Put"]["ConditionExpression"] == "attribute_not_exists(id)"
@@ -896,16 +845,16 @@ def test_response_loss_retry_returns_complete_without_consuming_quota_again():
     }
     client = RecordingClient()
     dynamodb = FakeDynamoDB({"DrinkLogs-test": StaticTable(item=record)}, client)
-    returned, created = drink_logs.create_drink_log(
-        dynamodb,
-        PresignS3(),
-        "DrinkLogs-test",
-        "AppState-test",
-        "images-test",
+    returned, created = _store(dynamodb, PresignS3()).create_drink_log(
         "user-1",
         {"analysis_id": upload_uuid, "candidate_index": 0},
     )
-    assert returned == record
+    assert returned == {
+        "id": record["id"],
+        "user_id": "user-1",
+        "status": "complete",
+        "image_url": f"https://image.example/{record['s3_image_key']}",
+    }
     assert created is False
     assert client.transactions == []
 
@@ -933,16 +882,16 @@ def test_transaction_loser_joins_winner_without_second_counter_charge(monkeypatc
     s3 = MemoryS3(
         {analysis["s3_key"]: {"body": body, "content_type": "image/png", "etag": '"etag-1"'}}
     )
-    returned, created = drink_logs.create_drink_log(
-        dynamodb,
-        s3,
-        "DrinkLogs-test",
-        "AppState-test",
-        "images-test",
+    returned, created = _store(dynamodb, s3).create_drink_log(
         "user-1",
         {"analysis_id": upload_uuid, "candidate_index": 0},
     )
-    assert returned == winner
+    assert returned == {
+        "id": winner["id"],
+        "user_id": "user-1",
+        "status": "complete",
+        "image_url": f"https://image.example/{winner['s3_image_key']}",
+    }
     assert created is False
     assert len(client.transactions) == 1
 
@@ -970,7 +919,7 @@ def _stub_initial_create(monkeypatch, upload_uuid):
     }
     consume = {"Delete": {"TableName": "AppState-test", "Key": {"pk": "analysis"}}}
     monkeypatch.setattr(
-        drink_logs,
+        drink_log_store.DrinkLogStore,
         "_prepare_initial_record",
         lambda *_args, **_kwargs: (pending, consume),
     )
@@ -1011,18 +960,13 @@ def test_create_retries_transaction_conflict_and_completes(monkeypatch):
     dynamodb = FakeDynamoDB({"DrinkLogs-test": records}, client)
     pending = _stub_initial_create(monkeypatch, upload_uuid)
     monkeypatch.setattr(
-        drink_logs,
+        drink_log_store.DrinkLogStore,
         "_finish_pending_create",
         lambda *_args, **_kwargs: pending,
     )
     _disable_transaction_retry_delays(monkeypatch)
 
-    record, created = drink_logs.create_drink_log(
-        dynamodb,
-        PresignS3(),
-        "DrinkLogs-test",
-        "AppState-test",
-        "images-test",
+    record, created = _store(dynamodb, PresignS3()).create_drink_log(
         "user-1",
         {"analysis_id": upload_uuid, "candidate_index": 0},
     )
@@ -1045,12 +989,7 @@ def test_exhausted_create_conflict_raises_transient_conflict(monkeypatch):
     _disable_transaction_retry_delays(monkeypatch)
 
     with pytest.raises(drink_logs.TransientConflict):
-        drink_logs.create_drink_log(
-            dynamodb,
-            PresignS3(),
-            "DrinkLogs-test",
-            "AppState-test",
-            "images-test",
+        _store(dynamodb, PresignS3()).create_drink_log(
             "user-1",
             {"analysis_id": upload_uuid, "candidate_index": 0},
         )
@@ -1144,6 +1083,38 @@ def test_create_limit_stays_429_without_retry(monkeypatch):
 
     assert response["statusCode"] == 429
     assert len(client.transactions) == 1
+
+
+def test_cancellation_without_reasons_is_a_429_not_a_500(monkeypatch):
+    """A cancelled create carrying no reasons is a limit, and must stay one.
+
+    DynamoDB may cancel a transaction without populating CancellationReasons.
+    The store has to name UsageBudgetExceeded here; a missing import would turn
+    this path into a NameError and report the user's quota as a server fault.
+    """
+    upload_uuid = "12345678-1234-4234-8234-123456789abc"
+
+    def reasonless_failure(_transaction):
+        raise TransactionCanceled([])
+
+    client = RecordingClient(reasonless_failure)
+    dynamodb = FakeDynamoDB(
+        {"DrinkLogs-test": StaticTable(item=None, client=client)},
+        client,
+    )
+    _stub_initial_create(monkeypatch, upload_uuid)
+    monkeypatch.setattr(drink_logs, "get_dynamodb_resource", lambda: dynamodb)
+    monkeypatch.setattr(drink_logs, "get_s3_client", PresignS3)
+
+    response = drink_logs.lambda_handler(
+        _post_event(
+            "/api/drink-logs",
+            {"analysis_id": upload_uuid, "candidate_index": 0},
+        ),
+        SimpleNamespace(aws_request_id="aws-1"),
+    )
+
+    assert response["statusCode"] == 429
 
 
 def test_mixed_reasons_prefer_the_limit_over_the_conflict(monkeypatch):
@@ -1250,36 +1221,46 @@ def test_png_and_webp_finish_get_delete_flow(fmt, content_type, extension):
     s3 = MemoryS3(
         {tmp_key: {"body": _image_bytes(fmt), "content_type": content_type, "etag": '"etag-1"'}}
     )
-    completed = drink_logs._finish_pending_create(
-        dynamodb,
-        s3,
-        "DrinkLogs-test",
-        "AppState-test",
-        "images-test",
-        dict(state[record_id]),
-    )
+    completed = _store(dynamodb, s3)._finish_pending_create(dict(state[record_id]))
     assert completed["status"] == "complete"
     assert completed["s3_image_key"].startswith(f"logs/user-1/{upload_uuid}-")
     assert tmp_key not in s3.objects
     assert s3.objects[completed["s3_image_key"]]["body"].startswith(b"\xff\xd8\xff")
 
-    detail = drink_logs.get_owned_drink_log(table, s3, "images-test", "user-1", record_id)
+    detail = _store(dynamodb, s3, table=table).get_owned("user-1", record_id)
     assert detail["image_url"].startswith("https://image.example/logs/user-1/")
     # Internal bucket-key structure and reconciliation bookkeeping must not leak
     # into API responses; clients only ever see the presigned image_url.
     for internal in ("s3_image_key", "tmp_s3_key", "quota_allocated", "delete_started_at"):
         assert internal not in detail
-    assert drink_logs.delete_drink_log(
-        dynamodb,
-        s3,
-        "DrinkLogs-test",
-        "AppState-test",
-        "images-test",
-        "user-1",
-        record_id,
-    )
+    assert _store(dynamodb, s3).delete("user-1", record_id)
     assert record_id not in state
     assert completed["s3_image_key"] not in s3.objects
+
+
+def test_delete_refuses_record_owned_by_another_user():
+    record_id = "log-1"
+    image_key = "logs/user-2/image.jpg"
+    state = {
+        record_id: {
+            "id": record_id,
+            "user_id": "user-2",
+            "status": "complete",
+            "s3_image_key": image_key,
+            "quota_allocated": True,
+        }
+    }
+    client = RecordingClient()
+    table = StateTable(state, client)
+    dynamodb = FakeDynamoDB({"DrinkLogs-test": table}, client)
+    s3 = MemoryS3(
+        {image_key: {"body": b"image", "content_type": "image/jpeg", "etag": '"etag-1"'}}
+    )
+
+    assert _store(dynamodb, s3).delete("user-1", record_id) is False
+    assert state[record_id]["status"] == "complete"
+    assert image_key in s3.objects
+    assert client.transactions == []
 
 
 def test_timeline_fills_across_filtered_empty_pages_and_never_signs_pending():
@@ -1305,11 +1286,7 @@ def test_timeline_fills_across_filtered_empty_pages_and_never_signs_pending():
     )
     dynamodb = FakeDynamoDB({"DrinkLogs-test": table})
     s3 = PresignS3()
-    results, token = drink_logs.get_timeline(
-        dynamodb,
-        s3,
-        "DrinkLogs-test",
-        "images-test",
+    results, token = _store(dynamodb, s3).get_timeline(
         "user-1",
         2,
         None,
@@ -1336,8 +1313,7 @@ def test_update_is_whitelisted_and_owner_status_are_atomic():
             calls.append(kwargs)
             return {"Attributes": {"id": "log-1", "status": "complete"}}
 
-    result = drink_logs.update_drink_log(
-        UpdateTable(),
+    result = _store(None, None, table=UpdateTable()).update(
         "user-1",
         "log-1",
         drink_logs.validate_update_input({"store": {"name": "Edited"}}),
@@ -1688,8 +1664,7 @@ def test_manual_brand_edit_clears_the_matched_whiskey_id():
             calls.append(kwargs)
             return {"Attributes": {"id": "log-1", "status": "complete"}}
 
-    drink_logs.update_drink_log(
-        UpdateTable(),
+    _store(None, None, table=UpdateTable()).update(
         "user-1",
         "log-1",
         drink_logs.validate_update_input({"brand_text": "アラン 10年"}),
@@ -1713,8 +1688,7 @@ def test_non_brand_edit_leaves_the_whiskey_id_alone():
             calls.append(kwargs)
             return {"Attributes": {"id": "log-1", "status": "complete"}}
 
-    drink_logs.update_drink_log(
-        UpdateTable(),
+    _store(None, None, table=UpdateTable()).update(
         "user-1",
         "log-1",
         drink_logs.validate_update_input({"notes": "うまい"}),
@@ -1743,7 +1717,7 @@ def test_selecting_a_later_bottle_does_not_inherit_the_first_bottles_match():
         "match_source": "ai",
     }
 
-    completion = drink_logs._completion_from_analysis(
+    completion = drink_log_store._completion_from_analysis(
         result, unmatched_second, {}, candidate_selected=True
     )
 
@@ -1767,7 +1741,7 @@ def test_selecting_a_matched_bottle_still_attaches_its_own_id():
         "match_source": "catalog",
     }
 
-    completion = drink_logs._completion_from_analysis(
+    completion = drink_log_store._completion_from_analysis(
         result, matched, {}, candidate_selected=True
     )
 

@@ -16,6 +16,10 @@ _Avoid_: Batch, upload queue
 A time-limited reading of one uploaded photo, bound to that photo and user, containing Whiskey Candidates and a suggested serving style.
 _Avoid_: AI result, prediction
 
+**Completion**:
+The confirmed fields staged for a pending Drink Log and applied when its photo is finalised.
+_Avoid_: Finalisation payload, pending data
+
 **Whiskey Candidate**:
 One possible whiskey read from a photo. It may be linked to the whiskey catalog or remain an unconfirmed reading for the user to correct.
 _Avoid_: Match, detection
