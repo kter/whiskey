@@ -15,23 +15,39 @@ def search_whiskeys(query):
         limit=5,
         max_pages=1,
     )
-    return items
+    print(items)
+    return [
+        {
+            "name": item.get("name"),
+            "distillery": item.get("distillery"),
+            "region": item.get("region"),
+            "type": item.get("type"),
+            "age": item.get("age"),
+        }
+        for item in items
+    ]
 
 
 print(search_whiskeys("Talisker"))
 
 MAX_STEPS = 5
 client = boto3.client("bedrock-runtime", region_name="ap-northeast-1")
-messages = [{"role": "user", "content": [{"text": "このアプリの名前を教えて"}]}]
+messages = [{"role": "user", "content": [{"text": "タリスカーを探して"}]}]
 tools = [
     {
         "toolSpec": {
-            "name": "get_app_name",
-            "description": "Whiskeyアプリの名前を取得する",
+            "name": "search_whiskeys",
+            "description": "ウイスキーを名前で検索する",
             "inputSchema": {
                 "json": {
                     "type": "object",
-                    "properties": {},
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "検索するウイスキー名",
+                        }
+                    },
+                    "required": ["query"],
                 }
             },
         }
@@ -66,13 +82,14 @@ for step in range(MAX_STEPS):
         for block in assistant_message["content"]:
             if "toolUse" in block:
                 tool_use = block["toolUse"]
-                if tool_use["name"] == "get_app_name":
-                    result = get_app_name()
+                if tool_use["name"] == "search_whiskeys":
+                    query = tool_use["input"]["query"]
+                    result = search_whiskeys(query)
                     tool_results.append(
                         {
                             "toolResult": {
                                 "toolUseId": tool_use["toolUseId"],
-                                "content": [{"json": result}],
+                                "content": [{"json": {"results": result}}],
                             }
                         }
                     )
@@ -81,7 +98,7 @@ for step in range(MAX_STEPS):
                         {
                             "toolResult": {
                                 "toolUseId": tool_use["toolUseId"],
-                                "content": [{"text": "unknown tool"}],
+                                "content": [{"json": {"results": []}}],
                             }
                         }
                     )
