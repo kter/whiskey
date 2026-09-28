@@ -2,9 +2,7 @@ import boto3
 
 MAX_STEPS = 5
 client = boto3.client("bedrock-runtime", region_name="ap-northeast-1")
-messages = [
-    {"role": "user", "content": [{"text": "こんにちは、あなたは何ができますか？"}]}
-]
+messages = [{"role": "user", "content": [{"text": "このアプリの名前を教えて"}]}]
 tools = [
     {
         "toolSpec": {
@@ -43,40 +41,33 @@ for step in range(MAX_STEPS):
         print(assistant_message["content"])
         break
 
-    if response["stopReason"] == "tool_use":
+    elif response["stopReason"] == "tool_use":
+        tool_results = []
         for block in assistant_message["content"]:
             if "toolUse" in block:
                 tool_use = block["toolUse"]
                 if tool_use["name"] == "get_app_name":
                     result = get_app_name()
-                    messages.append(
+                    tool_results.append(
                         {
-                            "role": "user",
-                            "content": [
-                                {
-                                    "toolResult": {
-                                        "toolUseId": tool_use["toolUseId"],
-                                        "content": [{"json": result}],
-                                    }
-                                }
-                            ],
+                            "toolResult": {
+                                "toolUseId": tool_use["toolUseId"],
+                                "content": [{"json": result}],
+                            }
                         }
                     )
                 else:
-                    messages.append(
+                    tool_results.append(
                         {
-                            "role": "user",
-                            "content": [
-                                {
-                                    "toolResult": {
-                                        "toolUseId": tool_use["toolUseId"],
-                                        "content": [{"text": "unknown tool"}],
-                                    }
-                                }
-                            ],
+                            "toolResult": {
+                                "toolUseId": tool_use["toolUseId"],
+                                "content": [{"text": "unknown tool"}],
+                            }
                         }
                     )
     else:
         print("unknown stop reason")
-
-print("Exceed MAX_STEP count")
+        break
+    messages.append({"role": "user", "content": tool_results})
+else:
+    print("Exceed MAX_STEP count")
