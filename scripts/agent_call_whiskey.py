@@ -7,6 +7,11 @@ sys.path.insert(0, str(ROOT / "lambda" / "whiskeys-search" / "python"))
 from whiskey_search_service import WhiskeySearchService
 from dataclasses import dataclass
 
+from whiskey_common.clients import get_dynamodb_resource, get_s3_client
+
+sys.path.insert(0, str(ROOT / "lambda" / "drink-logs"))
+import drink_log_store
+
 
 @dataclass(frozen=True)
 class Principal:
@@ -103,6 +108,30 @@ def run_agent(message: str, principal: Principal):
         print("Exceed MAX_STEP count")
 
 
+def get_drink_logs(principal: Principal, limit: int = 10):
+    dynamodb = get_dynamodb_resource()
+    s3 = get_s3_client()
+    store = drink_log_store.DrinkLogStore.from_environment(dynamodb, s3)
+    records, _ = store.get_timeline(
+        principal.user_id,
+        limit,
+        None,
+        {},
+    )
+    return [
+        {
+            "id": record.get("id"),
+            "brand_text": record.get("brand_text"),
+            "serving_style": record.get("serving_style"),
+            "store": record.get("store", {}).get("name"),
+            "datetime": record.get("datetime"),
+            "notes": record.get("notes"),
+            "rating": record.get("rating"),
+        }
+        for record in records
+    ]
+
+
 def search_whiskeys(query):
     service = WhiskeySearchService()
 
@@ -125,3 +154,6 @@ def search_whiskeys(query):
 
 principal = Principal(user_id="dumy-user")
 run_agent("タリスカーを探して", principal)
+
+principal2 = Principal(user_id="67f45ae8-9091-70df-7d98-237f59f7df1a")
+print(get_drink_logs(principal2))
