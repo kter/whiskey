@@ -39,8 +39,11 @@ system = [
     {
         "text": (
             "あなたはWhiskey Logのアシスタントです。"
-            "ウイスキー検索に関する回答では、Toolから取得した情報のみを事実として使用してください。"
-            "Tool結果にない情報を推測または補完しないでください。"
+            "検索結果について回答するときは、Tool Resultに明示的に存在する"
+            "フィールドだけを根拠として回答してください。"
+            "あなた自身の事前知識を検索結果の説明に使用してはいけません。"
+            "Tool Resultにない情報を尋ねられた場合は、"
+            "「検索結果にはその情報がありません」と回答してください。"
         )
     }
 ]
@@ -103,12 +106,11 @@ def run_agent(message: str, principal: Principal):
 def search_whiskeys(query):
     service = WhiskeySearchService()
 
-    items, next_token = service.search_whiskeys(
+    items, _ = service.search_whiskeys(
         query,
         limit=5,
         max_pages=1,
     )
-    print(items)
     return [
         {
             "name": item.get("name"),
@@ -119,10 +121,6 @@ def search_whiskeys(query):
         }
         for item in items
     ]
-
-
-def get_app_name():
-    return {"name": "Whiskey Log"}
 
 
 principal = Principal(user_id="dumy-user")
