@@ -38,7 +38,20 @@ tools = [
                 }
             },
         }
-    }
+    },
+    {
+        "toolSpec": {
+            "name": "get_drink_logs",
+            "description": "飲酒記録を取得する",
+            "inputSchema": {
+                "json": {
+                    "type": "object",
+                    "properties": {"query": {}},
+                    "required": ["query"],
+                }
+            },
+        }
+    },
 ]
 system = [
     {
@@ -83,6 +96,19 @@ def run_agent(message: str, principal: Principal):
                     if tool_use["name"] == "search_whiskeys":
                         query = tool_use["input"]["query"]
                         result = search_whiskeys(query)
+                        tool_results.append(
+                            {
+                                "toolResult": {
+                                    "toolUseId": tool_use["toolUseId"],
+                                    "content": [{"json": {"results": result}}],
+                                }
+                            }
+                        )
+                    elif tool_use["name"] == "get_drink_logs":
+                        principal = Principal(
+                            user_id="67f45ae8-9091-70df-7d98-237f59f7df1a"
+                        )
+                        result = get_drink_logs(principal)
                         tool_results.append(
                             {
                                 "toolResult": {
@@ -152,8 +178,11 @@ def search_whiskeys(query):
     ]
 
 
-principal = Principal(user_id="dumy-user")
-run_agent("タリスカーを探して", principal)
+# principal = Principal(user_id="dumy-user")
+# run_agent("タリスカーを探して", principal)
 
-principal2 = Principal(user_id="67f45ae8-9091-70df-7d98-237f59f7df1a")
-print(get_drink_logs(principal2))
+# principal2 = Principal(user_id="67f45ae8-9091-70df-7d98-237f59f7df1a")
+# print(get_drink_logs(principal2))
+
+principal3 = Principal(user_id="67f45ae8-9091-70df-7d98-237f59f7df1a")
+run_agent("最近飲んだウイスキーを3件教えて", principal3)
