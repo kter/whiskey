@@ -350,6 +350,7 @@ components:
       properties:
         brand_text: {type: string}
         name_ja: {type: string}
+        ai_name_ja: {type: string}
         name_en: {type: string}
         brand_ja: {type: string}
         brand_en: {type: string}

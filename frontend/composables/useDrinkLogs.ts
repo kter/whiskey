@@ -3,6 +3,7 @@ import { useApi } from '~/composables/useApi'
 export interface DrinkLogCandidate {
   brand_text: string
   name_ja?: string
+  ai_name_ja?: string
   name_en?: string
   brand_ja?: string
   brand_en?: string

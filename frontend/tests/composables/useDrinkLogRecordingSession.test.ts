@@ -337,6 +337,53 @@ describe('useDrinkLogRecordingSession', () => {
     expect(failed?.phase).toBe('ready')
   })
 
+  it('stops unstarted uploads after an analysis quota error and resets for a new session', async () => {
+    const dependencies = makeDependencies()
+    const quotaMessage = '本日の画像解析の上限に達しました。10月2日 9:00 にリセットされます。'
+    dependencies.analyze
+      .mockRejectedValueOnce(new ApiError(quotaMessage, 429, { error: 'Daily analysis limit exceeded' }))
+      .mockResolvedValue({ analysis_id: 'later', candidates: [], model_id: 'm', confidence: 0 })
+    const batch = useDrinkLogRecordingSession(dependencies)
+
+    await batch.selectFiles(Array.from({ length: 3 }, (_, index) => new File(['photo'], `${index}.jpg`)))
+
+    expect(dependencies.getUploadUrl).toHaveBeenCalledTimes(2)
+    expect(batch.items.value[2]).toMatchObject({ phase: 'failed', error: quotaMessage })
+
+    await batch.selectFiles([new File(['photo'], 'new-session.jpg')])
+
+    expect(dependencies.getUploadUrl).toHaveBeenCalledTimes(3)
+  })
+
+  it('stops remaining uploads when obtaining an upload URL reaches its daily quota', async () => {
+    const dependencies = makeDependencies()
+    const quotaMessage = '本日の画像アップロードの上限に達しました。10月2日 9:00 にリセットされます。'
+    dependencies.getUploadUrl.mockRejectedValueOnce(
+      new ApiError(quotaMessage, 429, { error: 'Daily upload limit exceeded' }),
+    )
+    const batch = useDrinkLogRecordingSession(dependencies)
+
+    await batch.selectFiles(Array.from({ length: 3 }, (_, index) => new File(['photo'], `${index}.jpg`)))
+
+    expect(dependencies.getUploadUrl).toHaveBeenCalledTimes(2)
+    expect(batch.items.value[2]).toMatchObject({ phase: 'failed', error: quotaMessage })
+  })
+
+  it('retries a stopped item with a fresh upload URL and reopens processing', async () => {
+    const dependencies = makeDependencies()
+    const quotaMessage = '本日の画像アップロードの上限に達しました。10月2日 9:00 にリセットされます。'
+    dependencies.getUploadUrl.mockRejectedValueOnce(
+      new ApiError(quotaMessage, 429, { error: 'Daily upload limit exceeded' }),
+    )
+    const batch = useDrinkLogRecordingSession(dependencies)
+
+    await batch.selectFiles(Array.from({ length: 3 }, (_, index) => new File(['photo'], `${index}.jpg`)))
+    await batch.retryItemProcessing(batch.items.value[2]!)
+
+    expect(dependencies.getUploadUrl).toHaveBeenCalledTimes(3)
+    expect(batch.items.value[2]?.phase).toBe('ready')
+  })
+
   it('ignores a duplicate retry for an item already re-queued (double-click guard)', async () => {
     const dependencies = makeDependencies()
     let analyzeCalls = 0
