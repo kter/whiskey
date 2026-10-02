@@ -333,6 +333,8 @@ def test_prompt_requires_llm_first_multi_bottle_non_inventing_output():
     assert "最も大きい文字ではなく" in analyze.PROMPT
     assert "brand_candidates" not in analyze.PROMPT
     assert "label_text" not in analyze.PROMPT
+    assert '"confidence":0.95' not in analyze.PROMPT
+    assert "ラベルの銘柄名がはっきり全部読めた" in analyze.PROMPT
 
 
 def test_model_output_validation_uses_new_schema_and_decimal_confidence():
@@ -491,7 +493,7 @@ def test_model_read_is_never_upgraded_to_catalog_canonical_name():
             "brand_text": "山崎",
             "name_ja": "山崎",
             "name_en": "Yamazaki",
-            "confidence": Decimal("0.96"),
+            "confidence": Decimal("0.6"),
             "match_source": "ai",
         }
     ]
@@ -507,6 +509,8 @@ def test_normalized_exact_match_adds_id_without_overwriting_model_name():
     assert candidates[0]["name_ja"] == "カリラ 12年"
     assert candidates[0]["whiskey_id"] == "caol-ila-12"
     assert candidates[0]["match_source"] == "catalog"
+    assert "brand_key" not in candidates[0]
+    assert candidates[0]["confidence"] == Decimal("0.95")
 
 
 def test_brand_only_does_not_match_age_statement():
@@ -546,7 +550,7 @@ def test_unknown_whiskey_still_produces_recordable_ai_candidate():
             "brand_text": "厚岸 シングルモルト",
             "name_ja": "厚岸 シングルモルト",
             "name_en": "Akkeshi Single Malt",
-            "confidence": Decimal("0.91"),
+            "confidence": Decimal("0.6"),
             "match_source": "ai",
         }
     ]
@@ -563,10 +567,172 @@ def test_brand_alias_match_is_independent_from_expression_match():
 
     assert candidates[0]["match_source"] == "ai"
     assert "whiskey_id" not in candidates[0]
-    assert candidates[0]["brand_ja"] == "アッケシ"
+    assert candidates[0]["brand_ja"] == "厚岸"
     assert candidates[0]["brand_en"] == "Akkeshi"
     assert candidates[0]["brand_key"] == "akkeshi"
     assert candidates[0]["distillery_ja"] == "厚岸蒸溜所"
+
+
+@pytest.mark.parametrize(
+    ("name_ja", "brand_ja", "brand_en", "expected_name", "expected_key"),
+    [
+        ("ラフロアヒグ 10年", "ラフロアヒグ", "Laphroaig", "ラフロイグ 10年", "laphroaig"),
+        ("バナナブハイン 12年", "バナナブハイン", "Bunnahabhain", "ブナハーブン 12年", "bunnahabhain"),
+        ("宮城京", "宮城京", "Miyagikyo", "宮城峡", "miyagikyo"),
+        ("ユイザ", "ユイザ", "Yuza", "遊佐", "yuza"),
+    ],
+)
+def test_brand_match_rebuilds_model_reading_to_catalog_brand_name(
+    name_ja, brand_ja, brand_en, expected_name, expected_key,
+):
+    whiskey = _whiskey(name_ja, brand_en, 0.92)
+    whiskey.update(brand_ja=brand_ja, brand_en=brand_en)
+
+    candidate = analyze.CANDIDATE_RESOLVER.resolve(
+        _whiskey_catalog([]), _analysis([whiskey]),
+    )[0]
+
+    assert candidate["brand_key"] == expected_key
+    assert candidate["brand_text"] == expected_name
+    assert candidate["name_ja"] == expected_name
+    assert candidate["brand_ja"] == expected_name.split(" ")[0]
+    assert candidate["ai_name_ja"] == name_ja
+    assert candidate["confidence"] == Decimal("0.92")
+
+
+def test_brand_match_uses_english_age_suffix_when_japanese_has_no_age():
+    whiskey = _whiskey("ラフロアヒグ", "Laphroaig 10 Year Old")
+    whiskey.update(brand_ja="ラフロアヒグ", brand_en="Laphroaig")
+
+    candidate = analyze.CANDIDATE_RESOLVER.resolve(
+        _whiskey_catalog([]), _analysis([whiskey]),
+    )[0]
+
+    assert candidate["brand_text"] == "ラフロイグ 10年"
+    assert candidate["ai_name_ja"] == "ラフロアヒグ"
+
+
+@pytest.mark.parametrize(
+    ("name_ja", "brand_ja", "expected_key", "expected_distillery"),
+    [
+        ("サントリー 角瓶", "サントリー", "hibiki", "サントリー"),
+        ("ジムビーム ホワイト", "ジムビーム", "knob_creek", "ジムビーム蒸溜所"),
+    ],
+)
+def test_distillery_only_match_keeps_model_product_name(
+    name_ja, brand_ja, expected_key, expected_distillery,
+):
+    whiskey = _whiskey(name_ja, confidence=0.92)
+    whiskey["brand_ja"] = brand_ja
+
+    candidate = analyze.CANDIDATE_RESOLVER.resolve(
+        _whiskey_catalog([]), _analysis([whiskey]),
+    )[0]
+
+    assert candidate["brand_key"] == expected_key
+    assert candidate["distillery_ja"] == expected_distillery
+    assert candidate["name_ja"] == name_ja
+    assert candidate["brand_text"] == name_ja
+    assert candidate["brand_ja"] == brand_ja
+    assert "ai_name_ja" not in candidate
+
+
+@pytest.mark.parametrize(
+    ("name_ja", "name_en", "brand_ja", "brand_en", "expected_key"),
+    [
+        ("キルホーマン マチルベイ", "Kilchoman Machir Bay", "マチルベイ", "Kilchoman", "kilchoman"),
+        ("サントリー 響 17年", "Suntory Hibiki 17", "サントリー", "Hibiki", "hibiki"),
+    ],
+)
+def test_brand_replacement_skips_names_already_containing_catalog_brand(
+    name_ja, name_en, brand_ja, brand_en, expected_key,
+):
+    whiskey = _whiskey(name_ja, name_en, 0.92)
+    whiskey.update(brand_ja=brand_ja, brand_en=brand_en)
+
+    candidate = analyze.CANDIDATE_RESOLVER.resolve(
+        _whiskey_catalog([]), _analysis([whiskey]),
+    )[0]
+
+    assert candidate["brand_key"] == expected_key
+    assert candidate["name_ja"] == name_ja
+    assert candidate["brand_text"] == name_ja
+    assert "ai_name_ja" not in candidate
+
+
+def test_brand_replacement_keeps_prefix_and_suffix():
+    whiskey = _whiskey("ザ・マッカラン 12年", "The Macallan 12", 0.92)
+    whiskey.update(brand_ja="マッカラン", brand_en="Macallan")
+
+    candidate = analyze.CANDIDATE_RESOLVER.resolve(
+        _whiskey_catalog([]), _analysis([whiskey]),
+    )[0]
+
+    assert candidate["name_ja"] == "マッカラン 12年"
+    assert candidate["ai_name_ja"] == "ザ・マッカラン 12年"
+
+
+def test_brand_replacement_does_not_discard_an_expression_without_brand_text():
+    whiskey = _whiskey("フロム・ザ・バレル", "From the Barrel", 0.92)
+    whiskey.update(brand_ja="ニッカ", brand_en="Nikka")
+
+    candidate = analyze.CANDIDATE_RESOLVER.resolve(
+        _whiskey_catalog([]), _analysis([whiskey]),
+    )[0]
+
+    assert candidate["name_ja"] == "フロム・ザ・バレル"
+    assert candidate["brand_text"] == "フロム・ザ・バレル"
+    assert candidate["brand_ja"] == "ニッカ"
+    assert "ai_name_ja" not in candidate
+
+
+def test_brand_replacement_corrects_only_the_detected_brand_span():
+    whiskey = _whiskey("ラフロアヒグ", "Laphroaig Quarter Cask", 0.92)
+    whiskey.update(brand_ja="ラフロアヒグ", brand_en="Laphroaig")
+
+    candidate = analyze.CANDIDATE_RESOLVER.resolve(
+        _whiskey_catalog([]), _analysis([whiskey]),
+    )[0]
+
+    assert candidate["name_ja"] == "ラフロイグ"
+    assert candidate["ai_name_ja"] == "ラフロアヒグ"
+
+
+def test_brand_only_name_uses_hyphenated_english_age_suffix():
+    whiskey = _whiskey("ラフロアヒグ", "The Laphroaig 10-Year-Old", 0.92)
+    whiskey.update(brand_ja="ラフロアヒグ", brand_en="Laphroaig")
+
+    candidate = analyze.CANDIDATE_RESOLVER.resolve(
+        _whiskey_catalog([]), _analysis([whiskey]),
+    )[0]
+
+    assert candidate["name_ja"] == "ラフロイグ 10年"
+
+
+def test_unmatched_brand_keeps_name_and_caps_confidence():
+    whiskey = _whiskey("ミステリーモルト", "Mystery Malt", 0.92)
+    whiskey.update(brand_ja="ミステリーモルト", brand_en="Mystery Malt")
+
+    candidate = analyze.CANDIDATE_RESOLVER.resolve(
+        _whiskey_catalog([]), _analysis([whiskey]),
+    )[0]
+
+    assert candidate["brand_text"] == "ミステリーモルト"
+    assert "ai_name_ja" not in candidate
+    assert "brand_key" not in candidate
+    assert candidate["confidence"] == Decimal("0.6")
+
+
+def test_already_correct_catalog_brand_name_has_no_ai_name():
+    whiskey = _whiskey("ラフロイグ 10年", "Laphroaig 10 Year Old")
+    whiskey.update(brand_ja="ラフロイグ", brand_en="Laphroaig")
+
+    candidate = analyze.CANDIDATE_RESOLVER.resolve(
+        _whiskey_catalog([]), _analysis([whiskey]),
+    )[0]
+
+    assert candidate["brand_text"] == "ラフロイグ 10年"
+    assert "ai_name_ja" not in candidate
 
 
 @pytest.mark.parametrize(
@@ -730,7 +896,7 @@ def test_handler_accepts_brand_fields_and_returns_them_on_candidate(monkeypatch)
     candidate = json.loads(response["body"])["candidates"][0]
 
     assert response["statusCode"] == 200
-    assert candidate["brand_ja"] == "アッケシ"
+    assert candidate["brand_ja"] == "厚岸"
     assert candidate["brand_en"] == "Akkeshi"
     assert candidate["brand_key"] == "akkeshi"
     assert candidate["distillery_ja"] == "厚岸蒸溜所"

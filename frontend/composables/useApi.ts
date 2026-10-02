@@ -28,7 +28,42 @@ export const normalizeApiPath = (path: string) => {
   return query ? `${normalizedPath}?${query}` : normalizedPath
 }
 
-const errorMessageFor = (status: number, body: unknown) => {
+const DAILY_QUOTA_ERRORS = new Map([
+  ['Daily analysis limit exceeded', '本日の画像解析の上限に達しました。'],
+  ['Daily upload limit exceeded', '本日の画像アップロードの上限に達しました。'],
+  ['Daily create or storage limit exceeded', '本日の記録作成の上限（または保存容量の上限）に達しました。'],
+  ['Daily scan budget exceeded', '本日の検索の上限に達しました。'],
+])
+
+const errorText = (body: unknown): string => {
+  if (!body || typeof body !== 'object') return ''
+  const error = (body as Record<string, unknown>).error
+  return typeof error === 'string' ? error : ''
+}
+
+export const formatDailyQuotaReset = (now = new Date(), timeZone?: string) => {
+  const reset = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1))
+  const parts = new Intl.DateTimeFormat('ja-JP', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hourCycle: 'h23',
+    ...(timeZone ? { timeZone } : {}),
+  }).formatToParts(reset)
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find(value => value.type === type)?.value || ''
+  return `${part('month')}月${part('day')}日 ${part('hour')}:${part('minute')}`
+}
+
+export const errorMessageFor = (
+  status: number,
+  body: unknown,
+  now = new Date(),
+  timeZone?: string,
+) => {
+  const dailyMessage = DAILY_QUOTA_ERRORS.get(errorText(body))
+  if (status === 429 && dailyMessage) return `${dailyMessage}${formatDailyQuotaReset(now, timeZone)} にリセットされます。`
+  if (status === 503 && errorText(body) === 'Monthly analysis budget exhausted') return '今月の画像解析の上限に達しました。'
   if (status === 429) return 'リクエストが集中しています。しばらく待ってからお試しください。'
   if (status === 503) return 'サービスを一時的に利用できません。しばらく待ってからお試しください。'
   if (body && typeof body === 'object') {
@@ -38,6 +73,12 @@ const errorMessageFor = (status: number, body: unknown) => {
   }
   return `APIリクエストに失敗しました (${status})`
 }
+
+export const isDailyQuotaError = (error: unknown): boolean => (
+  error instanceof ApiError
+  && ((error.status === 429 && DAILY_QUOTA_ERRORS.has(errorText(error.details)))
+    || (error.status === 503 && errorText(error.details) === 'Monthly analysis budget exhausted'))
+)
 
 export const useApi = () => {
   const config = useRuntimeConfig()

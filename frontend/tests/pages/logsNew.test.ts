@@ -211,7 +211,7 @@ describe('logs/new form behavior', () => {
 
   it('shows one detected brand in the text field without rendering a candidate select', () => {
     const wrapper = renderLogPage({
-      candidates: [{ brand_text: 'カリラ 12年', confidence: 0.904, match_source: 'catalog' }],
+      candidates: [{ brand_text: 'カリラ 12年', confidence: 0.904, match_source: 'catalog', brand_key: 'caol_ila' }],
     })
 
     expect(wrapper.find('select[id^="brand-candidate-"]').exists()).toBe(false)
@@ -222,7 +222,7 @@ describe('logs/new form behavior', () => {
   it('renders multiple candidates as chips and clears the selection when the brand is edited', async () => {
     const wrapper = renderLogPage({
       candidates: [
-        { brand_text: 'カリラ 12年', confidence: 0.9, match_source: 'catalog' },
+        { brand_text: 'カリラ 12年', confidence: 0.9, match_source: 'catalog', brand_key: 'caol_ila' },
         { brand_text: '山崎', confidence: 0.8, match_source: 'ai' },
       ],
     })
@@ -230,7 +230,7 @@ describe('logs/new form behavior', () => {
     const chips = wrapper.findAll('button[aria-pressed]')
     expect(chips).toHaveLength(2)
     expect(chips[0]!.text()).toBe('カリラ 12年（90%）')
-    expect(chips[1]!.text()).toBe('山崎（80%）')
+    expect(chips[1]!.text()).toBe('山崎（80%）要確認')
     expect(wrapper.text()).toContain('複数のボトルを検出しました。')
 
     const secondChip = chips[1]!
@@ -252,7 +252,15 @@ describe('logs/new form behavior', () => {
       candidates: [{ brand_text: '山崎', confidence: 0.8, match_source: 'ai' }],
     })
 
-    expect(wrapper.text()).toContain('AIの読み取り: 山崎（確度 80%・AI読取）')
+    expect(wrapper.text()).toContain('AIの読み取り: 山崎（確度 80%・AI読取）要確認')
+  })
+
+  it('shows the original AI reading before the catalog brand name', () => {
+    const wrapper = renderLogPage({
+      candidates: [{ brand_text: 'ラフロイグ 10年', ai_name_ja: 'ラフロアヒグ 10年', confidence: 0.9, brand_key: 'laphroaig' }],
+    })
+
+    expect(wrapper.text()).toContain('AIの読み取り: ラフロアヒグ 10年 → ラフロイグ 10年（確度 90%・ブランド一致）')
   })
 
   it('updates the store selection and manual store name on each card', async () => {

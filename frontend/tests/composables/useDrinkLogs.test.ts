@@ -8,7 +8,7 @@ vi.mock('~/composables/useApi', async importOriginal => {
 })
 
 import { buildDrinkLogPayload, useDrinkLogs } from '~/composables/useDrinkLogs'
-import { normalizeDrinkLogError } from '~/utils/drinkLogs'
+import { candidateNeedsConfirmation, normalizeDrinkLogError } from '~/utils/drinkLogs'
 
 const record = (id: string, datetime: string, brandText = id) => ({
   id,
@@ -89,6 +89,10 @@ describe('useDrinkLogs API contract', () => {
     expect(normalizeDrinkLogError(new Error('request failed'), 'fallback')).toBe('request failed')
     expect(normalizeDrinkLogError(new Error(''), 'fallback')).toBe('fallback')
     expect(normalizeDrinkLogError('request failed', 'fallback')).toBe('fallback')
+  })
+
+  it('does not require a brand key when an exact whiskey match has enough confidence', () => {
+    expect(candidateNeedsConfirmation({ whiskey_id: 'laphroaig-10', confidence: 0.7 })).toBe(false)
   })
 
   it('uses every list, detail, update, delete and Places endpoint with required auth', async () => {

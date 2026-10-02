@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue'
-import { ApiError } from '~/composables/useApi'
+import { ApiError, isDailyQuotaError } from '~/composables/useApi'
 import {
   buildDrinkLogPayload,
   candidateIndexAfterBrandEdit,
@@ -165,6 +165,7 @@ export const useDrinkLogRecordingSession = (provided?: RecordingSessionDependenc
   const processWithLimit = createLimiter(RECORDING_PROCESS_CONCURRENCY)
   const saveWithLimit = createLimiter(RECORDING_SAVE_CONCURRENCY)
   let itemSequence = 0
+  let quotaStopMessage = ''
 
   const revokePreview = (item: RecordingSessionItem) => {
     if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
@@ -174,6 +175,7 @@ export const useDrinkLogRecordingSession = (provided?: RecordingSessionDependenc
   const resetItems = () => {
     items.value.forEach(revokePreview)
     items.value = []
+    quotaStopMessage = ''
   }
 
   const reset = () => {
@@ -197,7 +199,7 @@ export const useDrinkLogRecordingSession = (provided?: RecordingSessionDependenc
     }
   }
 
-  const processItem = async (item: RecordingSessionItem) => {
+  const processItem = async (item: RecordingSessionItem, isRetry = false) => {
     revokePreview(item)
     item.phase = 'resizing'
     item.capturedAt = null
@@ -217,7 +219,10 @@ export const useDrinkLogRecordingSession = (provided?: RecordingSessionDependenc
       const resized = await dependencies.resizeImage(item.file)
       item.previewUrl = URL.createObjectURL(resized.blob)
       item.phase = 'uploading'
+      if (quotaStopMessage && !isRetry) throw new Error(quotaStopMessage)
       const upload = await dependencies.getUploadUrl(resized.contentType)
+      // A retry reopens the session only after it has obtained a fresh upload URL.
+      if (isRetry) quotaStopMessage = ''
       await dependencies.uploadToS3(upload.upload_url, upload.fields, resized.blob, progress => {
         item.uploadProgress = progress
       })
@@ -225,15 +230,16 @@ export const useDrinkLogRecordingSession = (provided?: RecordingSessionDependenc
       applyAnalysis(item, await dependencies.analyze(upload.s3_key))
       item.phase = 'ready'
     } catch (cause) {
+      if (isDailyQuotaError(cause)) quotaStopMessage = processingError(cause)
       item.phase = 'failed'
       item.error = processingError(cause)
     }
   }
 
-  const enqueueProcessing = (item: RecordingSessionItem) => {
+  const enqueueProcessing = (item: RecordingSessionItem, isRetry = false) => {
     item.phase = 'queued'
     item.error = ''
-    return processWithLimit(() => processItem(item))
+    return processWithLimit(() => processItem(item, isRetry))
   }
 
   const retryProcessing = (item: RecordingSessionItem) => {
@@ -241,7 +247,7 @@ export const useDrinkLogRecordingSession = (provided?: RecordingSessionDependenc
     // The first click flips phase to 'queued', so a second synchronous call is a no-op
     // (prevents a duplicate upload and a leaked preview URL from re-processing).
     if (item.phase !== 'failed') return Promise.resolve()
-    return enqueueProcessing(item)
+    return enqueueProcessing(item, true)
   }
 
   const processFiles = async (files: File[]) => {

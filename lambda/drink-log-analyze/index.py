@@ -86,10 +86,12 @@ PROMPT = (
     "ハイボールは serving_style を SODA にしてください。"
     "次のキーだけを持つ厳密な JSON を返してください: "
     '{"whiskeys":[{"name_ja":"カリラ 12年","name_en":"Caol Ila 12 Year Old",'
-    '"brand_ja":"カリラ","brand_en":"Caol Ila","confidence":0.95}],'
+    '"brand_ja":"カリラ","brand_en":"Caol Ila","confidence":<0から1の数値>}],'
     '"serving_style":"NEAT|ROCKS|WATER|SODA|COCKTAIL",'
     '"glass_type":""}. '
-    "confidence は0以上1以下にしてください。Markdownや説明は含めないでください。"
+    "confidence は0以上1以下にしてください。ラベルの銘柄名がはっきり全部読めた場合は高く（0.8以上）、"
+    "一部だけ読めた場合や形・ラベル色から推測した場合は低く（0.5以下）してください。"
+    "Markdownや説明は含めないでください。"
 )
 
 _MASTER_CACHE_LOCK = threading.Lock()

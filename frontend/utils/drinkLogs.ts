@@ -1,5 +1,14 @@
 import type { DrinkLog } from '~/composables/useDrinkLogs'
 
+export const CANDIDATE_CONFIRMATION_CONFIDENCE = 0.7
+
+export const candidateNeedsConfirmation = (candidate: {
+  brand_key?: string
+  whiskey_id?: string
+  confidence: number
+}) => (!candidate.brand_key && !candidate.whiskey_id)
+  || candidate.confidence < CANDIDATE_CONFIRMATION_CONFIDENCE
+
 export const normalizeDrinkLogError = (cause: unknown, fallback: string) => (
   cause instanceof Error && cause.message ? cause.message : fallback
 )

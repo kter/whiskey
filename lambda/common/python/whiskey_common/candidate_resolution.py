@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import re
 import unicodedata
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -17,6 +19,12 @@ _BRAND_SUFFIX_RE = re.compile(
     r"(?:蒸溜所|蒸留所|蒸溜|蒸留|\s+(?:distillery|distillers))$",
     re.IGNORECASE,
 )
+UNMATCHED_BRAND_CONFIDENCE_CAP = Decimal("0.6")
+_AGE_SUFFIX_RE = re.compile(
+    r"\b(\d+)\s*(?:[- ]?years?(?:[- ]?old)?|[- ]?yo)\b", re.IGNORECASE
+)
+_LEADING_THE_RE = re.compile(r"^the\s+", re.IGNORECASE)
+_LEADING_JA_ARTICLE_RE = re.compile(r"(?:ザ・|ザ\s)$")
 
 
 def normalized_brand_variants(name: str) -> tuple[str, ...]:
@@ -166,6 +174,43 @@ class BrandCatalog:
             (),
         )
 
+    def matches_brand_name(
+        self, record_or_key: Mapping[str, Any] | str, whiskey: Mapping[str, Any]
+    ) -> bool:
+        """Whether a match was made through a brand name, never a distillery name."""
+        brand_key = (
+            record_or_key
+            if isinstance(record_or_key, str)
+            else record_or_key.get("brand_key")
+        )
+        entry = next(
+            (
+                entry
+                for entry in self._entries
+                if entry.record["brand_key"] == brand_key
+            ),
+            None,
+        )
+        if entry is None:
+            return False
+        own_names = [entry.record.get("brand_ja"), entry.record.get("brand_en")]
+        aliases = entry.record.get("aliases")
+        if isinstance(aliases, list):
+            own_names.extend(aliases)
+        normalized_own_names = {
+            normalized
+            for name in own_names
+            if isinstance(name, str)
+            for normalized in normalized_brand_variants(name)
+        }
+        normalized_whiskey_names = {
+            normalized
+            for field in ("brand_ja", "brand_en")
+            if isinstance(name := whiskey.get(field), str)
+            for normalized in normalized_brand_variants(name)
+        }
+        return bool(normalized_own_names.intersection(normalized_whiskey_names))
+
     def resolve_exact(self, whiskey: Mapping[str, Any]) -> Mapping[str, Any] | None:
         normalized_names = {
             normalized
@@ -268,6 +313,55 @@ class CandidateResolver:
     def __init__(self, brand_catalog: BrandCatalog):
         self._brand_catalog = brand_catalog
 
+    @staticmethod
+    def _english_age_suffix(whiskey: Mapping[str, Any]) -> str:
+        model_name_en = whiskey.get("name_en")
+        model_brand_en = whiskey.get("brand_en")
+        if isinstance(model_name_en, str) and isinstance(model_brand_en, str):
+            name = _LEADING_THE_RE.sub("", model_name_en.strip())
+            brand = _LEADING_THE_RE.sub("", model_brand_en.strip())
+            if brand and name.casefold().startswith(brand.casefold()):
+                match = _AGE_SUFFIX_RE.search(name[len(brand):])
+                if match:
+                    return f"{match.group(1)}年"
+        return ""
+
+    @classmethod
+    def _rebuilt_name(
+        cls, whiskey: Mapping[str, Any], catalog_brand_ja: str
+    ) -> str | None:
+        """Correct only the model's brand span; never discard an expression."""
+        model_name = whiskey.get("name_ja")
+        model_brand = whiskey.get("brand_ja")
+        if not isinstance(model_name, str) or not isinstance(model_brand, str):
+            return None
+        name = model_name.strip()
+        brand = model_brand.strip()
+        if not name or not brand:
+            return None
+        # A name consisting only of the model's brand needs the English age fallback.
+        if name == brand or unicodedata.normalize("NFKC", name) == unicodedata.normalize("NFKC", brand):
+            suffix = cls._english_age_suffix(whiskey)
+            return f"{catalog_brand_ja} {suffix}" if suffix else catalog_brand_ja
+        # The official brand already appears outside the model's brand_ja, which therefore
+        # names something else (a company or expression); replacing it would duplicate the brand.
+        nfkc = functools.partial(unicodedata.normalize, "NFKC")
+        if nfkc(catalog_brand_ja) in nfkc(name) and nfkc(catalog_brand_ja) not in nfkc(brand):
+            return None
+        for candidate_name, candidate_brand in (
+            (name, brand),
+            (unicodedata.normalize("NFKC", name), unicodedata.normalize("NFKC", brand)),
+        ):
+            start = candidate_name.find(candidate_brand)
+            if start < 0:
+                continue
+            prefix = candidate_name[:start]
+            if _LEADING_JA_ARTICLE_RE.search(prefix):
+                prefix = _LEADING_JA_ARTICLE_RE.sub("", prefix)
+            rebuilt = f"{prefix}{catalog_brand_ja}{candidate_name[start + len(candidate_brand):]}"
+            return re.sub(r"\s{2,}", " ", rebuilt).strip()
+        return None
+
     def resolve(
         self,
         whiskey_catalog: WhiskeyCatalog,
@@ -292,8 +386,25 @@ class CandidateResolver:
                     candidate[brand_field] = whiskey[brand_field]
             if brand_matched is not None:
                 candidate["brand_key"] = brand_matched["brand_key"]
+                catalog_brand_ja = brand_matched.get("brand_ja")
+                if (
+                    isinstance(catalog_brand_ja, str)
+                    and catalog_brand_ja.strip()
+                    and self._brand_catalog.matches_brand_name(brand_matched, whiskey)
+                ):
+                    canonical_brand = catalog_brand_ja.strip()
+                    if rebuilt_name := self._rebuilt_name(whiskey, canonical_brand):
+                        if whiskey["name_ja"] != rebuilt_name:
+                            candidate["ai_name_ja"] = whiskey["name_ja"]
+                        candidate["brand_text"] = rebuilt_name
+                        candidate["name_ja"] = rebuilt_name
+                    candidate["brand_ja"] = canonical_brand
                 distillery = brand_matched.get("distillery_ja")
                 if distillery:
                     candidate["distillery_ja"] = distillery
+            if "brand_key" not in candidate and "whiskey_id" not in candidate:
+                candidate["confidence"] = min(
+                    candidate["confidence"], UNMATCHED_BRAND_CONFIDENCE_CAP
+                )
             candidates.append(candidate)
         return candidates

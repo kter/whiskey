@@ -6,7 +6,7 @@ import {
 } from '~/composables/useDrinkLogRecordingSession'
 import { useGeolocation } from '~/composables/useGeolocation'
 import { SERVING_STYLES, type ServingStyle } from '~/types/whiskey'
-import { formatLocalLogDate, formatLocalLogTime } from '~/utils/drinkLogs'
+import { candidateNeedsConfirmation, formatLocalLogDate, formatLocalLogTime } from '~/utils/drinkLogs'
 
 const {
   items,
@@ -210,7 +210,7 @@ const openLightbox = (src: string, alt: string) => {
                 :class="item.selectedCandidateIndex === candidateIndex ? 'border-amber-500 bg-amber-700 text-amber-100' : 'border-stone-500 bg-stone-600 text-amber-300'"
                 @click="selectCandidate(item, candidateIndex)"
               >
-                {{ candidate.brand_text }}（{{ Math.round(candidate.confidence * 100) }}%）
+                {{ candidate.brand_text }}（{{ Math.round(candidate.confidence * 100) }}%）<span v-if="candidateNeedsConfirmation(candidate)" class="ml-1 rounded bg-amber-950 px-1 text-xs">要確認</span>
               </button>
             </div>
           </template>
@@ -226,7 +226,7 @@ const openLightbox = (src: string, alt: string) => {
           <label :for="`brand-text-${item.id}`" class="block text-sm font-medium text-amber-200">銘柄名 *</label>
           <input :id="`brand-text-${item.id}`" v-model="item.brandText" :disabled="item.saveStatus === 'saved'" required type="text" maxlength="200" placeholder="例: アードベッグ 10年" class="mt-2 block w-full rounded-md border-amber-700 bg-stone-700 text-amber-100 placeholder:text-stone-400 disabled:opacity-50" @input="handleBrandInput(item)" />
           <p v-if="item.candidates.length === 1 && item.candidates[0]" class="mt-1 text-xs text-stone-400">
-            AIの読み取り: {{ item.candidates[0].brand_text }}（確度 {{ Math.round(item.candidates[0].confidence * 100) }}%・{{ item.candidates[0].match_source === 'catalog' ? 'カタログ一致' : 'AI読取' }}）
+            AIの読み取り: <template v-if="item.candidates[0].ai_name_ja">{{ item.candidates[0].ai_name_ja }} → </template>{{ item.candidates[0].brand_text }}（確度 {{ Math.round(item.candidates[0].confidence * 100) }}%・{{ item.candidates[0].match_source === 'catalog' ? 'カタログ一致' : item.candidates[0].brand_key ? 'ブランド一致' : 'AI読取' }}）<span v-if="candidateNeedsConfirmation(item.candidates[0])" class="ml-1 rounded bg-amber-950 px-1 text-xs">要確認</span>
           </p>
           <p class="mt-1 text-xs text-stone-400">候補の文字を編集すると、手入力の銘柄として保存します。</p>
         </div>
