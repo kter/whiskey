@@ -42,12 +42,42 @@ tools = [
     {
         "toolSpec": {
             "name": "get_drink_logs",
-            "description": "飲酒記録を取得する",
+            "description": "現在のユーザーの最近の飲酒記録を取得する",
             "inputSchema": {
                 "json": {
                     "type": "object",
-                    "properties": {"query": {}},
-                    "required": ["query"],
+                    "properties": {
+                        "limit": {
+                            "type": "integer",
+                            "description": "取得する最大件数",
+                            "minimum": 1,
+                            "maximum": 20,
+                        }
+                    },
+                }
+            },
+        },
+    },
+    {
+        "toolSpec": {
+            "name": "search_drink_logs",
+            "description": "現在のユーザーの飲酒履歴を銘柄名で検索する",
+            "inputSchema": {
+                "json": {
+                    "type": "object",
+                    "properties": {
+                        "brand": {
+                            "type": "string",
+                            "description": "検索するウイスキーの銘柄名",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "取得する最大件数",
+                            "minimum": 1,
+                            "maximum": 20,
+                        },
+                    },
+                    "required": ["brand"],
                 }
             },
         }
@@ -107,10 +137,24 @@ def run_agent(message: str, principal: Principal):
                             }
                         )
                     elif tool_use["name"] == "get_drink_logs":
-                        principal = Principal(
-                            user_id="67f45ae8-9091-70df-7d98-237f59f7df1a"
-                        )
                         result = get_drink_logs(principal)
+                        tool_results.append(
+                            {
+                                "toolResult": {
+                                    "toolUseId": tool_use["toolUseId"],
+                                    "content": [{"json": {"results": result}}],
+                                }
+                            }
+                        )
+                    elif tool_use["name"] == "search_drink_logs":
+                        brand = tool_use["input"]["brand"]
+                        limit = tool_use["input"].get("limit", 10)
+
+                        result = search_drink_logs(
+                            principal,
+                            brand=brand,
+                            limit=limit,
+                        )
                         tool_results.append(
                             {
                                 "toolResult": {
@@ -218,4 +262,5 @@ def search_whiskeys(query):
 # run_agent("最近飲んだアランを教えて", principal3)
 
 principal4 = Principal(user_id="67f45ae8-9091-70df-7d98-237f59f7df1a")
-print(search_drink_logs(principal4, brand="アラン", limit=10))
+# print(search_drink_logs(principal4, brand="アラン", limit=10))
+run_agent("最近飲んだアランを教えて", principal4)
