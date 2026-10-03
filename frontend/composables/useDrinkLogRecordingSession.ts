@@ -33,7 +33,7 @@ export interface RecordingSessionItem {
   candidates: DrinkLogCandidate[]
   selectedCandidateIndex: number | null
   brandText: string
-  servingStyle: ServingStyle | ''
+  servingStyle: ServingStyle
   rating: number | null
   storeName: string
   placeId: string
@@ -132,7 +132,7 @@ const newItem = (file: File, id: string): RecordingSessionItem => ({
   candidates: [],
   selectedCandidateIndex: null,
   brandText: '',
-  servingStyle: '',
+  servingStyle: 'UNKNOWN',
   rating: null,
   storeName: '',
   placeId: '',
@@ -194,9 +194,9 @@ export const useDrinkLogRecordingSession = (provided?: RecordingSessionDependenc
       item.selectedCandidateIndex = 0
       item.brandText = item.candidates[0]?.brand_text || ''
     }
-    if (analysis.serving_style && SERVING_STYLES.includes(analysis.serving_style as ServingStyle)) {
-      item.servingStyle = analysis.serving_style as ServingStyle
-    }
+    item.servingStyle = analysis.serving_style && SERVING_STYLES.includes(analysis.serving_style as ServingStyle)
+      ? analysis.serving_style as ServingStyle
+      : 'UNKNOWN'
   }
 
   const processItem = async (item: RecordingSessionItem, isRetry = false) => {
@@ -208,7 +208,7 @@ export const useDrinkLogRecordingSession = (provided?: RecordingSessionDependenc
     item.candidates = []
     item.selectedCandidateIndex = null
     item.brandText = ''
-    item.servingStyle = ''
+    item.servingStyle = 'UNKNOWN'
     item.error = ''
     item.saveStatus = 'idle'
     item.saveError = ''

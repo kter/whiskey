@@ -1,4 +1,4 @@
-export const SERVING_STYLES = ['NEAT', 'ROCKS', 'WATER', 'SODA', 'COCKTAIL'] as const
+export const SERVING_STYLES = ['UNKNOWN', 'NEAT', 'ROCKS', 'WATER', 'SODA', 'COCKTAIL'] as const
 
 export type ServingStyle = typeof SERVING_STYLES[number]
 

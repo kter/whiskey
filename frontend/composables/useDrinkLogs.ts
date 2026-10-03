@@ -132,7 +132,7 @@ export const buildDrinkLogPayload = (form: DrinkLogFormValues): CreateDrinkLogPa
   ...(form.candidateIndex === null
     ? { brand_text: form.brandText.trim() }
     : { candidate_index: form.candidateIndex }),
-  ...(form.servingStyle ? { serving_style: form.servingStyle } : {}),
+  serving_style: form.servingStyle || 'UNKNOWN',
   ...(form.storeName?.trim() || form.placeId
     ? { store: { name: form.storeName?.trim() || '', ...(form.placeId ? { place_id: form.placeId } : {}) } }
     : {}),

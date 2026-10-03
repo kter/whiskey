@@ -71,6 +71,16 @@
           ],
           "minLength": 1
         },
+        "expected_serving_style": {
+          "enum": [
+            "UNKNOWN",
+            "NEAT",
+            "ROCKS",
+            "WATER",
+            "SODA",
+            "COCKTAIL"
+          ]
+        },
         "notes": {
           "type": "string"
         },

@@ -280,7 +280,8 @@ components:
       maximum: 5
     ServingStyle:
       type: string
-      enum: [NEAT, ROCKS, WATER, SODA, COCKTAIL]
+      enum: [UNKNOWN, NEAT, ROCKS, WATER, SODA, COCKTAIL]
+      description: UNKNOWN means the user or AI did not determine the serving style.
     CreateDrinkLogRequest:
       type: object
       required: [analysis_id]

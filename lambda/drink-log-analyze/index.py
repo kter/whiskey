@@ -63,7 +63,15 @@ except ModuleNotFoundError as exc:
     from whiskey_common.upload_limits import image_max_bytes, upload_max_bytes
 
 
-SERVING_STYLE_ALIASES = {"HIGHBALL": "SODA", "SODA": "SODA"}
+SERVING_STYLE_ALIASES = {
+    "HIGHBALL": "SODA",
+    "SODA": "SODA",
+    "UNKNOWN": "UNKNOWN",
+    "UNSURE": "UNKNOWN",
+    "NONE": "UNKNOWN",
+    "N/A": "UNKNOWN",
+    "": "UNKNOWN",
+}
 UPLOAD_KEY_RE = re.compile(rf"^tmp/([^/]+)/({UUID_TEXT})\.(jpg|jpeg|png|webp)$")
 MAX_CANDIDATES = 5
 MASTER_SNAPSHOT_TTL_SECONDS = 300
@@ -83,11 +91,15 @@ PROMPT = (
     "brand_ja と brand_en は蒸留所またはブランドの名前だけにしてください。"
     "熟成年数・カスク・限定表記・シングルモルト等の種別語は含めないでください。"
     "ラベルで最も大きい文字ではなく、蒸留所またはブランドを特定してください。"
-    "ハイボールは serving_style を SODA にしてください。"
+    "飲み方は、氷が入っていて泡がないなら ROCKS、縦長のグラスで炭酸の泡が見えるなら（氷の有無を問わず）SODA、"
+    "氷がなく小さなテイスティンググラス・ショットグラス・脚付きグラスに少量なら NEAT、"
+    "明らかに水で割った淡い色で量が多いなら WATER にしてください。"
+    "フルーツやガーニッシュ、ウイスキー以外の色があれば COCKTAIL、グラスが写っていない・グラスが空・判断できない場合は UNKNOWN にしてください。"
+    "迷ったら UNKNOWN にしてください。"
     "次のキーだけを持つ厳密な JSON を返してください: "
     '{"whiskeys":[{"name_ja":"カリラ 12年","name_en":"Caol Ila 12 Year Old",'
     '"brand_ja":"カリラ","brand_en":"Caol Ila","confidence":<0から1の数値>}],'
-    '"serving_style":"NEAT|ROCKS|WATER|SODA|COCKTAIL",'
+    '"serving_style":"UNKNOWN|NEAT|ROCKS|WATER|SODA|COCKTAIL",'
     '"glass_type":""}. '
     "confidence は0以上1以下にしてください。ラベルの銘柄名がはっきり全部読めた場合は高く（0.8以上）、"
     "一部だけ読めた場合や形・ラベル色から推測した場合は低く（0.5以下）してください。"
@@ -224,9 +236,11 @@ def _validate_model_output(payload: Any) -> dict[str, Any] | None:
     serving_raw = payload.get("serving_style")
     if not isinstance(serving_raw, str):
         return None
-    serving_style = SERVING_STYLE_ALIASES.get(serving_raw.upper(), serving_raw.upper())
+    serving_style = SERVING_STYLE_ALIASES.get(
+        serving_raw.strip().upper(), serving_raw.strip().upper()
+    )
     if serving_style not in SERVING_STYLES:
-        return None
+        serving_style = "UNKNOWN"
     glass_type = payload.get("glass_type")
     if not isinstance(glass_type, str) or len(glass_type) > 200:
         return None
@@ -535,7 +549,7 @@ def analyze_upload(
     if not analysis:
         analysis = {
             "whiskeys": [],
-            "serving_style": "NEAT",
+            "serving_style": "UNKNOWN",
             "glass_type": "",
         }
 

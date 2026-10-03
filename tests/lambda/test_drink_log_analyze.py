@@ -361,6 +361,26 @@ def test_model_output_validation_uses_new_schema_and_decimal_confidence():
     assert result["whiskeys"][0]["brand_en"] == "Caol Ila"
 
 
+@pytest.mark.parametrize("serving_style", ["UNKNOWN", "unsure", "NONE", "N/A", "", "other"])
+def test_model_output_unknown_serving_styles_preserve_the_reading(serving_style):
+    result = analyze._validate_model_output(
+        {
+            "whiskeys": [{"name_ja": "カリラ 12年", "name_en": "Caol Ila 12 Year Old", "confidence": 0.95}],
+            "serving_style": serving_style,
+            "glass_type": "",
+        }
+    )
+
+    assert result is not None
+    assert result["serving_style"] == "UNKNOWN"
+
+
+def test_model_output_rejects_non_string_serving_style():
+    assert analyze._validate_model_output(
+        {"whiskeys": [], "serving_style": None, "glass_type": ""}
+    ) is None
+
+
 def test_model_output_without_brand_fields_still_validates():
     payload = {
         "whiskeys": [
@@ -1725,3 +1745,25 @@ def test_warm_cache_is_used_even_when_the_budget_is_low(monkeypatch):
     assert dynamodb.whiskeys.scan_calls == []
     body = json.loads(response["body"])
     assert body["candidates"][0]["match_source"] == "catalog"
+
+
+def test_model_output_trims_and_normalizes_serving_style():
+    result = analyze._validate_model_output(
+        {"whiskeys": [], "serving_style": " rocks ", "glass_type": ""}
+    )
+    assert result["serving_style"] == "ROCKS"
+
+
+def test_empty_analysis_fallback_returns_and_persists_unknown(monkeypatch):
+    key = f"tmp/user-1/{uuid.uuid4()}.png"
+    dynamodb = FakeDynamoDB(whiskeys=WhiskeyTable(items=[]))
+    bedrock = Bedrock(["invalid json", "invalid json"])
+    _wire_handler(monkeypatch, dynamodb, MemoryS3(key, _png_bytes()), bedrock)
+
+    response = analyze.lambda_handler(_event(key), Context())
+
+    assert response["statusCode"] == 200
+    body = json.loads(response["body"])
+    assert body["candidates"] == []
+    assert body["serving_style"] == "UNKNOWN"
+    assert next(iter(dynamodb.app.items.values()))["serving_style"] == "UNKNOWN"

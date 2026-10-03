@@ -1,3 +1,3 @@
 """Serving-style values shared by Drink Log Lambda functions."""
 
-SERVING_STYLES = {"NEAT", "ROCKS", "WATER", "SODA", "COCKTAIL"}
+SERVING_STYLES = {"UNKNOWN", "NEAT", "ROCKS", "WATER", "SODA", "COCKTAIL"}

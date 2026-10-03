@@ -1,4 +1,5 @@
 import type { DrinkLog } from '~/composables/useDrinkLogs'
+import type { ServingStyle } from '~/types/whiskey'
 
 export const CANDIDATE_CONFIRMATION_CONFIDENCE = 0.7
 
@@ -56,13 +57,16 @@ export const groupDrinkLogsByLocalDate = (logs: DrinkLog[], timeZone?: string): 
   return [...groups.entries()].map(([label, records]) => ({ key: label, label, logs: records }))
 }
 
-export const servingStyleLabel = (style?: string) => ({
+export const servingStyleLabels: Record<ServingStyle, string> = {
+  UNKNOWN: '未設定',
   NEAT: 'ストレート',
   ROCKS: 'ロック',
   WATER: '水割り・トワイスアップ',
   SODA: 'ハイボール',
   COCKTAIL: 'カクテル',
-}[style || ''] || style || '指定なし')
+}
+
+export const servingStyleLabel = (style?: string) => servingStyleLabels[style as ServingStyle] || style || '指定なし'
 
 /**
  * Stand-in names shown when there is no real store name to display: no place at

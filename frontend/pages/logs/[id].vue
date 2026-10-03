@@ -9,12 +9,13 @@ import {
 } from '~/composables/useDrinkLogs'
 import { useAuth } from '~/composables/useAuth'
 import { needsPlaceResolution, useVisiblePlaceResolver } from '~/composables/useVisiblePlaceResolver'
-import { SERVING_STYLES, type ServingStyle } from '~/types/whiskey'
+import { SERVING_STYLES } from '~/types/whiskey'
 import {
   formatLocalLogDate,
   formatLocalLogTime,
   normalizeDrinkLogError,
   servingStyleLabel,
+  servingStyleLabels,
 } from '~/utils/drinkLogs'
 
 const route = useRoute()
@@ -39,20 +40,12 @@ const lightbox = reactive({
 })
 const form = reactive<DrinkLogEditValues>({
   brandText: '',
-  servingStyle: 'NEAT',
+  servingStyle: 'UNKNOWN',
   storeName: '',
   placeId: undefined,
   notes: '',
   rating: null,
 })
-
-const styleLabels: Record<ServingStyle, string> = {
-  NEAT: 'ストレート',
-  ROCKS: 'ロック',
-  WATER: '水割り・トワイスアップ',
-  SODA: 'ハイボール',
-  COCKTAIL: 'カクテル',
-}
 
 const isOwner = computed(() => Boolean(log.value && currentUserId.value && log.value.user_id === currentUserId.value))
 const brandSourceLabels: Record<string, string> = { ai: 'AI候補', manual: '手入力', matched: '銘柄データ一致' }
@@ -62,7 +55,7 @@ const copyLogToForm = (record: DrinkLog) => {
   form.brandText = record.brand_text
   form.storeName = record.store.name
   form.placeId = record.store.place_id
-  form.servingStyle = record.serving_style || 'NEAT'
+  form.servingStyle = record.serving_style || 'UNKNOWN'
   form.rating = record.rating || null
   form.notes = record.notes || ''
 }
@@ -235,7 +228,7 @@ onMounted(async () => {
             <legend class="text-sm font-medium text-amber-200">飲み方</legend>
             <div class="mt-2 flex flex-wrap gap-2">
               <label v-for="style in SERVING_STYLES" :key="style" class="cursor-pointer rounded-full border px-3 py-1.5 text-sm" :class="form.servingStyle === style ? 'border-amber-500 bg-amber-700 text-amber-100' : 'border-stone-500 bg-stone-700 text-stone-300'">
-                <input v-model="form.servingStyle" class="sr-only" type="radio" name="edit-serving-style" :value="style" />{{ styleLabels[style] }}
+                <input v-model="form.servingStyle" class="sr-only" type="radio" name="edit-serving-style" :value="style" />{{ servingStyleLabels[style] }}
               </label>
             </div>
           </fieldset>

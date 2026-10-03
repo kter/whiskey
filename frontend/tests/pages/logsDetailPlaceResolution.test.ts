@@ -83,6 +83,20 @@ describe('detail page place resolution', () => {
     getLog.mockReset()
   })
 
+  it.each([undefined, 'UNKNOWN', 'ROCKS'] as const)(
+    'defaults missing detail serving style to UNKNOWN and preserves %s',
+    async (servingStyle) => {
+      getLog.mockResolvedValue({ ...record({ name: '' }), serving_style: servingStyle })
+      const wrapper = await mountDetail()
+      wrapper.findAll('button').find(button => button.text() === '編集')!.element.dispatchEvent(new Event('click', { bubbles: true }))
+      await nextTick()
+      const radios = wrapper.findAll<HTMLInputElement>('input[name="edit-serving-style"]')
+      expect(radios[0]?.element.value).toBe('UNKNOWN')
+      expect(radios.find(radio => radio.element.checked)?.element.value).toBe(servingStyle || 'UNKNOWN')
+      wrapper.unmount()
+    },
+  )
+
   it('resolves the store name without waiting for the row to become visible', async () => {
     getLog.mockResolvedValue(record({ name: '', place_id: 'place-1' }))
 
