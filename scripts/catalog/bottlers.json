@@ -105,6 +105,16 @@
         "Boutique-y Whisky",
         "Boutique-y"
       ]
+    },
+    {
+      "bottler_key": "elixir_distillers",
+      "bottler_ja": "エリクサー ディスティラーズ",
+      "bottler_en": "Elixir Distillers",
+      "aliases": [
+        "エリクサー ディスティラーズ",
+        "エリクサー・ディスティラーズ",
+        "Elixir Distillers"
+      ]
     }
   ]
 }

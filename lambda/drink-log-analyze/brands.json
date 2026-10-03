@@ -36,7 +36,8 @@
       "aliases": [
         "HIBIKI",
         "響",
-        "Hibiki"
+        "Hibiki",
+        "ヒビキ"
       ],
       "distillery_ja": "サントリー",
       "distillery_en": "Suntory",
@@ -50,7 +51,9 @@
       "aliases": [
         "THE CHITA",
         "知多",
-        "The Chita"
+        "The Chita",
+        "チタ",
+        "ザ・チタ"
       ],
       "distillery_ja": "知多蒸溜所",
       "distillery_en": "Chita Distillery",
@@ -92,7 +95,8 @@
       "aliases": [
         "MIYAGIKYO",
         "宮城峡",
-        "Miyagikyo"
+        "Miyagikyo",
+        "宮城京"
       ],
       "distillery_ja": "宮城峡蒸溜所",
       "distillery_en": "Miyagikyo Distillery",
@@ -246,7 +250,8 @@
       "aliases": [
         "LAPHROAIG",
         "ラフロイグ",
-        "Laphroaig"
+        "Laphroaig",
+        "ラフロアヒグ"
       ],
       "distillery_ja": "ラフロイグ蒸溜所",
       "distillery_en": "Laphroaig Distillery",
@@ -292,12 +297,7 @@
         "アラン",
         "Arran",
         "Isle of Arran",
-        "アラン蒸留所",
-        "マクリームーア",
-        "マクリムーア",
-        "マクリー・ムーア",
-        "Machrie Moor",
-        "Macrie Moor"
+        "アラン蒸留所"
       ],
       "distillery_ja": "アラン蒸留所",
       "distillery_en": "Isle of Arran Distillers",
@@ -423,7 +423,8 @@
       "aliases": [
         "BUNNAHABHAIN",
         "ブナハーブン",
-        "Bunnahabhain"
+        "Bunnahabhain",
+        "バナナブハイン"
       ],
       "distillery_ja": "ブナハーブン蒸溜所",
       "distillery_en": "Bunnahabhain Distillery",
@@ -577,7 +578,8 @@
       "aliases": [
         "FOUR ROSES",
         "フォアローゼズ",
-        "Four Roses"
+        "Four Roses",
+        "フォアローゼス"
       ],
       "distillery_ja": "フォアローゼズ蒸溜所",
       "distillery_en": "Four Roses Distillery",
@@ -774,7 +776,8 @@
       "aliases": [
         "遊佐",
         "Yuza",
-        "YUZA"
+        "YUZA",
+        "ユイザ"
       ],
       "distillery_ja": "遊佐蒸溜所",
       "distillery_en": "Yuza Distillery",
@@ -853,6 +856,956 @@
       ],
       "distillery_ja": "新潟亀田蒸溜所",
       "distillery_en": "Niigata Kameda Distillery",
+      "region": "Japan",
+      "country": "Japan"
+    },
+    {
+      "brand_key": "glenfarclas",
+      "brand_ja": "グレンファークラス",
+      "brand_en": "Glenfarclas",
+      "aliases": [
+        "グレンファークラス",
+        "Glenfarclas"
+      ],
+      "distillery_ja": "グレンファークラス蒸溜所",
+      "distillery_en": "Glenfarclas Distillery",
+      "region": "Scotland/Speyside",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "amahagan",
+      "brand_ja": "アマハガン",
+      "brand_en": "AMAHAGAN",
+      "aliases": [
+        "アマハガン",
+        "AMAHAGAN"
+      ],
+      "distillery_ja": "長濱蒸溜所",
+      "distillery_en": "Nagahama Distillery",
+      "region": "Japan",
+      "country": "Japan"
+    },
+    {
+      "brand_key": "glenallachie",
+      "brand_ja": "グレンアラヒー",
+      "brand_en": "The GlenAllachie",
+      "aliases": [
+        "グレンアラヒー",
+        "GlenAllachie",
+        "The GlenAllachie"
+      ],
+      "distillery_ja": "グレンアラヒー蒸溜所",
+      "distillery_en": "GlenAllachie Distillery",
+      "region": "Scotland/Speyside",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "jim_beam",
+      "brand_ja": "ジムビーム",
+      "brand_en": "Jim Beam",
+      "aliases": [
+        "ジムビーム",
+        "Jim Beam"
+      ],
+      "distillery_ja": "ジムビーム蒸溜所",
+      "distillery_en": "Jim Beam Distillery",
+      "region": "USA/Kentucky",
+      "country": "USA"
+    },
+    {
+      "brand_key": "grants",
+      "brand_ja": "グランツ",
+      "brand_en": "Grant's",
+      "aliases": [
+        "グランツ",
+        "Grant's",
+        "Grants"
+      ],
+      "distillery_ja": "ウィリアム・グラント＆サンズ",
+      "distillery_en": "William Grant & Sons",
+      "region": "Scotland",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "karuizawa",
+      "brand_ja": "軽井沢",
+      "brand_en": "Karuizawa",
+      "aliases": [
+        "軽井沢",
+        "Karuizawa"
+      ],
+      "distillery_ja": "軽井沢蒸溜所",
+      "distillery_en": "Karuizawa Distillery",
+      "region": "Japan",
+      "country": "Japan"
+    },
+    {
+      "brand_key": "lakes",
+      "brand_ja": "ザ・レイクス",
+      "brand_en": "The Lakes",
+      "aliases": [
+        "ザ・レイクス",
+        "ザ レイクス",
+        "The Lakes"
+      ],
+      "distillery_ja": "レイクス蒸溜所",
+      "distillery_en": "The Lakes Distillery",
+      "region": "England",
+      "country": "England"
+    },
+    {
+      "brand_key": "tomatin",
+      "brand_ja": "トマーティン",
+      "brand_en": "Tomatin",
+      "aliases": [
+        "トマーティン",
+        "Tomatin"
+      ],
+      "distillery_ja": "トマーティン蒸溜所",
+      "distillery_en": "Tomatin Distillery",
+      "region": "Scotland/Highlands",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "glen_grant",
+      "brand_ja": "グレングラント",
+      "brand_en": "Glen Grant",
+      "aliases": [
+        "グレングラント",
+        "グレン グラント",
+        "Glen Grant"
+      ],
+      "distillery_ja": "グレングラント蒸溜所",
+      "distillery_en": "Glen Grant Distillery",
+      "region": "Scotland/Speyside",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "teeling",
+      "brand_ja": "ティーリング",
+      "brand_en": "Teeling",
+      "aliases": [
+        "ティーリング",
+        "Teeling"
+      ],
+      "distillery_ja": "ティーリング蒸溜所",
+      "distillery_en": "Teeling Distillery",
+      "region": "Ireland/Dublin",
+      "country": "Ireland"
+    },
+    {
+      "brand_key": "ardnahoe",
+      "brand_ja": "アードナッホー",
+      "brand_en": "Ardnahoe",
+      "aliases": [
+        "アードナッホー",
+        "Ardnahoe"
+      ],
+      "distillery_ja": "アードナッホー蒸溜所",
+      "distillery_en": "Ardnahoe Distillery",
+      "region": "Scotland/Islay",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "famous_grouse",
+      "brand_ja": "ザ・フェイマスグラウス",
+      "brand_en": "The Famous Grouse",
+      "aliases": [
+        "ザ・フェイマスグラウス",
+        "ザ フェイマスグラウス",
+        "フェイマス グラウス",
+        "The Famous Grouse"
+      ],
+      "distillery_ja": "マシュー・グローグ＆サン",
+      "distillery_en": "Matthew Gloag & Son",
+      "region": "Scotland",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "glen_garioch",
+      "brand_ja": "グレンギリー",
+      "brand_en": "Glen Garioch",
+      "aliases": [
+        "グレンギリー",
+        "Glen Garioch"
+      ],
+      "distillery_ja": "グレンギリー蒸溜所",
+      "distillery_en": "Glen Garioch Distillery",
+      "region": "Scotland/Highlands",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "mars",
+      "brand_ja": "マルス",
+      "brand_en": "Mars Whisky",
+      "aliases": [
+        "マルス",
+        "マルスウイスキー",
+        "Mars Whisky",
+        "MARS WHISKY"
+      ],
+      "distillery_ja": "本坊酒造",
+      "distillery_en": "Hombo Shuzo",
+      "region": "Japan",
+      "country": "Japan"
+    },
+    {
+      "brand_key": "old_parr",
+      "brand_ja": "オールドパー",
+      "brand_en": "Old Parr",
+      "aliases": [
+        "オールドパー",
+        "Old Parr"
+      ],
+      "distillery_ja": "ディアジオ",
+      "distillery_en": "Diageo",
+      "region": "Scotland",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "tamdhu",
+      "brand_ja": "タムデュー",
+      "brand_en": "Tamdhu",
+      "aliases": [
+        "タムデュー",
+        "Tamdhu"
+      ],
+      "distillery_ja": "タムデュー蒸溜所",
+      "distillery_en": "Tamdhu Distillery",
+      "region": "Scotland/Speyside",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "ardmore",
+      "brand_ja": "アードモア",
+      "brand_en": "Ardmore",
+      "aliases": [
+        "アードモア",
+        "Ardmore"
+      ],
+      "distillery_ja": "アードモア蒸溜所",
+      "distillery_en": "Ardmore Distillery",
+      "region": "Scotland/Highlands",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "evan_williams",
+      "brand_ja": "エヴァン・ウィリアムス",
+      "brand_en": "Evan Williams",
+      "aliases": [
+        "エヴァン・ウィリアムス",
+        "エヴァン ウィリアムス",
+        "エヴァン ウィリアムズ",
+        "エヴァンウィリアムス",
+        "Evan Williams"
+      ],
+      "distillery_ja": "ヘヴンヒル蒸溜所",
+      "distillery_en": "Heaven Hill Distillery",
+      "region": "USA/Kentucky",
+      "country": "USA"
+    },
+    {
+      "brand_key": "isle_of_jura",
+      "brand_ja": "アイル・オブ・ジュラ",
+      "brand_en": "Isle of Jura",
+      "aliases": [
+        "アイル・オブ・ジュラ",
+        "アイル オブ ジュラ",
+        "アイルオブジュラ",
+        "ジュラ",
+        "Jura",
+        "Isle of Jura"
+      ],
+      "distillery_ja": "アイル・オブ・ジュラ蒸溜所",
+      "distillery_en": "Isle of Jura Distillery",
+      "region": "Scotland/Islands",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "wolfburn",
+      "brand_ja": "ウルフバーン",
+      "brand_en": "Wolfburn",
+      "aliases": [
+        "ウルフバーン",
+        "Wolfburn"
+      ],
+      "distillery_ja": "ウルフバーン蒸溜所",
+      "distillery_en": "Wolfburn Distillery",
+      "region": "Scotland/Highlands",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "royal_lochnagar",
+      "brand_ja": "ロイヤルロッホナガー",
+      "brand_en": "Royal Lochnagar",
+      "aliases": [
+        "ロイヤルロッホナガー",
+        "ロイヤル ロッホナガー",
+        "Royal Lochnagar"
+      ],
+      "distillery_ja": "ロイヤルロッホナガー蒸溜所",
+      "distillery_en": "Royal Lochnagar Distillery",
+      "region": "Scotland/Highlands",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "black_nikka",
+      "brand_ja": "ブラックニッカ",
+      "brand_en": "Black Nikka",
+      "aliases": [
+        "ブラックニッカ",
+        "Black Nikka"
+      ],
+      "distillery_ja": "ニッカウヰスキー",
+      "distillery_en": "Nikka Whisky",
+      "region": "Japan",
+      "country": "Japan"
+    },
+    {
+      "brand_key": "egans",
+      "brand_ja": "イーガンズ",
+      "brand_en": "Egan's",
+      "aliases": [
+        "イーガンズ",
+        "Egan's",
+        "Egans"
+      ],
+      "distillery_ja": "P.＆H.イーガン",
+      "distillery_en": "P. & H. Egan",
+      "region": "Ireland",
+      "country": "Ireland"
+    },
+    {
+      "brand_key": "glen_moray",
+      "brand_ja": "グレンマレイ",
+      "brand_en": "Glen Moray",
+      "aliases": [
+        "グレンマレイ",
+        "Glen Moray"
+      ],
+      "distillery_ja": "グレンマレイ蒸溜所",
+      "distillery_en": "Glen Moray Distillery",
+      "region": "Scotland/Speyside",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "lochlea",
+      "brand_ja": "ロッホリー",
+      "brand_en": "Lochlea",
+      "aliases": [
+        "ロッホリー",
+        "Lochlea"
+      ],
+      "distillery_ja": "ロッホリー蒸溜所",
+      "distillery_en": "Lochlea Distillery",
+      "region": "Scotland/Lowlands",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "busker",
+      "brand_ja": "バスカー",
+      "brand_en": "The Busker",
+      "aliases": [
+        "バスカー",
+        "The Busker",
+        "Busker"
+      ],
+      "distillery_ja": "ロイヤルオーク蒸溜所",
+      "distillery_en": "Royal Oak Distillery",
+      "region": "Ireland",
+      "country": "Ireland"
+    },
+    {
+      "brand_key": "speyburn",
+      "brand_ja": "スペイバーン",
+      "brand_en": "Speyburn",
+      "aliases": [
+        "スペイバーン",
+        "Speyburn"
+      ],
+      "distillery_ja": "スペイバーン蒸溜所",
+      "distillery_en": "Speyburn Distillery",
+      "region": "Scotland/Speyside",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "royal_salute",
+      "brand_ja": "ロイヤルサルート",
+      "brand_en": "Royal Salute",
+      "aliases": [
+        "ロイヤルサルート",
+        "ローヤルサルート",
+        "Royal Salute"
+      ],
+      "distillery_ja": "シーバス・ブラザーズ",
+      "distillery_en": "Chivas Brothers",
+      "region": "Scotland",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "white_horse",
+      "brand_ja": "ホワイトホース",
+      "brand_en": "White Horse",
+      "aliases": [
+        "ホワイトホース",
+        "White Horse"
+      ],
+      "distillery_ja": "ディアジオ",
+      "distillery_en": "Diageo",
+      "region": "Scotland",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "auchentoshan",
+      "brand_ja": "オーヘントッシャン",
+      "brand_en": "Auchentoshan",
+      "aliases": [
+        "オーヘントッシャン",
+        "Auchentoshan",
+        "AUCHENTOSHAN"
+      ],
+      "distillery_ja": "オーヘントッシャン蒸溜所",
+      "distillery_en": "Auchentoshan Distillery",
+      "region": "Scotland/Lowlands",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "big_peat",
+      "brand_ja": "ビッグピート",
+      "brand_en": "Big Peat",
+      "aliases": [
+        "ビッグピート",
+        "Big Peat"
+      ],
+      "distillery_ja": "ダグラスレイン",
+      "distillery_en": "Douglas Laing",
+      "region": "Scotland/Islay",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "caperdonich",
+      "brand_ja": "キャパドニック",
+      "brand_en": "Caperdonich",
+      "aliases": [
+        "キャパドニック",
+        "Caperdonich"
+      ],
+      "distillery_ja": "キャパドニック蒸溜所",
+      "distillery_en": "Caperdonich Distillery",
+      "region": "Scotland/Speyside",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "edradour",
+      "brand_ja": "エドラダワー",
+      "brand_en": "Edradour",
+      "aliases": [
+        "エドラダワー",
+        "Edradour"
+      ],
+      "distillery_ja": "エドラダワー蒸溜所",
+      "distillery_en": "Edradour Distillery",
+      "region": "Scotland/Highlands",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "fettercairn",
+      "brand_ja": "フェッターケアン",
+      "brand_en": "Fettercairn",
+      "aliases": [
+        "フェッターケアン",
+        "Fettercairn"
+      ],
+      "distillery_ja": "フェッターケアン蒸溜所",
+      "distillery_en": "Fettercairn Distillery",
+      "region": "Scotland/Highlands",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "glenburgie",
+      "brand_ja": "グレンバーギー",
+      "brand_en": "Glenburgie",
+      "aliases": [
+        "グレンバーギー",
+        "Glenburgie"
+      ],
+      "distillery_ja": "グレンバーギー蒸溜所",
+      "distillery_en": "Glenburgie Distillery",
+      "region": "Scotland/Speyside",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "longmorn",
+      "brand_ja": "ロングモーン",
+      "brand_en": "Longmorn",
+      "aliases": [
+        "ロングモーン",
+        "Longmorn"
+      ],
+      "distillery_ja": "ロングモーン蒸溜所",
+      "distillery_en": "Longmorn Distillery",
+      "region": "Scotland/Speyside",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "octomore",
+      "brand_ja": "オクトモア",
+      "brand_en": "Octomore",
+      "aliases": [
+        "オクトモア",
+        "Octomore"
+      ],
+      "distillery_ja": "ブルックラディ蒸溜所",
+      "distillery_en": "Bruichladdich Distillery",
+      "region": "Scotland/Islay",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "strathisla",
+      "brand_ja": "ストラスアイラ",
+      "brand_en": "Strathisla",
+      "aliases": [
+        "ストラスアイラ",
+        "Strathisla"
+      ],
+      "distillery_ja": "ストラスアイラ蒸溜所",
+      "distillery_en": "Strathisla Distillery",
+      "region": "Scotland/Speyside",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "scarabus",
+      "brand_ja": "スカラバス",
+      "brand_en": "Scarabus",
+      "aliases": [
+        "スカラバス",
+        "Scarabus"
+      ],
+      "distillery_ja": "ハンターレイン",
+      "distillery_en": "Hunter Laing",
+      "region": "Scotland/Islay",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "auchroisk",
+      "brand_ja": "オスロスク",
+      "brand_en": "Auchroisk",
+      "aliases": [
+        "オスロスク",
+        "Auchroisk"
+      ],
+      "distillery_ja": "オスロスク蒸溜所",
+      "distillery_en": "Auchroisk Distillery",
+      "region": "Scotland/Speyside",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "starward",
+      "brand_ja": "スターワード",
+      "brand_en": "Starward",
+      "aliases": [
+        "スターワード",
+        "Starward"
+      ],
+      "distillery_ja": "スターワード蒸溜所",
+      "distillery_en": "Starward Distillery",
+      "region": "Australia",
+      "country": "Australia"
+    },
+    {
+      "brand_key": "iw_harper",
+      "brand_ja": "I.W.ハーパー",
+      "brand_en": "I.W. Harper",
+      "aliases": [
+        "I.W.ハーパー",
+        "I.W. Harper",
+        "IW Harper"
+      ],
+      "distillery_ja": "ヘヴンヒル蒸溜所",
+      "distillery_en": "Heaven Hill Distillery",
+      "region": "USA/Kentucky",
+      "country": "USA"
+    },
+    {
+      "brand_key": "peats_beast",
+      "brand_ja": "ピーツビースト",
+      "brand_en": "Peat's Beast",
+      "aliases": [
+        "ピーツビースト",
+        "Peat's Beast",
+        "Peats Beast"
+      ],
+      "distillery_ja": "ハンターレイン",
+      "distillery_en": "Hunter Laing",
+      "region": "Scotland",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "west_cork",
+      "brand_ja": "ウエストコーク",
+      "brand_en": "West Cork",
+      "aliases": [
+        "ウエストコーク",
+        "ウエスト コーク",
+        "West Cork"
+      ],
+      "distillery_ja": "ウエストコーク蒸溜所",
+      "distillery_en": "West Cork Distillers",
+      "region": "Ireland",
+      "country": "Ireland"
+    },
+    {
+      "brand_key": "torys",
+      "brand_ja": "トリス",
+      "brand_en": "Torys",
+      "aliases": [
+        "トリス",
+        "Torys"
+      ],
+      "distillery_ja": "サントリー",
+      "distillery_en": "Suntory",
+      "region": "Japan",
+      "country": "Japan"
+    },
+    {
+      "brand_key": "benrinnes",
+      "brand_ja": "ベンリネス",
+      "brand_en": "Benrinnes",
+      "aliases": [
+        "ベンリネス",
+        "Benrinnes"
+      ],
+      "distillery_ja": "ベンリネス蒸溜所",
+      "distillery_en": "Benrinnes Distillery",
+      "region": "Scotland/Speyside",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "timorous_beastie",
+      "brand_ja": "ティモラスビースティ",
+      "brand_en": "Timorous Beastie",
+      "aliases": [
+        "ティモラスビースティ",
+        "ティモラス ビースティ",
+        "Timorous Beastie"
+      ],
+      "distillery_ja": "ダグラスレイン",
+      "distillery_en": "Douglas Laing",
+      "region": "Scotland/Highlands",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "teachers",
+      "brand_ja": "ティーチャーズ",
+      "brand_en": "Teacher's",
+      "aliases": [
+        "ティーチャーズ",
+        "Teacher's",
+        "Teachers"
+      ],
+      "distillery_ja": "ウィリアム・ティーチャー＆サンズ",
+      "distillery_en": "William Teacher & Sons",
+      "region": "Scotland",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "wilderness_trail",
+      "brand_ja": "ウィルダネストレイル",
+      "brand_en": "Wilderness Trail",
+      "aliases": [
+        "ウィルダネストレイル",
+        "Wilderness Trail"
+      ],
+      "distillery_ja": "ウィルダネストレイル蒸溜所",
+      "distillery_en": "Wilderness Trail Distillery",
+      "region": "USA/Kentucky",
+      "country": "USA"
+    },
+    {
+      "brand_key": "ancient_clan",
+      "brand_ja": "エンシェントクラン",
+      "brand_en": "Ancient Clan",
+      "aliases": [
+        "エンシェントクラン",
+        "エンシェント クラン",
+        "Ancient Clan"
+      ],
+      "distillery_ja": "A.ハーディ",
+      "distillery_en": "A. Hardy",
+      "region": "Scotland",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "tamnavulin",
+      "brand_ja": "タムナブーリン",
+      "brand_en": "Tamnavulin",
+      "aliases": [
+        "タムナブーリン",
+        "Tamnavulin"
+      ],
+      "distillery_ja": "タムナブーリン蒸溜所",
+      "distillery_en": "Tamnavulin Distillery",
+      "region": "Scotland/Speyside",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "eagle_rare",
+      "brand_ja": "イーグルレア",
+      "brand_en": "Eagle Rare",
+      "aliases": [
+        "イーグルレア",
+        "イーグル レア",
+        "Eagle Rare"
+      ],
+      "distillery_ja": "バッファロートレース蒸溜所",
+      "distillery_en": "Buffalo Trace Distillery",
+      "region": "USA/Kentucky",
+      "country": "USA"
+    },
+    {
+      "brand_key": "writers_tears",
+      "brand_ja": "ライターズティアーズ",
+      "brand_en": "Writers' Tears",
+      "aliases": [
+        "ライターズティアーズ",
+        "Writers' Tears",
+        "Writers Tears"
+      ],
+      "distillery_ja": "ウォルシュウイスキー",
+      "distillery_en": "Walsh Whiskey",
+      "region": "Ireland",
+      "country": "Ireland"
+    },
+    {
+      "brand_key": "cutty_sark",
+      "brand_ja": "カティサーク",
+      "brand_en": "Cutty Sark",
+      "aliases": [
+        "カティサーク",
+        "Cutty Sark"
+      ],
+      "distillery_ja": "ラ・マルティニケーズ",
+      "distillery_en": "La Martiniquaise",
+      "region": "Scotland",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "ardnamurchan",
+      "brand_ja": "アードナムルッカン",
+      "brand_en": "Ardnamurchan",
+      "aliases": [
+        "アードナムルッカン",
+        "Ardnamurchan"
+      ],
+      "distillery_ja": "アードナムルッカン蒸溜所",
+      "distillery_en": "Ardnamurchan Distillery",
+      "region": "Scotland/Highlands",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "old_pulteney",
+      "brand_ja": "オールドプルトニー",
+      "brand_en": "Old Pulteney",
+      "aliases": [
+        "オールドプルトニー",
+        "Old Pulteney"
+      ],
+      "distillery_ja": "プルトニー蒸溜所",
+      "distillery_en": "Pulteney Distillery",
+      "region": "Scotland/Highlands",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "clonakilty",
+      "brand_ja": "クロナキルティ",
+      "brand_en": "Clonakilty",
+      "aliases": [
+        "クロナキルティ",
+        "Clonakilty"
+      ],
+      "distillery_ja": "クロナキルティ蒸溜所",
+      "distillery_en": "Clonakilty Distillery",
+      "region": "Ireland",
+      "country": "Ireland"
+    },
+    {
+      "brand_key": "irishman",
+      "brand_ja": "アイリッシュマン",
+      "brand_en": "The Irishman",
+      "aliases": [
+        "アイリッシュマン",
+        "The Irishman",
+        "Irishman"
+      ],
+      "distillery_ja": "ウォルシュウイスキー",
+      "distillery_en": "Walsh Whiskey",
+      "region": "Ireland",
+      "country": "Ireland"
+    },
+    {
+      "brand_key": "michters",
+      "brand_ja": "ミクターズ",
+      "brand_en": "Michter's",
+      "aliases": [
+        "ミクターズ",
+        "Michter's",
+        "Michters"
+      ],
+      "distillery_ja": "ミクターズ蒸溜所",
+      "distillery_en": "Michter's Distillery",
+      "region": "USA/Kentucky",
+      "country": "USA"
+    },
+    {
+      "brand_key": "ben_nevis",
+      "brand_ja": "ベンネヴィス",
+      "brand_en": "Ben Nevis",
+      "aliases": [
+        "ベンネヴィス",
+        "Ben Nevis"
+      ],
+      "distillery_ja": "ベンネヴィス蒸溜所",
+      "distillery_en": "Ben Nevis Distillery",
+      "region": "Scotland/Highlands",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "compass_box",
+      "brand_ja": "コンパスボックス",
+      "brand_en": "Compass Box",
+      "aliases": [
+        "コンパスボックス",
+        "Compass Box"
+      ],
+      "distillery_ja": "コンパスボックス",
+      "distillery_en": "Compass Box Whisky Company",
+      "region": "Scotland",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "teaninich",
+      "brand_ja": "ティーニニック",
+      "brand_en": "Teaninich",
+      "aliases": [
+        "ティーニニック",
+        "Teaninich"
+      ],
+      "distillery_ja": "ティーニニック蒸溜所",
+      "distillery_en": "Teaninich Distillery",
+      "region": "Scotland/Highlands",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "islay_mist",
+      "brand_ja": "アイラミスト",
+      "brand_en": "Islay Mist",
+      "aliases": [
+        "アイラミスト",
+        "Islay Mist"
+      ],
+      "distillery_ja": "マクダフ・インターナショナル",
+      "distillery_en": "MacDuff International",
+      "region": "Scotland/Islay",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "black_bottle",
+      "brand_ja": "ブラックボトル",
+      "brand_en": "Black Bottle",
+      "aliases": [
+        "ブラックボトル",
+        "Black Bottle"
+      ],
+      "distillery_ja": "ゴードン・グラハム",
+      "distillery_en": "Gordon Graham & Co.",
+      "region": "Scotland",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "old_crow",
+      "brand_ja": "オールドクロウ",
+      "brand_en": "Old Crow",
+      "aliases": [
+        "オールドクロウ",
+        "オールド クロウ",
+        "Old Crow"
+      ],
+      "distillery_ja": "ジムビーム蒸溜所",
+      "distillery_en": "Jim Beam Distillery",
+      "region": "USA/Kentucky",
+      "country": "USA"
+    },
+    {
+      "brand_key": "royal_brackla",
+      "brand_ja": "ロイヤルブラックラ",
+      "brand_en": "Royal Brackla",
+      "aliases": [
+        "ロイヤルブラックラ",
+        "ロイヤル ブラックラ",
+        "Royal Brackla"
+      ],
+      "distillery_ja": "ロイヤルブラックラ蒸溜所",
+      "distillery_en": "Royal Brackla Distillery",
+      "region": "Scotland/Highlands",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "sapporo",
+      "brand_ja": "サッポロウイスキー",
+      "brand_en": "Sapporo Whisky",
+      "aliases": [
+        "サッポロウイスキー",
+        "サッポロ ウイスキー",
+        "SAPPORO",
+        "Sapporo Whisky"
+      ],
+      "distillery_ja": "札幌酒精工業",
+      "distillery_en": "Sapporo Shusei Kogyo",
+      "region": "Japan",
+      "country": "Japan"
+    },
+    {
+      "brand_key": "sexton",
+      "brand_ja": "ザ・セクストン",
+      "brand_en": "The Sexton",
+      "aliases": [
+        "ザ・セクストン",
+        "セクストン",
+        "The Sexton"
+      ],
+      "distillery_ja": "ブッシュミルズ蒸溜所",
+      "distillery_en": "Old Bushmills Distillery",
+      "region": "Ireland",
+      "country": "Ireland"
+    },
+    {
+      "brand_key": "machrie_moor",
+      "brand_ja": "マクリームーア",
+      "brand_en": "Machrie Moor",
+      "aliases": [
+        "マクリームーア",
+        "マクリー ムーア",
+        "マクリームア",
+        "Machrie Moor",
+        "マクリムーア",
+        "マクリー・ムーア",
+        "Macrie Moor"
+      ],
+      "distillery_ja": "アラン蒸留所",
+      "distillery_en": "Isle of Arran Distillers",
+      "region": "Scotland/Islands",
+      "country": "Scotland"
+    },
+    {
+      "brand_key": "saburomaru",
+      "brand_ja": "三郎丸",
+      "brand_en": "Saburomaru",
+      "aliases": [
+        "三郎丸",
+        "Saburomaru"
+      ],
+      "distillery_ja": "三郎丸蒸留所",
+      "distillery_en": "Saburomaru Distillery",
       "region": "Japan",
       "country": "Japan"
     }

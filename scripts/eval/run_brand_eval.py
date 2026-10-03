@@ -16,6 +16,7 @@ import re
 import sys
 import uuid
 from collections import Counter
+from decimal import Decimal
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -28,7 +29,11 @@ from botocore.exceptions import BotoCoreError, ClientError, ProfileNotFound
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 COMMON_PYTHON = REPOSITORY_ROOT / "lambda" / "common" / "python"
 sys.path.insert(0, str(COMMON_PYTHON))
-from whiskey_common.candidate_resolution import BrandCatalog  # noqa: E402
+from whiskey_common.candidate_resolution import (  # noqa: E402
+    BrandCatalog,
+    CandidateResolver,
+    WhiskeyCatalog,
+)
 
 
 DEV_ACCOUNT_ID = "031921999648"
@@ -753,6 +758,133 @@ def save_json_atomic(path: Path, document: Mapping[str, Any]) -> None:
     temporary.replace(path)
 
 
+def load_replay_results(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Load a stored evaluation result without loading a manifest or AWS client."""
+    try:
+        with path.open(encoding="utf-8") as result_file:
+            document = json.load(result_file)
+    except json.JSONDecodeError as exc:
+        raise ResultFileError(f"replay file is not valid JSON: {exc}") from exc
+    if not isinstance(document, dict) or document.get("result_version") != RESULT_VERSION:
+        raise ResultFileError("replay file has an unsupported result version")
+    results = document.get("results")
+    if not isinstance(results, list) or any(not isinstance(item, dict) for item in results):
+        raise ResultFileError("replay file results must be an array of objects")
+    return document, results
+
+
+def _replay_reading(candidate: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Recover the model reading retained by an old evaluation candidate."""
+    name_ja = candidate.get("ai_name_ja", candidate.get("name_ja"))
+    name_en = candidate.get("name_en")
+    confidence = candidate.get("confidence")
+    if not isinstance(name_ja, str) or not isinstance(name_en, str):
+        return None
+    if not isinstance(confidence, (int, float, str)):
+        return None
+    try:
+        reading: dict[str, Any] = {
+            "name_ja": name_ja,
+            "name_en": name_en,
+            "confidence": Decimal(str(confidence)),
+        }
+    except Exception:
+        return None
+    for field in ("brand_ja", "brand_en"):
+        value = candidate.get(field)
+        if isinstance(value, str) and value:
+            reading[field] = value
+    return reading
+
+
+def replay_brand_results(records: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Re-resolve stored model readings against the current brand catalog offline."""
+    resolver = CandidateResolver(BrandCatalog.from_file(BRANDS_PATH))
+    no_master_catalog = WhiskeyCatalog.from_records([], complete=False)
+    replayed_records: list[dict[str, Any]] = []
+    for source_record in records:
+        record = dict(source_record)
+        if record.get("status_code", 200) != 200 or not isinstance(record.get("response"), Mapping):
+            replayed_records.append(record)
+            continue
+        response = dict(record["response"])
+        source_candidates = response.get("candidates", [])
+        if not isinstance(source_candidates, list):
+            replayed_records.append(record)
+            continue
+        replayed_candidates: list[Any] = []
+        for candidate in source_candidates:
+            if not isinstance(candidate, Mapping):
+                replayed_candidates.append(candidate)
+                continue
+            reading = _replay_reading(candidate)
+            if reading is None:
+                replayed_candidates.append(dict(candidate))
+                continue
+            rebuilt = resolver.resolve(no_master_catalog, {"whiskeys": [reading]})[0]
+            # Earlier results retain the display name when no correction was
+            # needed. If their model-supplied group name is now ambiguous,
+            # recover an unambiguous catalog brand from that display name.
+            brand_text = candidate.get("brand_text")
+            if (
+                "brand_key" not in rebuilt
+                and "ai_name_ja" not in candidate
+                and isinstance(brand_text, str)
+                and brand_text
+            ):
+                display_reading = {**reading, "brand_ja": brand_text}
+                display_rebuilt = resolver.resolve(
+                    no_master_catalog, {"whiskeys": [display_reading]}
+                )[0]
+                if "brand_key" in display_rebuilt:
+                    rebuilt = display_rebuilt
+            rebuilt["confidence"] = candidate["confidence"]
+            for field in ("whiskey_id", "match_source"):
+                if field in candidate:
+                    rebuilt[field] = candidate[field]
+            replayed_candidates.append(rebuilt)
+        response["candidates"] = replayed_candidates
+        record["response"] = response
+        replayed_records.append(record)
+    return replayed_records
+
+
+def print_replay_report(
+    stored_records: Sequence[Mapping[str, Any]], replayed_records: Sequence[Mapping[str, Any]]
+) -> None:
+    """Print the brand verdict delta for an offline replay."""
+    stored = calculate_metrics(stored_records)["overall"]
+    replayed = calculate_metrics(replayed_records)["overall"]
+    headers = ("Metric", "Stored", "Replayed")
+    rows = []
+    for metric, rate in (
+        ("Brand correct", "brand_confirmed_correct_rate"),
+        ("Brand wrong", "brand_confirmed_wrong_rate"),
+        ("Brand not confirmed", "brand_not_confirmed_rate"),
+    ):
+        count_key = rate.removesuffix("_rate")
+        rows.append(
+            [
+                metric,
+                format_rate(stored[count_key], stored["brand_evaluable_cases"], stored[rate]),
+                format_rate(replayed[count_key], replayed["brand_evaluable_cases"], replayed[rate]),
+            ]
+        )
+    print("Brand metrics replay: stored vs current catalog")
+    print(_format_table(headers, rows))
+    print("\nChanged brand verdicts")
+    changed = []
+    for before, after in zip(stored_records, replayed_records):
+        if before.get("status_code", 200) != 200 or after.get("status_code", 200) != 200:
+            continue
+        old_score, new_score = score_evaluation(before), score_evaluation(after)
+        old_verdict = (old_score["actual_brand_key"], old_score["brand_confirmed_correct"], old_score["brand_confirmed_wrong"])
+        new_verdict = (new_score["actual_brand_key"], new_score["brand_confirmed_correct"], new_score["brand_confirmed_wrong"])
+        if old_verdict != new_verdict:
+            changed.append([str(before.get("case_index")), str(old_verdict[0] or "-"), str(new_verdict[0] or "-")])
+    print(_format_table(("Case", "Stored brand", "Replayed brand"), changed) if changed else "None")
+
+
 def ensure_manifest_output_available(path: Path, *, force: bool) -> None:
     """Reject an existing draft target unless replacement was explicit."""
     if path.exists() and not force:
@@ -1286,6 +1418,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     mode.add_argument("--target", choices=("dev",))
     mode.add_argument("--dry-run", action="store_true")
     mode.add_argument(
+        "--replay",
+        type=Path,
+        metavar="RESULT_JSON",
+        help="re-resolve stored model readings with the current brand catalog offline",
+    )
+    mode.add_argument(
         "--propose-brand-keys",
         type=Path,
         metavar="MANIFEST",
@@ -1355,6 +1493,29 @@ def main(argv: list[str] | None = None) -> int:
     """Run local validation or the guarded dev evaluation."""
     args = parse_args(argv)
     try:
+        if args.replay is not None:
+            if args.input is not None:
+                raise ValueError("the positional input is not used with --replay")
+            if args.resume:
+                raise ValueError("--resume is not valid with --replay")
+            if args.json_path and args.json_path.resolve() == args.replay.resolve():
+                raise ValueError("--json must not overwrite the replay input")
+            source_document, stored_records = load_replay_results(args.replay)
+            replayed_records = replay_brand_results(stored_records)
+            print_replay_report(stored_records, replayed_records)
+            if args.json_path:
+                output = {
+                    **source_document,
+                    "mode": "replay",
+                    "replayed_from": str(args.replay),
+                    "metrics": calculate_metrics(replayed_records),
+                    "results": replayed_records,
+                    "updated_at": utc_now_text(),
+                }
+                save_json_atomic(args.json_path, output)
+                print(f"\nJSON result: {args.json_path}")
+            return 0
+
         if args.propose_brand_keys is not None:
             if args.input is not None:
                 raise ValueError(
