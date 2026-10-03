@@ -214,5 +214,8 @@ def search_whiskeys(query):
 # principal2 = Principal(user_id="67f45ae8-9091-70df-7d98-237f59f7df1a")
 # print(get_drink_logs(principal2))
 
-principal3 = Principal(user_id="67f45ae8-9091-70df-7d98-237f59f7df1a")
-run_agent("最近飲んだアランを教えて", principal3)
+# principal3 = Principal(user_id="67f45ae8-9091-70df-7d98-237f59f7df1a")
+# run_agent("最近飲んだアランを教えて", principal3)
+
+principal4 = Principal(user_id="67f45ae8-9091-70df-7d98-237f59f7df1a")
+print(search_drink_logs(principal4, brand="アラン", limit=10))
