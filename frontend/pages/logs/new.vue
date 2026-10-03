@@ -5,8 +5,8 @@ import {
   type RecordingSessionItem,
 } from '~/composables/useDrinkLogRecordingSession'
 import { useGeolocation } from '~/composables/useGeolocation'
-import { SERVING_STYLES, type ServingStyle } from '~/types/whiskey'
-import { candidateNeedsConfirmation, formatLocalLogDate, formatLocalLogTime } from '~/utils/drinkLogs'
+import { SERVING_STYLES } from '~/types/whiskey'
+import { candidateNeedsConfirmation, formatLocalLogDate, formatLocalLogTime, servingStyleLabels } from '~/utils/drinkLogs'
 
 const {
   items,
@@ -40,14 +40,6 @@ const lightbox = reactive({
   src: '',
   alt: '',
 })
-
-const styleLabels: Record<ServingStyle, string> = {
-  NEAT: 'ストレート',
-  ROCKS: 'ロック',
-  WATER: '水割り・トワイスアップ',
-  SODA: 'ハイボール',
-  COCKTAIL: 'カクテル',
-}
 
 const processingLabels: Record<RecordingSessionItem['phase'], string> = {
   queued: '処理中',
@@ -236,7 +228,7 @@ const openLightbox = (src: string, alt: string) => {
           <div class="mt-2 flex flex-wrap gap-2">
             <label v-for="style in SERVING_STYLES" :key="style" class="cursor-pointer rounded-full border px-3 py-1.5 text-sm" :class="item.servingStyle === style ? 'border-amber-500 bg-amber-700 text-amber-100' : 'border-stone-500 bg-stone-600 text-amber-300'">
               <input v-model="item.servingStyle" class="sr-only" type="radio" :name="`serving-style-${item.id}`" :value="style" />
-              {{ styleLabels[style] }}
+              {{ servingStyleLabels[style] }}
             </label>
           </div>
         </fieldset>

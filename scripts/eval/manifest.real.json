@@ -7,7 +7,8 @@
       "expected_whiskey_id": "laphroaig-10",
       "image": "images-real/01b332e69243e027.jpg",
       "needs_review": false,
-      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること",
+      "expected_serving_style": "SODA"
     },
     {
       "condition": "bottle_front",
@@ -16,7 +17,8 @@
       "expected_whiskey_id": null,
       "image": "images-real/041b1c4f173bff70.jpg",
       "needs_review": false,
-      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること",
+      "expected_serving_style": "NEAT"
     },
     {
       "condition": "bottle_front",
@@ -25,7 +27,8 @@
       "expected_whiskey_id": null,
       "image": "images-real/11d4823dd468bcec.jpg",
       "needs_review": false,
-      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること",
+      "expected_serving_style": "UNKNOWN"
     },
     {
       "condition": "bottle_front",
@@ -34,7 +37,8 @@
       "expected_whiskey_id": null,
       "image": "images-real/1f67c86dd63c7a21.jpg",
       "needs_review": false,
-      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること",
+      "expected_serving_style": "NEAT"
     },
     {
       "condition": "bottle_front",
@@ -43,7 +47,8 @@
       "expected_whiskey_id": null,
       "image": "images-real/22f2a30262771576.jpg",
       "needs_review": false,
-      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること",
+      "expected_serving_style": "UNKNOWN"
     },
     {
       "condition": "bottle_front",
@@ -52,7 +57,8 @@
       "expected_whiskey_id": "glenfiddich-12",
       "image": "images-real/3742e77a84041a77.jpg",
       "needs_review": false,
-      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること",
+      "expected_serving_style": "UNKNOWN"
     },
     {
       "condition": "bottle_front",
@@ -61,7 +67,8 @@
       "expected_whiskey_id": null,
       "image": "images-real/38871b3bbcccd8e7.jpg",
       "needs_review": false,
-      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること",
+      "expected_serving_style": "ROCKS"
     },
     {
       "condition": "bottle_front",
@@ -70,7 +77,8 @@
       "expected_whiskey_id": "caol-ila-12",
       "image": "images-real/3bbf60f2dbcc1f2b.jpg",
       "needs_review": false,
-      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること",
+      "expected_serving_style": "UNKNOWN"
     },
     {
       "condition": "bottle_front",
@@ -79,7 +87,8 @@
       "expected_whiskey_id": null,
       "image": "images-real/473287f93db7f784.jpg",
       "needs_review": false,
-      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること",
+      "expected_serving_style": "UNKNOWN"
     },
     {
       "condition": "bottle_front",
@@ -88,7 +97,8 @@
       "expected_whiskey_id": "caol-ila-12",
       "image": "images-real/58f391f66188cf5b.jpg",
       "needs_review": false,
-      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること",
+      "expected_serving_style": "UNKNOWN"
     },
     {
       "condition": "bottle_front",
@@ -97,7 +107,8 @@
       "expected_whiskey_id": null,
       "image": "images-real/5d293c8f7c4ed574.jpg",
       "needs_review": false,
-      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること",
+      "expected_serving_style": "NEAT"
     },
     {
       "condition": "bottle_front",
@@ -106,7 +117,8 @@
       "expected_whiskey_id": null,
       "image": "images-real/5f44e5b8fbed3979.jpg",
       "needs_review": false,
-      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること",
+      "expected_serving_style": "UNKNOWN"
     },
     {
       "condition": "bottle_front",
@@ -115,7 +127,8 @@
       "expected_whiskey_id": null,
       "image": "images-real/777ab5b0688e3766.jpg",
       "needs_review": false,
-      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること",
+      "expected_serving_style": "UNKNOWN"
     },
     {
       "condition": "bottle_front",
@@ -124,7 +137,8 @@
       "expected_whiskey_id": null,
       "image": "images-real/7acde4517afaf1f2.jpg",
       "needs_review": false,
-      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること",
+      "expected_serving_style": "UNKNOWN"
     },
     {
       "condition": "bottle_front",
@@ -133,7 +147,8 @@
       "expected_whiskey_id": null,
       "image": "images-real/7e7a48fc30343313.jpg",
       "needs_review": false,
-      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること",
+      "expected_serving_style": "UNKNOWN"
     },
     {
       "condition": "bottle_front",
@@ -142,7 +157,8 @@
       "expected_whiskey_id": "bunnahabhain-12",
       "image": "images-real/86043967443bceb5.jpg",
       "needs_review": false,
-      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること",
+      "expected_serving_style": "ROCKS"
     },
     {
       "condition": "bottle_front",
@@ -151,7 +167,8 @@
       "expected_whiskey_id": null,
       "image": "images-real/86d37188fdd388ea.jpg",
       "needs_review": false,
-      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること",
+      "expected_serving_style": "UNKNOWN"
     },
     {
       "condition": "bottle_front",
@@ -160,7 +177,8 @@
       "expected_whiskey_id": "taketsuru-pure-malt",
       "image": "images-real/9d9b513092ea8d0b.jpg",
       "needs_review": false,
-      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること",
+      "expected_serving_style": "NEAT"
     },
     {
       "condition": "bottle_front",
@@ -169,7 +187,8 @@
       "expected_whiskey_id": "laphroaig-10",
       "image": "images-real/a181cb9ea5fb45fe.jpg",
       "needs_review": false,
-      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること",
+      "expected_serving_style": "SODA"
     },
     {
       "condition": "bottle_front",
@@ -178,7 +197,8 @@
       "expected_whiskey_id": null,
       "image": "images-real/aea286cf1b65a8d1.jpg",
       "needs_review": false,
-      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること",
+      "expected_serving_style": "ROCKS"
     },
     {
       "condition": "bottle_front",
@@ -187,7 +207,8 @@
       "expected_whiskey_id": null,
       "image": "images-real/c63c9dd7233f1a85.jpg",
       "needs_review": false,
-      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること",
+      "expected_serving_style": "ROCKS"
     },
     {
       "condition": "bottle_front",
@@ -196,7 +217,8 @@
       "expected_whiskey_id": null,
       "image": "images-real/c88e636e4b997979.jpg",
       "needs_review": false,
-      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること",
+      "expected_serving_style": "UNKNOWN"
     },
     {
       "condition": "bottle_front",
@@ -205,7 +227,8 @@
       "expected_whiskey_id": null,
       "image": "images-real/c8ab63402874f242.jpg",
       "needs_review": false,
-      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること",
+      "expected_serving_style": "UNKNOWN"
     },
     {
       "condition": "bottle_front",
@@ -214,7 +237,8 @@
       "expected_whiskey_id": null,
       "image": "images-real/d9226c34aa7c7be1.jpg",
       "needs_review": false,
-      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること",
+      "expected_serving_style": "ROCKS"
     },
     {
       "condition": "bottle_front",
@@ -223,7 +247,8 @@
       "expected_whiskey_id": null,
       "image": "images-real/e6cfec68c8bc3397.jpg",
       "needs_review": false,
-      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること",
+      "expected_serving_style": "UNKNOWN"
     },
     {
       "condition": "bottle_front",
@@ -232,7 +257,8 @@
       "expected_whiskey_id": "lagavulin-16",
       "image": "images-real/f5ea380cfb8782f2.jpg",
       "needs_review": false,
-      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること",
+      "expected_serving_style": "UNKNOWN"
     },
     {
       "condition": "bottle_front",
@@ -241,7 +267,8 @@
       "expected_whiskey_id": null,
       "image": "images-real/feddadf4ebc40d8b.jpg",
       "needs_review": false,
-      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること"
+      "notes": "要確認: 撮影条件を実際の写真に合わせて修正すること",
+      "expected_serving_style": "UNKNOWN"
     }
   ],
   "version": 1

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
+import { SERVING_STYLES, type ServingStyle } from '~/types/whiskey'
 import { ApiError } from '~/composables/useApi'
 import {
   useDrinkLogRecordingSession,
@@ -47,6 +48,31 @@ describe('useDrinkLogRecordingSession', () => {
       createObjectURL: vi.fn(file => `blob:${file.size}:${Math.random()}`),
       revokeObjectURL: vi.fn(),
     })
+  })
+
+  it.each([
+    ...SERVING_STYLES.map((style): [string, string] => [style, style]),
+    [undefined, 'UNKNOWN'],
+    ['', 'UNKNOWN'],
+    ['invalid', 'UNKNOWN'],
+  ])('applies analysis serving style %s as %s', async (servingStyle, expected) => {
+    const dependencies = makeDependencies()
+    dependencies.analyze.mockResolvedValue({
+      analysis_id: 'analysis-1',
+      candidates: [{ brand_text: 'Ardbeg', confidence: 0.9 }],
+      serving_style: servingStyle,
+      model_id: 'test-model',
+      confidence: 0.9,
+    })
+    const session = useDrinkLogRecordingSession(dependencies)
+    await session.selectFiles([new File(['photo'], 'photo.jpg', { type: 'image/jpeg' })])
+
+    expect(session.items.value[0]?.servingStyle).toBe(expected)
+    expectTypeOf<RecordingSessionItem['servingStyle']>().toEqualTypeOf<ServingStyle>()
+    await session.saveAll()
+    expect(dependencies.createLog).toHaveBeenCalledWith(expect.objectContaining({
+      serving_style: expected,
+    }))
   })
 
   it('creates one log for every input photo', async () => {
@@ -176,6 +202,7 @@ describe('useDrinkLogRecordingSession', () => {
     expect(dependencies.createLog).toHaveBeenCalledWith({
       analysis_id: 'analysis-degraded',
       brand_text: '手入力銘柄',
+      serving_style: 'UNKNOWN',
     })
   })
 

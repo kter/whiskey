@@ -443,6 +443,16 @@ def test_create_validation_accepts_optional_candidate_and_reuses_update_rules():
     }
 
 
+def test_create_and_update_validation_accept_unknown_serving_style():
+    upload_uuid = "12345678-1234-4234-8234-123456789abc"
+    assert drink_logs.validate_create_input(
+        {"analysis_id": upload_uuid, "brand_text": "Ardbeg", "serving_style": "UNKNOWN"}
+    )["serving_style"] == "UNKNOWN"
+    assert drink_logs.validate_update_input({"serving_style": "UNKNOWN"}) == {
+        "serving_style": "UNKNOWN"
+    }
+
+
 def test_create_datetime_is_normalized_without_replacing_audit_timestamps(monkeypatch):
     fixed_now = datetime.now(timezone.utc).replace(microsecond=123456)
     captured_utc = fixed_now.replace(microsecond=0) - timedelta(hours=1)
@@ -661,7 +671,8 @@ def test_legacy_candidate_without_brand_metadata_can_still_be_consumed():
         assert record["brand_source"] == "ai"
 
 
-def test_create_confirmation_overrides_are_written_to_completed_record():
+@pytest.mark.parametrize("serving_style", ["ROCKS", "UNKNOWN"])
+def test_create_confirmation_overrides_are_written_to_completed_record(serving_style):
     with mock_aws():
         dynamodb, s3, _drinklogs, _app_state, analysis, _upload_uuid = (
             _moto_create_dependencies()
@@ -672,7 +683,7 @@ def test_create_confirmation_overrides_are_written_to_completed_record():
                 {
                     "analysis_id": analysis["pk"],
                     "candidate_index": 1,
-                    "serving_style": "ROCKS",
+                    "serving_style": serving_style,
                     "store": {"name": "Bar 621", "place_id": "place-621"},
                     "rating": 4.5,
                     "notes": "確認フォームで追記",
@@ -680,7 +691,10 @@ def test_create_confirmation_overrides_are_written_to_completed_record():
             ),
         )
 
-        assert record["serving_style"] == "ROCKS"
+        assert record["serving_style"] == serving_style
+        persisted = _drinklogs.get_item(Key={"id": record["id"]})["Item"]
+        assert persisted["status"] == "complete"
+        assert persisted["serving_style"] == serving_style
         assert record["store"] == {"name": "Bar 621", "place_id": "place-621"}
         assert record["rating"] == Decimal("4.5")
         assert record["notes"] == "確認フォームで追記"
@@ -1737,6 +1751,17 @@ def test_selecting_a_later_bottle_does_not_inherit_the_first_bottles_match():
     assert completion["brand_text"] == "厚岸 シングルモルト"
     assert "whiskey_id" not in completion
     assert completion["brand_source"] == "ai"
+
+
+def test_legacy_analysis_without_serving_style_defaults_to_unknown():
+    completion = drink_log_store._completion_from_analysis(
+        {"model_id": "model-1", "confidence": Decimal("0.9")},
+        {"brand_text": "Ardbeg", "confidence": Decimal("0.9")},
+        {},
+        candidate_selected=True,
+    )
+
+    assert completion["serving_style"] == "UNKNOWN"
 
 
 def test_selecting_a_matched_bottle_still_attaches_its_own_id():

@@ -34,6 +34,7 @@ from whiskey_common.candidate_resolution import (  # noqa: E402
     CandidateResolver,
     WhiskeyCatalog,
 )
+from whiskey_common.serving_styles import SERVING_STYLES  # noqa: E402
 
 
 DEV_ACCOUNT_ID = "031921999648"
@@ -77,6 +78,7 @@ CASE_REQUIRED_FIELDS = {
 }
 CASE_ALLOWED_FIELDS = CASE_REQUIRED_FIELDS | {
     "expected_brand_key",
+    "expected_serving_style",
     "notes",
     "needs_review",
 }
@@ -189,6 +191,17 @@ def validate_manifest_data(data: Any) -> dict[str, Any]:
         ):
             raise ManifestError(
                 f"{location}.expected_brand_key must be a non-empty string or null"
+            )
+        if (
+            "expected_serving_style" in case
+            and (
+                not isinstance(case["expected_serving_style"], str)
+                or case["expected_serving_style"] not in SERVING_STYLES
+            )
+        ):
+            raise ManifestError(
+                f"{location}.expected_serving_style must be one of "
+                f"{', '.join(sorted(SERVING_STYLES))}"
             )
         if "notes" in case and not isinstance(case["notes"], str):
             raise ManifestError(f"{location}.notes must be a string")
@@ -324,6 +337,8 @@ def score_evaluation(record: Mapping[str, Any]) -> dict[str, Any]:
     rejected = not any(_candidate_id(candidate) is not None for candidate in candidates)
     no_candidates = not candidates
     top = candidates[0] if candidates and isinstance(candidates[0], Mapping) else {}
+    expected_serving_style = case.get("expected_serving_style")
+    actual_serving_style = response.get("serving_style") if isinstance(response, Mapping) else None
     # Gate the verdicts on having a truth value at all. The aggregator already
     # excludes these cases, but a per-case reader (the way false_confirmation_cases
     # reads its flag) would otherwise report "we don't know" as "the model was wrong".
@@ -349,6 +364,13 @@ def score_evaluation(record: Mapping[str, Any]) -> dict[str, Any]:
         "actual_whiskey_id": top_id,
         "actual_brand_text": top.get("brand_text"),
         "match_source": top.get("match_source"),
+        "serving_style_evaluable": expected_serving_style is not None,
+        "expected_serving_style": expected_serving_style,
+        "actual_serving_style": actual_serving_style,
+        "serving_style_correct": (
+            expected_serving_style is not None and actual_serving_style == expected_serving_style
+        ),
+        "serving_style_unknown": actual_serving_style == "UNKNOWN",
     }
 
 
@@ -411,6 +433,34 @@ def _aggregate_records(records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     no_candidates = sum(score["no_candidates"] for score in scores)
     misses = sum(score["not_confirmed"] for score in retrievable)
     correct_abstentions = sum(score["not_confirmed"] for score in unanswerable)
+    serving_style_labeled = [
+        score for score in scores if score["serving_style_evaluable"]
+    ]
+    serving_style_errors = Counter(
+        record["case"].get("expected_serving_style")
+        for record in records
+        if record.get("status_code", 200) != 200
+        and record["case"].get("expected_serving_style") is not None
+    )
+    serving_style_error_total = sum(serving_style_errors.values())
+    serving_style_evaluated = len(serving_style_labeled)
+    serving_style_labeled_total = serving_style_evaluated + serving_style_error_total
+    serving_style_correct = sum(score["serving_style_correct"] for score in serving_style_labeled)
+    serving_style_unknown = sum(score["serving_style_unknown"] for score in serving_style_labeled)
+    serving_style_by_expected = {}
+    for expected in sorted({score["expected_serving_style"] for score in serving_style_labeled} | serving_style_errors.keys()):
+        matching = [score for score in serving_style_labeled if score["expected_serving_style"] == expected]
+        matching_total = len(matching)
+        correct = sum(score["serving_style_correct"] for score in matching)
+        unknown = sum(score["serving_style_unknown"] for score in matching)
+        serving_style_by_expected[expected] = {
+            "labeled": matching_total + serving_style_errors[expected],
+            "errors": serving_style_errors[expected],
+            "correct": correct,
+            "accuracy": _rate(correct, matching_total),
+            "unknown": unknown,
+            "unknown_rate": _rate(unknown, matching_total),
+        }
     return {
         "cases": total,
         "brand_evaluable_cases": brand_evaluable_total,
@@ -449,6 +499,13 @@ def _aggregate_records(records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "miss_rate": _rate(misses, retrievable_total),
         "correct_abstentions": correct_abstentions,
         "correct_abstention_rate": _rate(correct_abstentions, unanswerable_total),
+        "serving_style_labeled": serving_style_labeled_total,
+        "serving_style_errors": serving_style_error_total,
+        "serving_style_correct": serving_style_correct,
+        "serving_style_accuracy": _rate(serving_style_correct, serving_style_evaluated),
+        "serving_style_unknown": serving_style_unknown,
+        "serving_style_unknown_rate": _rate(serving_style_unknown, serving_style_evaluated),
+        "serving_style_by_expected": serving_style_by_expected,
     }
 
 
@@ -628,6 +685,7 @@ def print_metrics_report(metrics: Mapping[str, Any]) -> None:
         for condition, aggregate in metrics["by_condition"].items()
     ]
     print(_format_table(headers, condition_rows))
+    print_serving_style_report(metrics)
     print("\nFalse confirmations")
     false_cases = metrics["false_confirmation_cases"]
     if not false_cases:
@@ -645,6 +703,41 @@ def print_metrics_report(metrics: Mapping[str, Any]) -> None:
         for case in false_cases
     ]
     print(_format_table(false_headers, false_rows))
+
+
+def print_serving_style_report(metrics: Mapping[str, Any]) -> None:
+    """Print serving-style accuracy from cases with an explicit human label."""
+    overall = metrics["overall"]
+    print("\nServing-style metrics - Overall (rates exclude errors)")
+    print(_format_table(
+        ("Labeled", "Errors", "Correct", "Model UNKNOWN"),
+        [[
+            str(overall["serving_style_labeled"]),
+            str(overall["serving_style_errors"]),
+            format_rate(
+                overall["serving_style_correct"],
+                overall["serving_style_labeled"] - overall["serving_style_errors"],
+                overall["serving_style_accuracy"],
+            ),
+            format_rate(
+                overall["serving_style_unknown"],
+                overall["serving_style_labeled"] - overall["serving_style_errors"],
+                overall["serving_style_unknown_rate"],
+            ),
+        ]],
+    ))
+    print("\nServing-style metrics - By expected value")
+    rows = [
+        [
+            expected,
+            str(values["labeled"]),
+            str(values["errors"]),
+            format_rate(values["correct"], values["labeled"] - values["errors"], values["accuracy"]),
+            format_rate(values["unknown"], values["labeled"] - values["errors"], values["unknown_rate"]),
+        ]
+        for expected, values in overall["serving_style_by_expected"].items()
+    ]
+    print(_format_table(("Expected", "Labeled", "Errors", "Correct", "Model UNKNOWN"), rows))
 
 
 def print_manifest_report(manifest: Mapping[str, Any]) -> None:
@@ -849,6 +942,28 @@ def replay_brand_results(records: Sequence[Mapping[str, Any]]) -> list[dict[str,
     return replayed_records
 
 
+def overlay_serving_style_labels(
+    records: Sequence[Mapping[str, Any]], manifest: Mapping[str, Any]
+) -> list[dict[str, Any]]:
+    """Copy current human serving labels by image, leaving brand truth unchanged."""
+    cases_by_image = {case["image"]: case for case in manifest["cases"]}
+    overlaid = []
+    unmatched = []
+    for record in records:
+        case = dict(record["case"])
+        case.pop("expected_serving_style", None)
+        current = cases_by_image.get(case["image"])
+        if current is None:
+            unmatched.append(case["image"])
+        elif "expected_serving_style" in current:
+            case["expected_serving_style"] = current["expected_serving_style"]
+        overlaid.append({**record, "case": case})
+    print(f"Stored cases without a manifest match: {len(unmatched)}")
+    for image in unmatched:
+        print(f"  {image}")
+    return overlaid
+
+
 def print_replay_report(
     stored_records: Sequence[Mapping[str, Any]], replayed_records: Sequence[Mapping[str, Any]]
 ) -> None:
@@ -872,6 +987,8 @@ def print_replay_report(
         )
     print("Brand metrics replay: stored vs current catalog")
     print(_format_table(headers, rows))
+    print("\nServing-style metrics replay: stored response")
+    print_serving_style_report(calculate_metrics(stored_records))
     print("\nChanged brand verdicts")
     changed = []
     for before, after in zip(stored_records, replayed_records):
@@ -1429,6 +1546,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         metavar="MANIFEST",
         help="locally propose expected_brand_key values into a manifest",
     )
+    parser.add_argument(
+        "--manifest",
+        type=Path,
+        help="current serving-style labels for --replay (default: scripts/eval/manifest.real.json)",
+    )
     parser.add_argument("--profile", help="explicit AWS profile required for --target dev")
     parser.add_argument(
         "--aud",
@@ -1493,6 +1615,8 @@ def main(argv: list[str] | None = None) -> int:
     """Run local validation or the guarded dev evaluation."""
     args = parse_args(argv)
     try:
+        if args.manifest is not None and args.replay is None:
+            raise ValueError("--manifest is only valid with --replay")
         if args.replay is not None:
             if args.input is not None:
                 raise ValueError("the positional input is not used with --replay")
@@ -1500,7 +1624,11 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValueError("--resume is not valid with --replay")
             if args.json_path and args.json_path.resolve() == args.replay.resolve():
                 raise ValueError("--json must not overwrite the replay input")
+            manifest_path = args.manifest or REPOSITORY_ROOT / "scripts/eval/manifest.real.json"
+            if args.json_path and args.json_path.resolve() == manifest_path.resolve():
+                raise ValueError("--json must not overwrite the manifest")
             source_document, stored_records = load_replay_results(args.replay)
+            stored_records = overlay_serving_style_labels(stored_records, load_manifest(manifest_path))
             replayed_records = replay_brand_results(stored_records)
             print_replay_report(stored_records, replayed_records)
             if args.json_path:

@@ -36,12 +36,12 @@ def _case(condition, expected_id, image="images/test.jpg"):
     }
 
 
-def _record(index, case, candidates, status_code=200):
+def _record(index, case, candidates, status_code=200, serving_style=None):
     return {
         "case_index": index,
         "case": case,
         "status_code": status_code,
-        "response": {"candidates": candidates},
+        "response": {"candidates": candidates, **({"serving_style": serving_style} if serving_style is not None else {})},
     }
 
 
@@ -118,6 +118,13 @@ def test_calculate_metrics_uses_top_candidate_partition_and_separate_denominator
         "miss_rate": pytest.approx(0.5),
         "correct_abstentions": 0,
         "correct_abstention_rate": pytest.approx(0.0),
+        "serving_style_labeled": 0,
+        "serving_style_errors": 0,
+        "serving_style_correct": 0,
+        "serving_style_accuracy": None,
+        "serving_style_unknown": 0,
+        "serving_style_unknown_rate": None,
+        "serving_style_by_expected": {},
     }
     assert metrics["by_condition"]["bottle_front"]["top3_correct"] == 2
     assert metrics["by_condition"]["bottle_angle"]["rejections"] == 1
@@ -350,6 +357,39 @@ def test_manifest_validation_accepts_expected_brand_key():
     assert brand_eval.validate_manifest_data(manifest) == manifest
 
 
+def test_manifest_validation_accepts_expected_serving_style_and_rejects_invalid_value():
+    case = _case("bottle_front", "a")
+    case["expected_serving_style"] = "UNKNOWN"
+    assert brand_eval.validate_manifest_data({"version": 1, "cases": [case]})
+    case["expected_serving_style"] = "invalid"
+    with pytest.raises(brand_eval.ManifestError, match="expected_serving_style"):
+        brand_eval.validate_manifest_data({"version": 1, "cases": [case]})
+
+
+def test_serving_style_metrics_score_labeled_cases_and_unknown_responses(capsys):
+    neat = _case("bottle_front", "a")
+    neat["expected_serving_style"] = "NEAT"
+    unknown = _case("glass_only", None)
+    unknown["expected_serving_style"] = "UNKNOWN"
+    metrics = brand_eval.calculate_metrics([
+        _record(0, neat, [], serving_style="NEAT"),
+        _record(1, unknown, [], serving_style="UNKNOWN"),
+        _record(2, neat, [], serving_style="UNKNOWN"),
+    ])
+
+    overall = metrics["overall"]
+    assert overall["serving_style_labeled"] == 3
+    assert overall["serving_style_correct"] == 2
+    assert overall["serving_style_accuracy"] == pytest.approx(2 / 3)
+    assert overall["serving_style_unknown"] == 2
+    assert overall["serving_style_by_expected"]["NEAT"] == {
+        "labeled": 2, "errors": 0, "correct": 1, "accuracy": pytest.approx(0.5),
+        "unknown": 1, "unknown_rate": pytest.approx(0.5),
+    }
+    brand_eval.print_metrics_report(metrics)
+    assert "Serving-style metrics - By expected value" in capsys.readouterr().out
+
+
 @pytest.mark.parametrize("invalid", [123, True, ""])
 def test_manifest_validation_rejects_invalid_expected_brand_key(invalid):
     case = _case("bottle_front", "a")
@@ -371,6 +411,18 @@ def test_manifest_schema_accepts_expected_brand_key_and_rejects_wrong_type():
     case["expected_brand_key"] = None
     validator.validate({"version": 1, "cases": [case]})
     case["expected_brand_key"] = 123
+    with pytest.raises(jsonschema.ValidationError):
+        validator.validate({"version": 1, "cases": [case]})
+
+
+def test_manifest_schema_accepts_expected_serving_style_and_rejects_wrong_type():
+    jsonschema = pytest.importorskip("jsonschema")
+    schema_path = Path(brand_eval.__file__).with_name("manifest.schema.json")
+    validator = jsonschema.Draft202012Validator(json.loads(schema_path.read_text(encoding="utf-8")))
+    case = _case("bottle_front", "a")
+    case["expected_serving_style"] = "UNKNOWN"
+    validator.validate({"version": 1, "cases": [case]})
+    case["expected_serving_style"] = "invalid"
     with pytest.raises(jsonschema.ValidationError):
         validator.validate({"version": 1, "cases": [case]})
 
@@ -1284,7 +1336,8 @@ def test_replay_re_resolves_stored_readings_without_constructing_aws_clients(
 ):
     matched = _case("bottle_front", "laphroaig-10")
     matched["expected_brand_key"] = "laphroaig"
-    unchanged = _case("bottle_front", "unknown")
+    matched["expected_serving_style"] = "NEAT"
+    unchanged = _case("bottle_front", "unknown", "images/unknown.jpg")
     unchanged["expected_brand_key"] = "unknown-brand"
     records = [
         _record(
@@ -1298,6 +1351,7 @@ def test_replay_re_resolves_stored_readings_without_constructing_aws_clients(
                 "whiskey_id": "laphroaig-10",
                 "match_source": "catalog",
             }],
+            serving_style="NEAT",
         ),
         _record(
             1,
@@ -1319,11 +1373,16 @@ def test_replay_re_resolves_stored_readings_without_constructing_aws_clients(
     monkeypatch.setattr(brand_eval.boto3, "Session", Mock(side_effect=AssertionError))
 
     output = tmp_path / "replayed.json"
-    assert brand_eval.main(["--replay", str(source), "--json", str(output)]) == 0
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({"version": 1, "cases": [matched]}))
+    assert brand_eval.main(["--replay", str(source), "--manifest", str(manifest), "--json", str(output)]) == 0
 
     written = json.loads(output.read_text(encoding="utf-8"))
     candidate = written["results"][0]["response"]["candidates"][0]
-    assert "Brand metrics replay: stored vs current catalog" in capsys.readouterr().out
+    report = capsys.readouterr().out
+    assert "Brand metrics replay: stored vs current catalog" in report
+    assert "Serving-style metrics replay: stored response" in report
+    assert "1/1 (100.0%)" in report
     assert written["mode"] == "replay"
     assert candidate["brand_key"] == "laphroaig"
     assert candidate["whiskey_id"] == "laphroaig-10"
@@ -1413,3 +1472,47 @@ def test_synthetic_label_parts_extract_brand_and_age(
         expected_brand,
         expected_age,
     )
+
+
+@pytest.mark.parametrize("invalid", [[], {}])
+def test_manifest_unhashable_serving_style_is_manifest_error(invalid):
+    case = {**_case("glass_only", None), "expected_serving_style": invalid}
+    with pytest.raises(brand_eval.ManifestError, match="expected_serving_style"):
+        brand_eval.validate_manifest_data({"version": 1, "cases": [case]})
+
+
+def test_replay_overlays_current_serving_labels_only(tmp_path, capsys):
+    case = {**_case("bottle_front", "a"), "expected_brand_key": "stored-brand"}
+    stale = {**_case("glass_only", None, "images/stale.jpg"), "expected_serving_style": "NEAT"}
+    records = [_record(0, case, [], serving_style="ROCKS"), _record(1, stale, [])]
+    source = tmp_path / "stored.json"
+    source.write_text(json.dumps({"result_version": 1, "results": records}))
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({"version": 1, "cases": [
+        {**case, "expected_brand_key": "new-brand", "expected_serving_style": "ROCKS"},
+    ]}))
+    output = tmp_path / "replayed.json"
+    assert brand_eval.main(["--replay", str(source), "--manifest", str(manifest), "--json", str(output)]) == 0
+    written = json.loads(output.read_text())
+    overall = written["metrics"]["overall"]
+    assert overall["serving_style_labeled"] == 1
+    assert overall["serving_style_accuracy"] == 1
+    assert written["results"][0]["case"]["expected_brand_key"] == "stored-brand"
+    assert "expected_serving_style" not in written["results"][1]["case"]
+    assert "images/stale.jpg" in capsys.readouterr().out
+    assert json.loads(source.read_text())["results"] == records
+
+
+def test_serving_style_report_separates_errors(capsys):
+    case = {**_case("glass_only", None), "expected_serving_style": "UNKNOWN"}
+    metrics = brand_eval.calculate_metrics([
+        _record(0, case, [], serving_style="UNKNOWN"),
+        _record(1, case, [], status_code=503),
+    ])
+    overall = metrics["overall"]
+    assert overall["serving_style_labeled"] == 2
+    assert overall["serving_style_errors"] == 1
+    assert overall["serving_style_accuracy"] == 1
+    assert overall["serving_style_by_expected"]["UNKNOWN"]["errors"] == 1
+    brand_eval.print_serving_style_report(metrics)
+    assert "Errors" in capsys.readouterr().out

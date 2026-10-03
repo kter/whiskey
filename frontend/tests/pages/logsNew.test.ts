@@ -72,7 +72,7 @@ const batchItem = (candidates: DrinkLogCandidate[] = [], index = 0): RecordingSe
   candidates,
   selectedCandidateIndex: candidates.length === 1 ? 0 : null,
   brandText: candidates.length === 1 ? candidates[0]?.brand_text || '' : '',
-  servingStyle: '',
+  servingStyle: 'UNKNOWN',
   rating: null,
   storeName: '',
   placeId: '',
@@ -158,10 +158,26 @@ describe('logs/new form behavior', () => {
     pageMocks.searchPlaces.mockResolvedValue([])
   })
 
+  it('shows 未設定 first and checked before choosing another serving style', async () => {
+    const wrapper = renderLogPage()
+    const radios = wrapper.findAll<HTMLInputElement>('input[type="radio"][name^="serving-style-"]')
+    expect(radios[0]?.element.value).toBe('UNKNOWN')
+    expect(radios[0]?.element.checked).toBe(true)
+    expect(radios[0]?.element.closest('label')?.textContent).toContain('未設定')
+    expect(radios.slice(1).every(radio => !radio.element.checked)).toBe(true)
+    const rocks = radios.find(radio => radio.element.value === 'ROCKS')!.element
+    rocks.checked = true
+    rocks.dispatchEvent(new Event('change', { bubbles: true }))
+    await flushPromises()
+    expect(radios[0]?.element.checked).toBe(false)
+    wrapper.unmount()
+  })
+
   it('sends candidate_index only when an AI candidate remains selected', () => {
     expect(buildDrinkLogPayload({ analysisId: 'a1', candidateIndex: 0, brandText: 'AI銘柄' })).toEqual({
       analysis_id: 'a1',
       candidate_index: 0,
+      serving_style: 'UNKNOWN',
     })
   })
 
@@ -175,6 +191,7 @@ describe('logs/new form behavior', () => {
     expect(buildDrinkLogPayload({ analysisId: 'a1', candidateIndex: null, brandText })).toEqual({
       analysis_id: 'a1',
       brand_text: brandText,
+      serving_style: 'UNKNOWN',
     })
   })
 

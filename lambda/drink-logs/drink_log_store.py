@@ -111,7 +111,7 @@ def _completion_from_analysis(
         whiskey_id = result.get("whiskey_id") or result.get("matched_whiskey_id")
     if whiskey_id is not None and (not isinstance(whiskey_id, str) or not whiskey_id):
         raise AnalysisConflict("Matched whiskey ID is invalid")
-    serving_style = result.get("serving_style", "NEAT")
+    serving_style = result.get("serving_style", "UNKNOWN")
     if serving_style not in SERVING_STYLES:
         raise AnalysisConflict("Analysis serving style is invalid")
 

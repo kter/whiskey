@@ -73,6 +73,7 @@ describe('useDrinkLogs API contract', () => {
       analysis_id: 'a1',
       datetime: '2026-08-01T21:30:00+09:00',
       candidate_index: 0,
+      serving_style: 'UNKNOWN',
     })
 
     for (const capturedAt of [null, undefined]) {
