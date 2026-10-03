@@ -1279,6 +1279,125 @@ def test_unanswerable_only_scope_reports_no_retrieval_denominator():
     assert brand_eval.format_rate(0, 0, None) == "該当なし"
 
 
+def test_replay_re_resolves_stored_readings_without_constructing_aws_clients(
+    tmp_path, monkeypatch, capsys
+):
+    matched = _case("bottle_front", "laphroaig-10")
+    matched["expected_brand_key"] = "laphroaig"
+    unchanged = _case("bottle_front", "unknown")
+    unchanged["expected_brand_key"] = "unknown-brand"
+    records = [
+        _record(
+            0,
+            matched,
+            [{
+                "name_ja": "ラフロアヒグ 10年",
+                "name_en": "Unknown",
+                "brand_ja": "ラフロアヒグ",
+                "confidence": 0.9,
+                "whiskey_id": "laphroaig-10",
+                "match_source": "catalog",
+            }],
+        ),
+        _record(
+            1,
+            unchanged,
+            [{
+                "name_ja": "Unknown",
+                "name_en": "Unknown",
+                "brand_ja": "Unknown",
+                "confidence": 0.5,
+                "whiskey_id": "unknown",
+                "match_source": "catalog",
+            }],
+        ),
+    ]
+    source = tmp_path / "stored.json"
+    source.write_text(
+        json.dumps({"result_version": 1, "results": records}), encoding="utf-8"
+    )
+    monkeypatch.setattr(brand_eval.boto3, "Session", Mock(side_effect=AssertionError))
+
+    output = tmp_path / "replayed.json"
+    assert brand_eval.main(["--replay", str(source), "--json", str(output)]) == 0
+
+    written = json.loads(output.read_text(encoding="utf-8"))
+    candidate = written["results"][0]["response"]["candidates"][0]
+    assert "Brand metrics replay: stored vs current catalog" in capsys.readouterr().out
+    assert written["mode"] == "replay"
+    assert candidate["brand_key"] == "laphroaig"
+    assert candidate["whiskey_id"] == "laphroaig-10"
+    assert candidate["match_source"] == "catalog"
+    assert candidate["confidence"] == 0.9
+    assert "brand_key" not in written["results"][1]["response"]["candidates"][0]
+
+
+def test_replay_uses_ai_name_ja_as_the_model_reading(tmp_path, capsys):
+    case = _case("bottle_front", "laphroaig-10")
+    case["expected_brand_key"] = "laphroaig"
+    source = tmp_path / "stored.json"
+    source.write_text(
+        json.dumps(
+            {
+                "result_version": 1,
+                "results": [
+                    _record(
+                        0,
+                        case,
+                        [{
+                            "name_ja": "unusable rebuilt name",
+                            "ai_name_ja": "ラフロアヒグ",
+                            "name_en": "Unknown",
+                            "brand_ja": "ラフロアヒグ",
+                            "confidence": 0.9,
+                        }],
+                    )
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    output = tmp_path / "replayed.json"
+
+    assert brand_eval.main(["--replay", str(source), "--json", str(output)]) == 0
+
+    candidate = json.loads(output.read_text(encoding="utf-8"))["results"][0]["response"]["candidates"][0]
+    assert "Brand metrics replay: stored vs current catalog" in capsys.readouterr().out
+    assert candidate["brand_key"] == "laphroaig"
+    assert candidate["ai_name_ja"] == "ラフロアヒグ"
+
+
+def test_replay_rejects_json_output_that_would_overwrite_its_input(tmp_path, capsys):
+    source = tmp_path / "stored.json"
+    original = json.dumps({"result_version": 1, "results": []})
+    source.write_text(original, encoding="utf-8")
+
+    assert brand_eval.main(["--replay", str(source), "--json", str(source)]) == 1
+
+    assert source.read_text(encoding="utf-8") == original
+    assert "--json must not overwrite the replay input" in capsys.readouterr().err
+
+
+def test_replay_passes_non_200_records_through_unchanged(tmp_path, capsys):
+    source = tmp_path / "stored.json"
+    non_200 = {
+        "case_index": 0,
+        "case": _case("bottle_front", "unknown"),
+        "status_code": 503,
+        "response": {"error": "unavailable"},
+    }
+    source.write_text(
+        json.dumps({"result_version": 1, "results": [non_200]}), encoding="utf-8"
+    )
+    output = tmp_path / "replayed.json"
+
+    assert brand_eval.main(["--replay", str(source), "--json", str(output)]) == 0
+
+    written = json.loads(output.read_text(encoding="utf-8"))
+    assert "Brand metrics replay: stored vs current catalog" in capsys.readouterr().out
+    assert written["results"] == [non_200]
+
+
 @pytest.mark.parametrize(
     ("name", "expected_brand", "expected_age"),
     [

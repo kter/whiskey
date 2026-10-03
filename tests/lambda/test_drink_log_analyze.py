@@ -615,8 +615,7 @@ def test_brand_match_uses_english_age_suffix_when_japanese_has_no_age():
 @pytest.mark.parametrize(
     ("name_ja", "brand_ja", "expected_key", "expected_distillery"),
     [
-        ("サントリー 角瓶", "サントリー", "hibiki", "サントリー"),
-        ("ジムビーム ホワイト", "ジムビーム", "knob_creek", "ジムビーム蒸溜所"),
+        ("プルトニー", "プルトニー蒸溜所", "old_pulteney", "プルトニー蒸溜所"),
     ],
 )
 def test_distillery_only_match_keeps_model_product_name(
@@ -635,6 +634,81 @@ def test_distillery_only_match_keeps_model_product_name(
     assert candidate["brand_text"] == name_ja
     assert candidate["brand_ja"] == brand_ja
     assert "ai_name_ja" not in candidate
+
+
+def test_shared_suntory_distillery_does_not_resolve_a_brand():
+    whiskey = _whiskey("サントリー 角瓶", confidence=0.92)
+    whiskey["brand_ja"] = "サントリー"
+
+    candidate = analyze.CANDIDATE_RESOLVER.resolve(
+        _whiskey_catalog([]), _analysis([whiskey]),
+    )[0]
+
+    assert "brand_key" not in candidate
+    assert candidate["name_ja"] == "サントリー 角瓶"
+
+
+def test_suntory_whisky_group_name_does_not_resolve_to_torys_or_any_brand():
+    whiskey = _whiskey("サントリーウイスキー 角瓶", confidence=0.92)
+    whiskey.update(brand_ja="サントリーウイスキー", brand_en="Suntory Whisky")
+
+    candidate = analyze.CANDIDATE_RESOLVER.resolve(
+        _whiskey_catalog([]), _analysis([whiskey]),
+    )[0]
+
+    assert "brand_key" not in candidate
+    assert candidate["name_ja"] == "サントリーウイスキー 角瓶"
+
+
+def test_brand_name_match_keeps_jim_beam_product_name():
+    whiskey = _whiskey("ジムビーム ホワイト", confidence=0.92)
+    whiskey["brand_ja"] = "ジムビーム"
+
+    candidate = analyze.CANDIDATE_RESOLVER.resolve(
+        _whiskey_catalog([]), _analysis([whiskey]),
+    )[0]
+
+    assert candidate["brand_key"] == "jim_beam"
+    assert candidate["name_ja"] == "ジムビーム ホワイト"
+    assert "ai_name_ja" not in candidate
+
+
+def test_jim_beam_distillery_does_not_resolve_to_other_beam_brands():
+    whiskey = _whiskey("ジムビーム", confidence=0.92)
+    whiskey["brand_ja"] = "ジムビーム蒸溜所"
+
+    candidate = analyze.CANDIDATE_RESOLVER.resolve(
+        _whiskey_catalog([]), _analysis([whiskey]),
+    )[0]
+
+    assert candidate.get("brand_key") not in {"knob_creek", "old_crow"}
+
+
+@pytest.mark.parametrize(
+    ("name_ja", "expected_key", "expected_name"),
+    [
+        ("ザ・チタ", "chita", "知多"),
+        ("マクリームーア", "machrie_moor", "マクリームーア"),
+        ("三郎丸", "saburomaru", "三郎丸"),
+    ],
+)
+def test_real_photo_aliases_resolve_to_their_catalog_brands(
+    name_ja, expected_key, expected_name,
+):
+    whiskey = _whiskey(name_ja, confidence=0.92)
+    whiskey["brand_ja"] = name_ja
+
+    candidate = analyze.CANDIDATE_RESOLVER.resolve(
+        _whiskey_catalog([]), _analysis([whiskey]),
+    )[0]
+
+    assert candidate["brand_key"] == expected_key
+    assert candidate["name_ja"] == expected_name
+    if name_ja == "ザ・チタ":
+        assert candidate["brand_ja"] == "知多"
+        assert candidate["ai_name_ja"] == name_ja
+    else:
+        assert "ai_name_ja" not in candidate
 
 
 @pytest.mark.parametrize(
@@ -966,7 +1040,7 @@ def test_real_brand_catalog_has_no_normalized_name_collisions():
     )
 
     assert not collisions, f"Normalized brand-name collisions: {details}"
-    assert len(analyze.BRAND_CATALOG.records) == 60
+    assert len(analyze.BRAND_CATALOG.records) == 130
 
 
 def test_duplicate_exact_catalog_names_do_not_attach_an_arbitrary_id():
