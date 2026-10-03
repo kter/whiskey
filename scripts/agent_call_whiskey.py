@@ -137,7 +137,8 @@ def run_agent(message: str, principal: Principal):
                             }
                         )
                     elif tool_use["name"] == "get_drink_logs":
-                        result = get_drink_logs(principal)
+                        limit = tool_use["input"].get("limit", 10)
+                        result = get_drink_logs(principal, limit=limit)
                         tool_results.append(
                             {
                                 "toolResult": {
