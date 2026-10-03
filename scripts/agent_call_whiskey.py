@@ -1,11 +1,17 @@
 import boto3
 import sys
 from pathlib import Path
+import traceback
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "lambda" / "whiskeys-search" / "python"))
 from whiskey_search_service import WhiskeySearchService
 from dataclasses import dataclass
+from typing import Any, Protocol
+
+sys.path.insert(0, str(ROOT / "lambda" / "common" / "python"))
+sys.path.insert(0, str(ROOT / "lambda" / "whiskeys-search" / "python"))
+sys.path.insert(0, str(ROOT / "lambda" / "drink-logs"))
 
 from whiskey_common.clients import get_dynamodb_resource, get_s3_client
 
@@ -19,70 +25,132 @@ class Principal:
 
 
 MAX_STEPS = 5
+DEFAULT_LIMIT = 10
+MAX_LIMIT = 20
 client = boto3.client("bedrock-runtime", region_name="ap-northeast-1")
-tools = [
-    {
+
+
+class Tool(Protocol):
+    name: str
+    description: str
+    input_schema: dict[str, Any]
+
+    def run(
+        self, principal: Principal, params: dict[str, Any]
+    ) -> list[dict[str, Any]]: ...
+
+
+def to_spec(tool: Tool) -> dict[str, Any]:
+    """Tool から Converse API の toolSpec を組み立てる。
+
+    Converse 特有の入れ子（toolSpec > inputSchema > json）はここに閉じ込める。
+    各 Tool クラスは API の形を気にせず、名前・説明・JSON Schema だけを書けばよい。
+    """
+    return {
         "toolSpec": {
-            "name": "search_whiskeys",
-            "description": "ウイスキーを名前で検索する",
-            "inputSchema": {
-                "json": {
-                    "type": "object",
-                    "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "検索するウイスキー名",
-                        }
-                    },
-                    "required": ["query"],
-                }
-            },
+            "name": tool.name,
+            "description": tool.description,
+            "inputSchema": {"json": tool.input_schema},
         }
-    },
-    {
-        "toolSpec": {
-            "name": "get_drink_logs",
-            "description": "現在のユーザーの最近の飲酒記録を取得する",
-            "inputSchema": {
-                "json": {
-                    "type": "object",
-                    "properties": {
-                        "limit": {
-                            "type": "integer",
-                            "description": "取得する最大件数",
-                            "minimum": 1,
-                            "maximum": 20,
-                        }
-                    },
-                }
+    }
+
+
+class SearchWhiskeys:
+    name = "search_whiskeys"
+    description = "ウイスキーを名前で検索する"
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "検索するウイスキー名"},
+        },
+        "required": ["query"],
+    }
+
+    def run(self, principal: Principal, params: dict[str, Any]) -> list[dict[str, Any]]:
+        items, next_token = WhiskeySearchService().search_whiskeys(
+            read_text(params, "query"), limit=5, max_pages=1
+        )
+        return [
+            {
+                "name": item.get("name"),
+                "distillery": item.get("distillery"),
+                "region": item.get("region"),
+                "type": item.get("type"),
+                "age": item.get("age"),
+            }
+            for item in items
+        ]
+
+
+class GetDrinkLogs:
+    name = "get_drink_logs"
+    description = "現在のユーザーの最近の飲酒記録を取得する"
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "limit": {
+                "type": "integer",
+                "description": "取得する最大件数",
+                "minimum": 1,
+                "maximum": MAX_LIMIT,
             },
         },
-    },
-    {
-        "toolSpec": {
-            "name": "search_drink_logs",
-            "description": "現在のユーザーの飲酒履歴を銘柄名で検索する",
-            "inputSchema": {
-                "json": {
-                    "type": "object",
-                    "properties": {
-                        "brand": {
-                            "type": "string",
-                            "description": "検索するウイスキーの銘柄名",
-                        },
-                        "limit": {
-                            "type": "integer",
-                            "description": "取得する最大件数",
-                            "minimum": 1,
-                            "maximum": 20,
-                        },
-                    },
-                    "required": ["brand"],
-                }
+    }
+
+    def run(self, principal: Principal, params: dict[str, Any]) -> list[dict[str, Any]]:
+        return fetch_drink_logs(principal, read_limit(params), filters={})
+
+
+def fetch_drink_logs(
+    principal: Principal, limit: int, filters: dict[str, str]
+) -> list[dict[str, Any]]:
+    store = drink_log_store.DrinkLogStore.from_environment(
+        get_dynamodb_resource(), get_s3_client()
+    )
+    records, next_token = store.get_timeline(principal.user_id, limit, None, filters)
+    return [to_public_drink_log(record) for record in records]
+
+
+def to_public_drink_log(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": record.get("id"),
+        "brand_text": record.get("brand_text"),
+        "serving_style": record.get("serving_style"),
+        "store": (record.get("store") or {}).get("name"),
+        "datetime": record.get("datetime"),
+        "notes": record.get("notes"),
+        "rating": record.get("rating"),
+    }
+
+
+class SearchDrinkLogs:
+    name = "search_drink_logs"
+    description = "現在のユーザーの飲酒履歴を銘柄名で検索する"
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "brand": {"type": "string", "description": "検索するウイスキーの銘柄名"},
+            "limit": {
+                "type": "integer",
+                "description": "取得する最大件数",
+                "minimum": 1,
+                "maximum": MAX_LIMIT,
             },
-        }
-    },
-]
+        },
+        "required": ["brand"],
+    }
+
+    def run(self, principal: Principal, params: dict[str, Any]) -> list[dict[str, Any]]:
+        return fetch_drink_logs(
+            principal, read_limit(params), filters={"brand": read_text(params, "brand")}
+        )
+
+
+TOOLS: dict[str, Tool] = {
+    tool.name: tool for tool in (SearchWhiskeys(), GetDrinkLogs(), SearchDrinkLogs())
+}
+
+TOOL_CONFIG = {"tools": [to_spec(tool) for tool in TOOLS.values()]}
 system = [
     {
         "text": (
@@ -97,160 +165,93 @@ system = [
 ]
 
 
-def run_agent(message: str, principal: Principal):
-    messages = [{"role": "user", "content": [{"text": message}]}]
+def run_agent(message: str, principal: Principal) -> None:
+    messages: list[dict[str, Any]] = [{"role": "user", "content": [{"text": message}]}]
+
     for step in range(MAX_STEPS):
         response = client.converse(
             modelId="jp.amazon.nova-2-lite-v1:0",
             system=system,
             messages=messages,
-            toolConfig={
-                "tools": tools,
-            },
+            toolConfig=TOOL_CONFIG,
         )
         assistant_message = response["output"]["message"]
         messages.append(assistant_message)
-
+        stop_reason = response["stopReason"]
         print("step:", step)
-        print("stopReason:", response["stopReason"])
+        print("stopReason:", stop_reason)
 
-        if response["stopReason"] == "end_turn":
+        if stop_reason == "end_turn":
             print(assistant_message["content"])
-            break
+            return
 
-        elif response["stopReason"] == "tool_use":
-            tool_results = []
-            for block in assistant_message["content"]:
-                if "toolUse" in block:
-                    tool_use = block["toolUse"]
-                    print("tool:", tool_use["name"])
-                    print("input:", tool_use["input"])
-                    if tool_use["name"] == "search_whiskeys":
-                        query = tool_use["input"]["query"]
-                        result = search_whiskeys(query)
-                        tool_results.append(
-                            {
-                                "toolResult": {
-                                    "toolUseId": tool_use["toolUseId"],
-                                    "content": [{"json": {"results": result}}],
-                                }
-                            }
-                        )
-                    elif tool_use["name"] == "get_drink_logs":
-                        limit = tool_use["input"].get("limit", 10)
-                        result = get_drink_logs(principal, limit=limit)
-                        tool_results.append(
-                            {
-                                "toolResult": {
-                                    "toolUseId": tool_use["toolUseId"],
-                                    "content": [{"json": {"results": result}}],
-                                }
-                            }
-                        )
-                    elif tool_use["name"] == "search_drink_logs":
-                        brand = tool_use["input"]["brand"]
-                        limit = tool_use["input"].get("limit", 10)
+        if stop_reason != "tool_use":
+            print(assistant_message["content"])
+            return
 
-                        result = search_drink_logs(
-                            principal,
-                            brand=brand,
-                            limit=limit,
-                        )
-                        tool_results.append(
-                            {
-                                "toolResult": {
-                                    "toolUseId": tool_use["toolUseId"],
-                                    "content": [{"json": {"results": result}}],
-                                }
-                            }
-                        )
-                    else:
-                        tool_results.append(
-                            {
-                                "toolResult": {
-                                    "toolUseId": tool_use["toolUseId"],
-                                    "content": [{"json": {"results": []}}],
-                                }
-                            }
-                        )
-        else:
-            print("unknown stop reason")
-            break
+        tool_results = []
+        for block in assistant_message["content"]:
+            if "toolUse" in block:
+                tool_use = block["toolUse"]
+                print("tool:", tool_use["name"])
+                print("input:", tool_use["input"])
+                tool_results.append(execute_tool(principal, block["toolUse"]))
         messages.append({"role": "user", "content": tool_results})
-    else:
-        print("Exceed MAX_STEP count")
+    print("Exceed MAX_STEP count")
 
 
-def get_drink_logs(principal: Principal, limit: int = 10):
-    dynamodb = get_dynamodb_resource()
-    s3 = get_s3_client()
-    store = drink_log_store.DrinkLogStore.from_environment(dynamodb, s3)
-    records, _ = store.get_timeline(
-        principal.user_id,
-        limit,
-        None,
-        {},
-    )
-    return [
-        {
-            "id": record.get("id"),
-            "brand_text": record.get("brand_text"),
-            "serving_style": record.get("serving_style"),
-            "store": (record.get("store") or {}).get("name"),
-            "datetime": record.get("datetime"),
-            "notes": record.get("notes"),
-            "rating": record.get("rating"),
+def error_result(tool_use_id: str, message: str) -> dict[str, Any]:
+    return {
+        "toolResult": {
+            "toolUseId": tool_use_id,
+            "content": [{"text": message}],
+            "status": "error",
         }
-        for record in records
-    ]
+    }
 
 
-def search_drink_logs(principal: Principal, brand: str | None = None, limit: int = 10):
-    dynamodb = get_dynamodb_resource()
-    s3 = get_s3_client()
-    filters = {}
-    if brand:
-        filters["brand"] = brand
+class ToolInputError(Exception):
+    """ """
 
-    store = drink_log_store.DrinkLogStore.from_environment(dynamodb, s3)
-    records, _ = store.get_timeline(
-        principal.user_id,
-        limit,
-        None,
-        filters,
-    )
-    return [
-        {
-            "id": record.get("id"),
-            "brand_text": record.get("brand_text"),
-            "serving_style": record.get("serving_style"),
-            "store": (record.get("store") or {}).get("name"),
-            "datetime": record.get("datetime"),
-            "notes": record.get("notes"),
-            "rating": record.get("rating"),
+
+def read_text(params: dict[str, Any], key: str) -> str:
+    value = params.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise ToolInputError(f"{key} is required")
+    return value.strip()
+
+
+def read_limit(params: dict[str, Any]) -> int:
+    value = params.get("limit", DEFAULT_LIMIT)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ToolInputError("limit must be an integer")
+    return max(1, min(value, MAX_LIMIT))
+
+
+def execute_tool(principal: Principal, tool_use: dict[str, Any]) -> dict[str, Any]:
+    tool_use_id = tool_use["toolUseId"]
+    tool = TOOLS.get(tool_use["name"])
+    if tool is None:
+        return error_result(tool_use_id, f"unknown tool: {tool_use['name']}")
+
+    try:
+        results = tool.run(principal, tool_use.get("input") or {})
+    except ToolInputError as e:
+        return error_result(tool_use_id, str(e))
+    except Exception:
+        traceback.print_exc()
+        return error_result(tool_use_id, "tool execution failed")
+
+    return success_result(tool_use_id, results)
+
+
+def success_result(tool_use_id: str, results: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "toolResult": {
+            "toolUseId": tool_use_id,
+            "content": [{"json": {"results": results}}],
         }
-        for record in records
-    ]
-
-
-def search_whiskeys(query):
-    service = WhiskeySearchService()
-
-    items, _ = service.search_whiskeys(
-        query,
-        limit=5,
-        max_pages=1,
-    )
-    return [
-        {
-            "name": item.get("name"),
-            "distillery": item.get("distillery"),
-            "region": item.get("region"),
-            "type": item.get("type"),
-            "age": item.get("age"),
-        }
-        for item in items
-    ]
+    }
 
 
 # principal = Principal(user_id="dumy-user")
@@ -265,3 +266,5 @@ def search_whiskeys(query):
 principal4 = Principal(user_id="67f45ae8-9091-70df-7d98-237f59f7df1a")
 # print(search_drink_logs(principal4, brand="アラン", limit=10))
 run_agent("最近飲んだアランを教えて", principal4)
+run_agent("最近飲んだウイスキーを3件 を教えて", principal4)
+run_agent("タリスカーを探して", principal4)
