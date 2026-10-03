@@ -93,6 +93,8 @@ def run_agent(message: str, principal: Principal):
             for block in assistant_message["content"]:
                 if "toolUse" in block:
                     tool_use = block["toolUse"]
+                    print("tool:", tool_use["name"])
+                    print("input:", tool_use["input"])
                     if tool_use["name"] == "search_whiskeys":
                         query = tool_use["input"]["query"]
                         result = search_whiskeys(query)
@@ -158,6 +160,34 @@ def get_drink_logs(principal: Principal, limit: int = 10):
     ]
 
 
+def search_drink_logs(principal: Principal, brand: str | None = None, limit: int = 10):
+    dynamodb = get_dynamodb_resource()
+    s3 = get_s3_client()
+    filters = {}
+    if brand:
+        filters["brand"] = brand
+
+    store = drink_log_store.DrinkLogStore.from_environment(dynamodb, s3)
+    records, _ = store.get_timeline(
+        principal.user_id,
+        limit,
+        None,
+        filters,
+    )
+    return [
+        {
+            "id": record.get("id"),
+            "brand_text": record.get("brand_text"),
+            "serving_style": record.get("serving_style"),
+            "store": record.get("store", {}).get("name"),
+            "datetime": record.get("datetime"),
+            "notes": record.get("notes"),
+            "rating": record.get("rating"),
+        }
+        for record in records
+    ]
+
+
 def search_whiskeys(query):
     service = WhiskeySearchService()
 
@@ -185,4 +215,4 @@ def search_whiskeys(query):
 # print(get_drink_logs(principal2))
 
 principal3 = Principal(user_id="67f45ae8-9091-70df-7d98-237f59f7df1a")
-run_agent("最近飲んだウイスキーを3件教えて", principal3)
+run_agent("最近飲んだアランを教えて", principal3)
