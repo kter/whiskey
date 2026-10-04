@@ -7,13 +7,25 @@ Base URLs:
 
 ## Authentication
 
-Private drink-log routes require a Cognito **ID token**.
+Private drink-log and chat routes require a Cognito **ID token**.
 
 ```http
 Authorization: Bearer <id_token>
 ```
 
 Access tokens are not accepted. API Gateway validates the token first, and each authenticated Lambda rechecks `aud` and `token_use=id`. Local invocations without API Gateway perform complete RS256, expiry, issuer, audience, and token-use validation.
+
+## Chat
+
+`POST /api/chat` submits `{message, history, session_id, request_id}`. IDs are canonical UUIDs. The question is at most 2000 characters. History contains complete alternating user/assistant text pairs as `{role, text}`, starting with user, at most 10 messages and 12000 characters total. Each history message is at most 8000 characters. User IDs, tool calls and model configuration are supplied by the server, not accepted from the browser.
+
+HTTP 202 returns `{request_id, status}`. Reusing the same request ID and payload returns the existing job without consuming another Usage Budget slot. Reusing an ID with a different payload returns 409. Submission failures count toward usage.
+
+`GET /api/chat/{request_id}` returns `{request_id, status}` with `answer` when complete or `error` when failed. Status is `pending`, `running`, `complete` or `failed`. Foreign, missing and expired jobs return 404. Both routes return `Cache-Control: private, no-store`.
+
+Chat tools are read-only: catalog name search, recent Drink Logs and Drink Log brand search. Bounded searches explicitly report partial results. Limits reset in UTC: 20 questions per user/day, 50 globally/day and 300 globally/month. Daily exhaustion returns 429; monthly exhaustion returns 503. There are at most five model calls and five tool executions per question.
+
+The `/logs` chat keeps its visible conversation in component memory and discards it on navigation, reload, reset or user change. Persistent AgentCore Memory is disabled. Temporary job state expires after 15 minutes and is explicitly unavailable before eventual DynamoDB TTL cleanup; this does not control infrastructure log retention. Requests taking over 150 seconds are reported as failed.
 
 ## Pagination
 

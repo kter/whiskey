@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, type ComponentPublicInstance
 import { mergeDrinkLogs, sortDrinkLogs, useDrinkLogs, type DrinkLog } from '~/composables/useDrinkLogs'
 import { useAuth } from '~/composables/useAuth'
 import { useVisiblePlaceResolver } from '~/composables/useVisiblePlaceResolver'
+import DrinkLogChat from '~/components/DrinkLogChat.vue'
 import {
   formatLocalLogTime,
   groupDrinkLogsByLocalDate,
@@ -128,6 +129,8 @@ onBeforeUnmount(() => sentinelObserver?.disconnect())
         一杯を記録
       </NuxtLink>
     </header>
+
+    <DrinkLogChat v-if="currentUserId" />
 
     <form class="mt-6 rounded-lg border border-stone-700 bg-stone-800 p-4" @submit.prevent="applyFilters">
       <div class="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">

@@ -10,6 +10,8 @@ DynamoDB Local、MinIO、既存 Lambda ハンドラを呼び出す FastAPI ア�
 
 実 AWS へのアクセスは不要です。ローカル環境では `minioadmin` / `minioadmin` を MinIO と boto3 の両方に使い、サービス別 endpoint だけを設定します。`AWS_ENDPOINT_URL` は使用しません。
 
+チャットはdev環境または本番環境で動作確認してください。ローカルのチャットAPIは認証を確認したうえで503と案内文を返し、AgentCoreやLambdaを呼び出しません。
+
 ## 起動
 
 ```bash

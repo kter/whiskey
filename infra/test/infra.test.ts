@@ -29,6 +29,103 @@ type Synthesized = {
 const DEV_ACCOUNT = '031921999648';
 const PRD_ACCOUNT = '401731371959';
 
+describe('Drink Log chat infrastructure', () => {
+  test('chat submission and polling require the existing Cognito authorizer', () => {
+    const { json } = createAppStack('dev');
+    const methods = apiMethods(json);
+    for (const route of ['POST /api/chat', 'GET /api/chat/{request_id}']) {
+      expect(methods[route]?.AuthorizationType).toBe('COGNITO_USER_POOLS');
+      expect(methods[route]?.AuthorizerId).toEqual(methods['GET /api/drink-logs']?.AuthorizerId);
+    }
+  });
+
+  test('the harness disables Memory and exposes only the three read-only tools with bounded model work', () => {
+    const { json } = createAppStack('dev');
+    const harnesses = resourcesOf(json, 'AWS::BedrockAgentCore::Harness');
+    expect(harnesses).toHaveLength(1);
+    const harness = harnesses[0][1].Properties!;
+    expect(harness.Memory).toEqual({ Disabled: {} });
+    expect(harness.AllowedTools).toEqual(['search_whiskeys', 'get_drink_logs', 'search_drink_logs']);
+    expect(harness.Tools.map((tool: Record<string, any>) => [tool.Type, tool.Name])).toEqual([
+      ['inline_function', 'search_whiskeys'], ['inline_function', 'get_drink_logs'], ['inline_function', 'search_drink_logs'],
+    ]);
+    const schema = harness.Tools[0].Config.InlineFunction.InputSchema;
+    expect(schema).toEqual(expect.objectContaining({ type: 'object', required: ['query'], additionalProperties: false }));
+    expect(schema.properties).not.toHaveProperty('user_id');
+    expect(harness.Model.BedrockModelConfig).toEqual({
+      ModelId: 'jp.amazon.nova-2-lite-v1:0', ApiFormat: 'converse_stream', MaxTokens: 1024, Temperature: 0.2,
+    });
+    expect(harness.MaxIterations).toBe(5);
+    expect(harness.MaxTokens).toBe(1024);
+    expect(harness.TimeoutSeconds).toBe(100);
+    expect(resourcesOf(json, 'AWS::BedrockAgentCore::Memory')).toHaveLength(0);
+  });
+
+  test('chat roles separate budget admission, inference, and read-only tool data access', () => {
+    const { json } = createAppStack('dev');
+    const api = rolePolicy(json, 'agent-chat-api-role-dev');
+    const worker = rolePolicy(json, 'agent-chat-worker-role-dev');
+    const tool = rolePolicy(json, 'agent-chat-tools-role-dev');
+    const harness = rolePolicy(json, 'agent-chat-harness-role-dev');
+    const databaseStatements = (statements: Record<string, any>[]) => statements.filter((statement) => actions(statement).some((action) => action.startsWith('dynamodb:')));
+    expect(databaseStatements(api)).toEqual([expect.objectContaining({
+      Action: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem'],
+      Condition: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['chat-job/*/*', 'chat-counter/*'] }, Null: { 'dynamodb:LeadingKeys': 'false' } },
+    })]);
+    expect(databaseStatements(worker)).toEqual([expect.objectContaining({
+      Action: ['dynamodb:GetItem', 'dynamodb:UpdateItem'],
+      Condition: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['chat-job/*/*'] }, Null: { 'dynamodb:LeadingKeys': 'false' } },
+    })]);
+    expect(databaseStatements(tool).flatMap(actions).sort()).toEqual(['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:Scan']);
+    expect(JSON.stringify(databaseStatements(tool))).toContain('/index/UserDatetimeIndex');
+    expect(tool.flatMap(actions).filter((action) => action.startsWith('s3:'))).toEqual(['s3:GetObject']);
+    expect(api.flatMap(actions).some((action) => action.startsWith('bedrock'))).toBe(false);
+    expect(tool.flatMap(actions).some((action) => action.startsWith('bedrock') || action === 'lambda:InvokeFunction')).toBe(false);
+    expect(worker.flatMap(actions).filter((action) => action.startsWith('bedrock'))).toEqual([
+      'bedrock-agentcore:InvokeHarness', 'bedrock-agentcore:InvokeAgentRuntime',
+    ]);
+    const harnessId = resourcesOf(json, 'AWS::BedrockAgentCore::Harness')[0][0];
+    expect(worker.find((statement) => actions(statement).includes('bedrock-agentcore:InvokeHarness'))?.Resource)
+      .toEqual({ 'Fn::GetAtt': [harnessId, 'Arn'] });
+    const modelStatements = harness.filter((statement) => actions(statement).includes('bedrock:InvokeModel'));
+    expect(modelStatements).toHaveLength(2);
+    expect(modelStatements.every((statement) => actions(statement).includes('bedrock:InvokeModelWithResponseStream'))).toBe(true);
+    const expectedProfile = { 'Fn::Join': ['', ['arn:', { Ref: 'AWS::Partition' }, `:bedrock:ap-northeast-1:${DEV_ACCOUNT}:inference-profile/jp.amazon.nova-2-lite-v1:0`]] };
+    expect(modelStatements[0].Resource).toEqual(expectedProfile);
+    expect(modelStatements[1].Resource).toEqual([
+      'arn:aws:bedrock:ap-northeast-1::foundation-model/amazon.nova-2-lite-v1:0',
+      'arn:aws:bedrock:ap-northeast-3::foundation-model/amazon.nova-2-lite-v1:0',
+    ]);
+    expect(modelStatements[1].Condition.StringEquals['bedrock:InferenceProfileArn'])
+      .toEqual([expectedProfile]);
+    expect(harness.flatMap(actions).filter((action) => action.startsWith('bedrock-agentcore:'))
+      .some((action) => /Memory|Event|RuntimeCommand|Browser|CodeInterpreter/.test(action))).toBe(false);
+  });
+
+  test('chat functions share exact existing service sources and configure the agreed usage budget', () => {
+    const { json, outdir } = createAppStack('dev');
+    const api = lambdaByName(json, 'agent-chat-api-dev').Properties!;
+    const worker = lambdaByName(json, 'agent-chat-worker-dev').Properties!;
+    const tool = lambdaByName(json, 'agent-chat-tools-dev').Properties!;
+    expect(api.Environment.Variables).toEqual(expect.objectContaining({
+      CHAT_USER_DAILY_LIMIT: '20', CHAT_GLOBAL_DAILY_LIMIT: '50', CHAT_GLOBAL_MONTHLY_LIMIT: '300',
+    }));
+    expect([api.Handler, api.Timeout, worker.Handler, worker.Timeout, tool.Handler, tool.Timeout])
+      .toEqual(['index.lambda_handler', 10, 'worker.lambda_handler', 120, 'tools.lambda_handler', 15]);
+    expect([api, worker, tool].every((fn) => JSON.stringify(fn.Layers) === JSON.stringify(api.Layers))).toBe(true);
+    expect(api.Layers).toHaveLength(1);
+    const assetHash = JSON.stringify(tool.Code).match(/[a-f0-9]{64}/)![0];
+    const asset = path.join(outdir, `asset.${assetHash}`);
+    for (const source of ['drink-logs/drink_log_store.py', 'drink-logs/lifecycle.py', 'whiskeys-search/python/whiskey_search_service.py']) {
+      expect(fs.readFileSync(path.join(asset, path.basename(source)), 'utf8'))
+        .toBe(fs.readFileSync(path.join(__dirname, '../../lambda', source), 'utf8'));
+    }
+    expect(fs.existsSync(path.join(asset, 'tool_specs.json'))).toBe(true);
+    expect(resourcesOf(json, 'AWS::Lambda::EventInvokeConfig')[0][1].Properties)
+      .toEqual(expect.objectContaining({ MaximumRetryAttempts: 0, MaximumEventAgeInSeconds: 60 }));
+  });
+});
+
 function createAppStack(
   environment: 'dev' | 'prd',
   options: { customDomain?: boolean; googleAuth?: boolean; extraOrigins?: string } = {},
@@ -192,6 +289,8 @@ describe('stateful resource lifecycle and storage security', () => {
 
 describe('API Gateway authentication, CORS, and defenses', () => {
   const authenticated = [
+    'POST /api/chat',
+    'GET /api/chat/{request_id}',
     'POST /api/drink-logs/upload-url',
     'POST /api/drink-logs/analyze',
     'POST /api/drink-logs/places',
@@ -1112,6 +1211,8 @@ describe('application builder environment wiring', () => {
     const expectedFunctionNames = [
       'drink-log-analyze-prd',
       'drink-log-places-prd',
+      'agent-chat-worker-prd',
+      'agent-chat-tools-prd',
     ];
     const lambdaErrorsAlarms = alarms.filter((alarm) =>
       alarm.AlarmName.startsWith('whiskey-prd-lambda-errors-'));
