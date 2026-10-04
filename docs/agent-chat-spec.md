@@ -17,6 +17,10 @@ The API extracts the user from validated Cognito claims. Worker loads the truste
 
 Tool output is bounded and contains only public whiskey/Drink Log fields. Return an explicit partial-results marker whenever a bounded search leaves more data unsearched. Answers use tool results rather than inventing missing catalog facts.
 
+Inline tools use `@search_whiskeys`, `@get_drink_logs`, and `@search_drink_logs` in `allowedTools`. Plain names match builtins and hide these inline tools. This was verified against the dev harness: the plain name produced a text-only answer, while `@search_whiskeys` returned a real `tool_use` event.
+
+Tool results are JSON serialized into text content. The live managed harness rejects JSON content on continuation (`unsupported type json_`) even though the SDK accepts that shape. Stream assembly follows message roles and boundaries so echoed user/tool-result events never become assistant answers.
+
 ## Usage Budget
 
 Atomic admission limits: 20 questions/user/day, 50 globally/day, 300 globally/month (UTC). Admission and job creation form one transaction. Failures count toward limits. At most five model invocations and five tool executions per question; at most 1024 output tokens per invocation. Each question is at most 2000 characters; text history is at most 10 messages/12000 characters, with at most 8000 characters per history message. Total model tool-result content is bounded. Worker timeout bounds runtime. Quotas are request/token/work bounds, not a fixed currency estimate.

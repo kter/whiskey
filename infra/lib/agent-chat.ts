@@ -139,7 +139,8 @@ export class AgentChat extends Construct {
         ExecutionRoleArn: harnessRole.roleArn,
         Memory: { Disabled: {} },
         Model: { BedrockModelConfig: { ModelId: 'jp.amazon.nova-2-lite-v1:0', ApiFormat: 'converse_stream', MaxTokens: 1024, Temperature: 0.2 } },
-        AllowedTools: toolNames,
+        // Inline tools are named tool servers; plain names match builtins only.
+        AllowedTools: toolNames.map((name) => `@${name}`),
         MaxIterations: 5,
         MaxTokens: 1024,
         TimeoutSeconds: 100,

@@ -27,8 +27,14 @@ class Harness:
                 {"contentBlockDelta": {"contentBlockIndex": 0, "delta": {"toolUse": {"input": "3}"}}}},
                 {"messageStop": {"stopReason": "tool_use"}},
             ]}
-        result = request["messages"][-1]["content"][0]["toolResult"]["content"][0]["json"]
-        return {"stream": text_stream(f"{result['results'][0]['brand_text']}を飲みました。")}
+        result = json.loads(request["messages"][-1]["content"][0]["toolResult"]["content"][0]["text"])
+        return {"stream": [
+            {"messageStart": {"role": "user"}},
+            {"contentBlockDelta": {"contentBlockIndex": 0, "delta": {"toolResult": [{"text": json.dumps(result)}]}}},
+            {"messageStop": {"stopReason": "tool_result"}},
+            {"messageStart": {"role": "assistant"}},
+            *text_stream(f"{result['results'][0]['brand_text']}を飲みました。"),
+        ]}
 
 
 class ToolLambda:
@@ -48,7 +54,21 @@ def test_inline_tools_use_the_trusted_principal_and_resume_with_results():
     answer = agent.run({"user_id": "alice", "message": "最近の3件", "history": [], "session_id": "00000000-0000-4000-8000-000000000001"})
     assert answer == "aliceのアランを飲みました。"
     assert tools.requests == [{"principal": {"user_id": "alice"}, "name": "get_drink_logs", "params": {"limit": 3}}]
-    assert all(r["allowedTools"] == ["search_whiskeys", "get_drink_logs", "search_drink_logs"] for r in harness.requests)
+    assert all(r["allowedTools"] == ["@search_whiskeys", "@get_drink_logs", "@search_drink_logs"] for r in harness.requests)
+
+
+def test_stream_keeps_only_the_last_assistant_message():
+    stream = [
+        {"messageStart": {"role": "assistant"}},
+        *text_stream("検索します。"),
+        {"messageStart": {"role": "user"}},
+        *text_stream("内部ツール結果"),
+        {"messageStart": {"role": "assistant"}},
+        *text_stream("最終回答"),
+    ]
+    answer, reason = worker.read_stream(stream)
+    assert answer == {"role": "assistant", "content": [{"text": "最終回答"}]}
+    assert reason == "end_turn"
 
 
 @pytest.mark.parametrize("fragment,reason", [("", "end_turn"), ("truncated", "max_tokens")])

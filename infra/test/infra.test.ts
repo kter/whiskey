@@ -45,7 +45,7 @@ describe('Drink Log chat infrastructure', () => {
     expect(harnesses).toHaveLength(1);
     const harness = harnesses[0][1].Properties!;
     expect(harness.Memory).toEqual({ Disabled: {} });
-    expect(harness.AllowedTools).toEqual(['search_whiskeys', 'get_drink_logs', 'search_drink_logs']);
+    expect(harness.AllowedTools).toEqual(['@search_whiskeys', '@get_drink_logs', '@search_drink_logs']);
     expect(harness.Tools.map((tool: Record<string, any>) => [tool.Type, tool.Name])).toEqual([
       ['inline_function', 'search_whiskeys'], ['inline_function', 'get_drink_logs'], ['inline_function', 'search_drink_logs'],
     ]);

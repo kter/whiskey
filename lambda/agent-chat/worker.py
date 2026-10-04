@@ -31,10 +31,19 @@ def read_stream(stream):
     blocks = {}
     reason = None
     size = 0
+    role = "assistant"
     try:
         for event in stream:
             if any(key.endswith("Exception") or key.endswith("Error") for key in event):
                 raise RuntimeError("Harness stream failed")
+            if "messageStart" in event:
+                role = event["messageStart"]["role"]
+                if role == "assistant":
+                    blocks, reason = {}, None
+                continue
+            # Continuations echo the user toolResult before assistant inference.
+            if role != "assistant":
+                continue
             if "contentBlockStart" in event:
                 start = event["contentBlockStart"]
                 tool = start.get("start", {}).get("toolUse")
@@ -92,7 +101,10 @@ class HarnessAgent:
         result = json.loads(raw)
         if result.get("error"):
             return {"toolResult": {"toolUseId": call_id, "status": "error", "content": [{"text": result["error"]}]}}
-        return {"toolResult": {"toolUseId": call_id, "status": "success", "content": [{"json": result}]}}
+        # Harness inline continuations accept text; JSON content produces an
+        # unsupported json_ event in the managed runtime despite the API shape.
+        return {"toolResult": {"toolUseId": call_id, "status": "success",
+                               "content": [{"text": json.dumps(result, ensure_ascii=False)}]}}
 
     def run(self, job):
         messages = [{"role": item["role"], "content": [{"text": item["text"]}]} for item in job["history"]]
@@ -105,7 +117,8 @@ class HarnessAgent:
                 raise TimeoutError("Chat deadline exceeded")
             session = hashlib.sha256(f"{job['user_id']}:{job['session_id']}".encode()).hexdigest()
             response = self.harness.invoke_harness(harnessArn=self.harness_arn, runtimeSessionId=session,
-                actorId=job["user_id"], messages=messages, tools=TOOL_SPECS, allowedTools=TOOL_NAMES,
+                actorId=job["user_id"], messages=messages, tools=TOOL_SPECS,
+                allowedTools=[f"@{name}" for name in TOOL_NAMES],
                 maxIterations=1, maxTokens=1024, timeoutSeconds=min(remaining, 30), systemPrompt=SYSTEM)
             assistant, reason = read_stream(response["stream"])
             messages.append(assistant)
