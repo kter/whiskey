@@ -942,21 +942,33 @@ def replay_brand_results(records: Sequence[Mapping[str, Any]]) -> list[dict[str,
     return replayed_records
 
 
-def overlay_serving_style_labels(
+REPLAY_TRUTH_FIELDS = (
+    "expected_brand_key",
+    "expected_whiskey_id",
+    "expected_canonical_name",
+    "expected_serving_style",
+)
+
+
+def overlay_manifest_truth(
     records: Sequence[Mapping[str, Any]], manifest: Mapping[str, Any]
 ) -> list[dict[str, Any]]:
-    """Copy current human serving labels by image, leaving brand truth unchanged."""
+    """Score stored and replayed records against the current human labels, matched by image."""
     cases_by_image = {case["image"]: case for case in manifest["cases"]}
     overlaid = []
     unmatched = []
     for record in records:
         case = dict(record["case"])
-        case.pop("expected_serving_style", None)
         current = cases_by_image.get(case["image"])
         if current is None:
+            case.pop("expected_serving_style", None)
             unmatched.append(case["image"])
-        elif "expected_serving_style" in current:
-            case["expected_serving_style"] = current["expected_serving_style"]
+        else:
+            for field in REPLAY_TRUTH_FIELDS:
+                if field in current:
+                    case[field] = current[field]
+                else:
+                    case.pop(field, None)
         overlaid.append({**record, "case": case})
     print(f"Stored cases without a manifest match: {len(unmatched)}")
     for image in unmatched:
@@ -1628,7 +1640,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.json_path and args.json_path.resolve() == manifest_path.resolve():
                 raise ValueError("--json must not overwrite the manifest")
             source_document, stored_records = load_replay_results(args.replay)
-            stored_records = overlay_serving_style_labels(stored_records, load_manifest(manifest_path))
+            stored_records = overlay_manifest_truth(stored_records, load_manifest(manifest_path))
             replayed_records = replay_brand_results(stored_records)
             print_replay_report(stored_records, replayed_records)
             if args.json_path:
