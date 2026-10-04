@@ -605,6 +605,14 @@ describe('Lambda bundling and shared layer', () => {
     expect(analyzeEnv).toEqual(expect.objectContaining({
       BEDROCK_MODEL_ID: 'jp.amazon.nova-2-lite-v1:0',
       BEDROCK_MODEL_ALLOWLIST: 'jp.amazon.nova-2-lite-v1:0,jp.anthropic.claude-haiku-4-5-20251001-v1:0,jp.anthropic.claude-sonnet-4-6',
+      // dev は実写真評価のため引き上げている（infra/config/environments.ts）。
+      ANALYZE_USER_DAILY_LIMIT: '100',
+      ANALYZE_GLOBAL_DAILY_LIMIT: '200',
+      ANALYZE_GLOBAL_MONTHLY_LIMIT: '1000',
+    }));
+    const prdAnalyzeEnv = lambdaByName(createAppStack('prd').json, 'drink-log-analyze-prd')
+      .Properties?.Environment.Variables;
+    expect(prdAnalyzeEnv).toEqual(expect.objectContaining({
       ANALYZE_USER_DAILY_LIMIT: '20',
       ANALYZE_GLOBAL_DAILY_LIMIT: '50',
       // Sonnet 4.6 の単価が確定するまでの暫定値。docs/COST_MATRIX.md 参照。

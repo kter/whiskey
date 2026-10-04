@@ -18,7 +18,7 @@ import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import * as fs from 'fs';
 import * as path from 'path';
-import { environments } from '../config/environments';
+import { DEFAULT_ANALYZE_LIMITS, environments } from '../config/environments';
 import { BedrockModel, bedrockInvokeStatements, bedrockModelAllowlist } from './bedrock-models';
 
 export interface WhiskeyInfraStackProps extends cdk.StackProps {
@@ -504,6 +504,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
       },
     });
 
+    const analyzeLimits = envConfig.analyzeLimits ?? DEFAULT_ANALYZE_LIMITS;
     const drinkLogAnalyzeLambda = new lambda.Function(this, 'DrinkLogAnalyzeFunction', {
       functionName: lambdaFunctionNames.drinkLogAnalyze,
       runtime: lambda.Runtime.PYTHON_3_11,
@@ -521,13 +522,13 @@ export class WhiskeyInfraStack extends cdk.Stack {
         WHISKEY_SEARCH_TABLE: whiskeySearchTable.tableName,
         BEDROCK_MODEL_ID: 'jp.amazon.nova-2-lite-v1:0',
         BEDROCK_MODEL_ALLOWLIST: bedrockModelAllowlist(bedrockModels).join(','),
-        ANALYZE_USER_DAILY_LIMIT: '20',
-        ANALYZE_GLOBAL_DAILY_LIMIT: '50',
+        ANALYZE_USER_DAILY_LIMIT: String(analyzeLimits.userDaily),
+        ANALYZE_GLOBAL_DAILY_LIMIT: String(analyzeLimits.globalDaily),
         // Sonnet 4.6 の東京単価は Pricing API 未掲載のため確定できない。
         // 1000 回のままだと docs/COST_MATRIX.md の月次 $15 枠を下限見積でも
         // 超える（analyze だけで $12.7、places/ストレージと合わせて $18.3）。
         // 実請求で単価が判明するまでの暫定値。詳細は COST_MATRIX 参照。
-        ANALYZE_GLOBAL_MONTHLY_LIMIT: '300',
+        ANALYZE_GLOBAL_MONTHLY_LIMIT: String(analyzeLimits.globalMonthly),
         // Keep in sync with tests/test_drink_log_contract.py.
         IMAGE_MAX_BYTES: '1572864',
         UPLOAD_MAX_BYTES: '3670016',

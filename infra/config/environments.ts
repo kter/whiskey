@@ -23,7 +23,15 @@ export interface EnvironmentConfig {
     places?: number;
     reconciler?: number;
   };
+  /** Analyze の Usage Budget。省略時は本番と同じ既定値（user 20 / global 50 / monthly 300）。 */
+  analyzeLimits?: {
+    userDaily: number;
+    globalDaily: number;
+    globalMonthly: number;
+  };
 }
+
+export const DEFAULT_ANALYZE_LIMITS = { userDaily: 20, globalDaily: 50, globalMonthly: 300 } as const;
 
 export const environments: Record<string, EnvironmentConfig> = {
   dev: {
@@ -44,6 +52,9 @@ export const environments: Record<string, EnvironmentConfig> = {
     gatewayErrorOrigin: 'https://dev.whiskeybar.site',
     retainResources: false,
     allowedOrigins: ['https://dev.whiskeybar.site', 'http://localhost:3000'],
+    // 2026-10-04: 実写真評価（#55 / #60 / #67）が既定の上限で止まるため、dev のみ引き上げ。
+    // 費用の上界は globalMonthly が担う。#67 のモデル評価が終わったら既定値に戻す。
+    analyzeLimits: { userDaily: 100, globalDaily: 200, globalMonthly: 1000 },
     // 2026-07-21: このアカウントの Lambda 同時実行上限は 10（絶対最低値）で、
     // 予約並列度を 1 でも設定すると未予約枠が 10 を割り拒否される。
     // よって D14 層② の予約並列度は無効化（費用の硬い上限は AppState 原子カウンタ
