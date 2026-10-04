@@ -38,3 +38,13 @@ Atomic admission limits: 20 questions/user/day, 50 globally/day, 300 globally/mo
 - [InvokeHarness](https://docs.aws.amazon.com/bedrock-agentcore/latest/APIReference/API_InvokeHarness.html)
 - [Harness Memory](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-memory.html)
 - [Harness CloudFormation resource](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-bedrockagentcore-harness.html)
+
+## Deployment verification — 2026-10-04
+
+- Implementation commits: `4072fc2`, `27474b1` on `main`.
+- Python: 437 passed. Frontend: lint/typecheck passed, 185 tests passed. Infrastructure: TypeScript build passed, 50 tests passed. Standards/spec reviews found no remaining material issues.
+- Account-verified `infra/scripts/deploy.sh` deployed dev first, then production: application, observability, frontend. Production read-only diff showed the approved chat resources and alarms; existing data tables/buckets were unchanged. Existing Lambda code/common-layer assets were refreshed, and the API deployment/stage gained the two chat routes and throttles.
+- Both environments: English/Japanese public search returned 200; unauthenticated chat POST/GET returned 401.
+- Authenticated browser checks passed for all three tools in both environments. Production catalog search returned registered Bowmore names; recent-log lookup matched the latest displayed brand; brand-history search matched the three displayed Arran records. Production worker/tool execution logs contained no errors during these checks.
+- Conversation reset passed in both environments. Navigating away from dev `/logs` and returning produced an empty conversation. No Drink Logs were created or modified by these checks.
+- Current presentation limitation: tools pass stored ISO timestamps (UTC) through to the model; chat replies can omit the timezone and therefore differ from the list's local-time display. Exact local-time formatting is not enforced by this implementation.
