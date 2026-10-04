@@ -1481,7 +1481,7 @@ def test_manifest_unhashable_serving_style_is_manifest_error(invalid):
         brand_eval.validate_manifest_data({"version": 1, "cases": [case]})
 
 
-def test_replay_overlays_current_serving_labels_only(tmp_path, capsys):
+def test_replay_overlays_current_manifest_truth(tmp_path, capsys):
     case = {**_case("bottle_front", "a"), "expected_brand_key": "stored-brand"}
     stale = {**_case("glass_only", None, "images/stale.jpg"), "expected_serving_style": "NEAT"}
     records = [_record(0, case, [], serving_style="ROCKS"), _record(1, stale, [])]
@@ -1497,8 +1497,9 @@ def test_replay_overlays_current_serving_labels_only(tmp_path, capsys):
     overall = written["metrics"]["overall"]
     assert overall["serving_style_labeled"] == 1
     assert overall["serving_style_accuracy"] == 1
-    assert written["results"][0]["case"]["expected_brand_key"] == "stored-brand"
+    assert written["results"][0]["case"]["expected_brand_key"] == "new-brand"
     assert "expected_serving_style" not in written["results"][1]["case"]
+    assert written["results"][1]["case"].get("expected_brand_key") == stale.get("expected_brand_key")
     assert "images/stale.jpg" in capsys.readouterr().out
     assert json.loads(source.read_text())["results"] == records
 

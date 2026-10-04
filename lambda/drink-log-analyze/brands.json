@@ -792,7 +792,9 @@
         "イチローズモルト",
         "イチローズ・モルト",
         "Ichiro's Malt",
-        "Ichiros Malt"
+        "Ichiros Malt",
+        "イチローズ",
+        "Ichiro's"
       ],
       "distillery_ja": "秩父蒸溜所",
       "distillery_en": "Chichibu Distillery",
@@ -852,7 +854,9 @@
         "大谷",
         "新潟亀田",
         "Otani",
-        "Niigata Kameda"
+        "Niigata Kameda",
+        "オータニ",
+        "Ohtani"
       ],
       "distillery_ja": "新潟亀田蒸溜所",
       "distillery_en": "Niigata Kameda Distillery",
@@ -1789,7 +1793,10 @@
         "Machrie Moor",
         "マクリムーア",
         "マクリー・ムーア",
-        "Macrie Moor"
+        "Macrie Moor",
+        "マックリー・ムーア",
+        "マックリームーア",
+        "Machri Moor"
       ],
       "distillery_ja": "アラン蒸留所",
       "distillery_en": "Isle of Arran Distillers",
