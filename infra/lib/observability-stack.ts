@@ -12,9 +12,10 @@ export interface ObservabilityStackProps extends cdk.StackProps {
   readonly restApiName: string;
   /**
    * Functions that get their own Errors alarm. Deliberately narrowed to the
-   * functions that spend money per invocation (Bedrock, Google Places), because
+   * functions that spend money per invocation (Bedrock, Google Places) and
+   * asynchronous chat execution, because those failures bypass the API 5xx alarm.
    * CloudWatch bills per metric referenced by an alarm and the account only gets
-   * 10 alarm metrics free. Failures elsewhere surface through the API 5xx alarm.
+   * 10 alarm metrics free. Synchronous failures elsewhere surface through the API 5xx alarm.
    */
   readonly errorAlarmFunctionNames: string[];
 }

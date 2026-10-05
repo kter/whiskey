@@ -129,6 +129,36 @@ class UsageBudget:
     def client(self) -> Any:
         return self.dynamodb.meta.client
 
+    def start_chat(self, user_id: str, job: Mapping[str, Any], *, now: datetime) -> bool:
+        """Atomically admit a new chat job; return False for an existing ID."""
+        current = now.astimezone(timezone.utc)
+        date, month = current.strftime("%Y-%m-%d"), current.strftime("%Y-%m")
+        scopes = (
+            (f"chat-counter/user/{user_id}/{date}", "CHAT_USER_DAILY_LIMIT", 20, 2, "daily"),
+            (f"chat-counter/global/{date}", "CHAT_GLOBAL_DAILY_LIMIT", 50, 2, "daily"),
+            (f"chat-counter/month/{month}", "CHAT_GLOBAL_MONTHLY_LIMIT", 300, 35, "monthly"),
+        )
+        writes = [{"Put": {"TableName": self.app_state_table_name, "Item": dict(job),
+                            "ConditionExpression": "attribute_not_exists(pk)"}}]
+        for key, setting, default, days, _scope in scopes:
+            limit = int(os.environ.get(setting, str(default)))
+            if limit < 1:
+                raise ValueError(f"{setting} must be positive")
+            writes.append(_counter_update(self.app_state_table_name, key, amount=1,
+                limit=limit, ttl=int((current + timedelta(days=days)).timestamp()),
+                now=self.timestamp_format(current)))
+        try:
+            transact_write_with_retry(self.client, writes)
+        except self.client.exceptions.TransactionCanceledException as exc:
+            reasons = exc.response.get("CancellationReasons", [])
+            if reasons and reasons[0].get("Code") == "ConditionalCheckFailed":
+                return False
+            for index, scope in enumerate(scopes, 1):
+                if index < len(reasons) and reasons[index].get("Code") == "ConditionalCheckFailed":
+                    raise UsageBudgetExceeded("chat", scope[-1]) from exc
+            raise
+        return True
+
     def reserve_public_scan(
         self,
         operation: str,

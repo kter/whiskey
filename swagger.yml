@@ -6,6 +6,61 @@ servers:
   - url: https://api.dev.whiskeybar.site
   - url: https://api.whiskeybar.site
 paths:
+  /api/chat:
+    post:
+      security: [{bearerAuth: []}]
+      summary: Submit a read-only catalog or Drink Log question
+      description: Questions count toward atomic UTC limits of 20 per user daily, 50 globally daily and 300 globally monthly. The request ID makes retries idempotent. Conversation history is text-only and is not saved as a persistent conversation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [message, history, session_id, request_id]
+              properties:
+                message: {type: string, minLength: 1, maxLength: 2000}
+                session_id: {type: string, format: uuid}
+                request_id: {type: string, format: uuid}
+                history:
+                  type: array
+                  maxItems: 10
+                  description: Complete user/assistant pairs, starting with user, at most 12000 characters total.
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [role, text]
+                    properties:
+                      role: {type: string, enum: [user, assistant]}
+                      text: {type: string, minLength: 1, maxLength: 8000}
+      responses:
+        '202':
+          description: Accepted or previously submitted job; poll the result route.
+          content: {application/json: {schema: {$ref: '#/components/schemas/ChatJob'}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '409': {description: Request ID reused with a different or expired question}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+  /api/chat/{request_id}:
+    get:
+      security: [{bearerAuth: []}]
+      summary: Poll the authenticated user's chat result
+      description: Results are private and no-store. Jobs expire after 15 minutes; pending/running jobs exceeding 150 seconds become failed.
+      parameters:
+        - name: request_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200':
+          description: Pending, running, complete with answer, or failed with error.
+          content: {application/json: {schema: {$ref: '#/components/schemas/ChatJob'}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {description: Unknown, foreign, or expired request}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
   /api/whiskeys:
     get:
       security: []
@@ -265,6 +320,14 @@ components:
         application/json:
           schema: {$ref: '#/components/schemas/Error'}
   schemas:
+    ChatJob:
+      type: object
+      required: [request_id, status]
+      properties:
+        request_id: {type: string, format: uuid}
+        status: {type: string, enum: [pending, running, complete, failed]}
+        answer: {type: string, description: Present when complete}
+        error: {type: string, description: Present when failed}
     Error:
       type: object
       required: [error]

@@ -1,0 +1,26 @@
+[
+  {
+    "type": "inline_function",
+    "name": "search_whiskeys",
+    "config": {"inlineFunction": {
+      "description": "ウイスキーを名前で検索する。結果がpartialの場合、検索範囲外にも該当銘柄がある可能性がある。",
+      "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "検索するウイスキー名", "minLength": 1, "maxLength": 200}}, "required": ["query"], "additionalProperties": false}
+    }}
+  },
+  {
+    "type": "inline_function",
+    "name": "get_drink_logs",
+    "config": {"inlineFunction": {
+      "description": "現在のユーザーの最近の飲酒記録を取得する。結果がpartialの場合は全件を調べていない。",
+      "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "description": "取得する最大件数", "minimum": 1, "maximum": 20}}, "additionalProperties": false}
+    }}
+  },
+  {
+    "type": "inline_function",
+    "name": "search_drink_logs",
+    "config": {"inlineFunction": {
+      "description": "現在のユーザーの飲酒履歴を銘柄名で検索する。結果がpartialの場合、検索範囲外にも該当履歴がある可能性がある。",
+      "inputSchema": {"type": "object", "properties": {"brand": {"type": "string", "description": "検索する銘柄名", "minLength": 1, "maxLength": 200}, "limit": {"type": "integer", "description": "取得する最大件数", "minimum": 1, "maximum": 20}}, "required": ["brand"], "additionalProperties": false}
+    }}
+  }
+]

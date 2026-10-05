@@ -112,6 +112,7 @@ DRINK_LOG_PLACES = load_lambda_module(
     "local_lambda_drink_log_places",
     "lambda/drink-log-analyze/places.py",
 )
+CHAT = load_lambda_module("local_lambda_agent_chat", "lambda/agent-chat/index.py")
 
 
 @dataclass
@@ -232,6 +233,26 @@ async def list_whiskeys(request: Request) -> Response:
 @app.get("/api/whiskeys/search/suggest")
 async def search_whiskeys(request: Request) -> Response:
     return await invoke(request, WHISKEY_SEARCH.lambda_handler)
+
+
+def local_chat_unavailable(event: dict[str, Any], context: LambdaContext) -> dict[str, Any]:
+    """Keep offline routes authenticated without calling AgentCore from local."""
+    user_id = CHAT.extract_user_id_from_event(event)
+    return CHAT.create_response(
+        503 if user_id else 401,
+        {"error": "チャットはdevまたは本番環境で利用できます。" if user_id else "Unauthorized"},
+        event=event, private=True,
+    )
+
+
+@app.post("/api/chat")
+async def submit_chat(request: Request) -> Response:
+    return await invoke(request, local_chat_unavailable)
+
+
+@app.get("/api/chat/{request_id}")
+async def poll_chat(request_id: str, request: Request) -> Response:
+    return await invoke(request, local_chat_unavailable, {"request_id": request_id})
 
 
 @app.post("/api/drink-logs/upload-url")

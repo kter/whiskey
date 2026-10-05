@@ -20,6 +20,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { DEFAULT_ANALYZE_LIMITS, environments } from '../config/environments';
 import { BedrockModel, bedrockInvokeStatements, bedrockModelAllowlist } from './bedrock-models';
+import { AgentChat } from './agent-chat';
 
 export interface WhiskeyInfraStackProps extends cdk.StackProps {
   environment: string;
@@ -50,7 +51,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
   public readonly imagesBucketName: string;
   public readonly drinkLogReconcilerFunctionName: string;
   public readonly restApiName: string;
-  /** Functions billed per invocation by an external service; each gets its own Errors alarm. */
+  /** Paid-service functions and asynchronous chat execution get dedicated Errors alarms. */
   public readonly errorAlarmFunctionNames: string[];
   private readonly settings: {
     environment: string;
@@ -139,7 +140,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
     });
 
     const { whiskeyListLambda, whiskeySearchLambda, drinkLogsLambda, drinkLogAnalyzeLambda,
-      drinkLogPlacesLambda, drinkLogReconcilerLambda } = this.createLambdaFunctions({
+      drinkLogPlacesLambda, drinkLogReconcilerLambda, commonLayer } = this.createLambdaFunctions({
       whiskeySearchTable, appStateTable, drinkLogsTable, imagesBucket, userPool, userPoolClient,
       listRole, searchRole, drinkLogsRole, drinkLogAnalyzeRole, drinkLogPlacesRole, drinkLogReconcilerRole,
       listLogGroup, searchLogGroup, drinkLogsLogGroup, drinkLogAnalyzeLogGroup, drinkLogPlacesLogGroup,
@@ -149,9 +150,15 @@ export class WhiskeyInfraStack extends cdk.Stack {
 
     this.createReconcilerSchedule(drinkLogReconcilerLambda);
 
+    const chat = new AgentChat(this, 'AgentChat', {
+      environment, retainResources, allowedOrigins, appStateTable, whiskeySearchTable, drinkLogsTable,
+      imagesBucket, userPool, userPoolClient, commonLayer,
+    });
+    this.errorAlarmFunctionNames.push(`agent-chat-worker-${environment}`, `agent-chat-tools-${environment}`);
+
     const api = this.createRestApi({
       userPool, userPoolClient, whiskeyListLambda, whiskeySearchLambda, drinkLogsLambda,
-      drinkLogAnalyzeLambda, drinkLogPlacesLambda,
+      drinkLogAnalyzeLambda, drinkLogPlacesLambda, chatLambda: chat.apiFunction,
     });
 
     this.createCustomDomainRecordsAndOutputs({
@@ -578,7 +585,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
     });
     return {
       whiskeyListLambda, whiskeySearchLambda, drinkLogsLambda, drinkLogAnalyzeLambda,
-      drinkLogPlacesLambda, drinkLogReconcilerLambda,
+      drinkLogPlacesLambda, drinkLogReconcilerLambda, commonLayer,
     };
   }
 
@@ -590,10 +597,11 @@ export class WhiskeyInfraStack extends cdk.Stack {
     drinkLogsLambda: lambda.Function;
     drinkLogAnalyzeLambda: lambda.Function;
     drinkLogPlacesLambda: lambda.Function;
+    chatLambda: lambda.Function;
   }): apigateway.RestApi {
     const {
       userPool, userPoolClient, whiskeyListLambda, whiskeySearchLambda, drinkLogsLambda,
-      drinkLogAnalyzeLambda, drinkLogPlacesLambda,
+      drinkLogAnalyzeLambda, drinkLogPlacesLambda, chatLambda,
     } = resources;
     const { environment, envConfig, props, allowedOrigins, enableCustomDomain } = this.settings;
 
@@ -630,6 +638,8 @@ export class WhiskeyInfraStack extends cdk.Stack {
           '/api/drink-logs/{id}/GET': { throttlingRateLimit: 5, throttlingBurstLimit: 10 },
           '/api/drink-logs/{id}/PUT': { throttlingRateLimit: 2, throttlingBurstLimit: 5 },
           '/api/drink-logs/{id}/DELETE': { throttlingRateLimit: 2, throttlingBurstLimit: 5 },
+          '/api/chat/POST': { throttlingRateLimit: 1, throttlingBurstLimit: 2 },
+          '/api/chat/{request_id}/GET': { throttlingRateLimit: 5, throttlingBurstLimit: 10 },
         },
       },
       defaultCorsPreflightOptions: {
@@ -688,6 +698,9 @@ export class WhiskeyInfraStack extends cdk.Stack {
     const publicMethod = { authorizationType: apigateway.AuthorizationType.NONE };
 
     const apiResource = api.root.addResource('api');
+    const chatResource = apiResource.addResource('chat');
+    chatResource.addMethod('POST', integration(chatLambda), authenticated);
+    chatResource.addResource('{request_id}').addMethod('GET', integration(chatLambda), authenticated);
     const whiskeysResource = apiResource.addResource('whiskeys');
     whiskeysResource.addMethod('GET', integration(whiskeyListLambda), publicMethod);
     const whiskeySearchResource = whiskeysResource.addResource('search');
