@@ -56,4 +56,12 @@ Atomic admission limits: 20 questions/user/day, 50 globally/day, 300 globally/mo
 
 - Separate Harness runtime sessions per question and send only toolUse/toolResult pairs on continuations. A dev Harness check with synthetic data completed two sequential tools in one question; a second question with empty browser history returned no previous conversation.
 - Bound Unicode-escaped tool JSON before Lambda serialization. Japanese and emoji regression cases now return bounded partial results that the worker accepts; the live synthetic Japanese search also completed with `partial=true`.
-- Python: 440 passed, including 32 chat tests. These fixes are verified locally and against the dev Harness without deploying the updated Lambda functions. The deployment checks above describe the initial implementation.
+- Pre-deployment validation: Python 440 passed, including 32 chat tests. Synthetic dev Harness checks passed before the updated Lambda functions were deployed. The earlier deployment checks describe the initial implementation.
+
+## Review-fix deployment — 2026-10-05
+
+- Deployed implementation commit `038d970` from an isolated local `main` worktree, dev first and then prd, using account-verified `infra/scripts/deploy.sh --base --frontend --no-confirm`. Remote `main` and the open PR were not merged by this operation.
+- Before deployment, Python 440 tests, frontend lint/typecheck and 185 tests, and infrastructure build and 50 tests passed. Both environments' read-only diffs contained only Lambda code and shared-layer assets; IAM, data resources, and API configuration were unchanged.
+- Both application stacks finished `UPDATE_COMPLETE`; frontend synchronization and CloudFront invalidations completed.
+- Both environments returned 200 for English/Japanese public search and 401 for unauthenticated chat POST/GET. Authenticated browser checks passed for recent-log lookup followed by brand-history lookup, a subsequent catalog-search question, and conversation reset. Replies matched the visible recent record; production catalog search also reported partial results explicitly.
+- Worker and tool logs contained no execution errors during these checks. No Drink Logs were created or modified.
