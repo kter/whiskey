@@ -57,7 +57,9 @@ def bounded_result(records, partial):
     results = []
     for record in records:
         candidate = {"results": [*results, record], "partial": bool(partial)}
-        if len(json.dumps(candidate, ensure_ascii=False, default=decimal_default).encode()) > 18000:
+        # Python 3.11 Lambda escapes Unicode in response JSON. Bound that wire
+        # representation so Japanese/emoji results also fit the worker's limit.
+        if len(json.dumps(candidate, ensure_ascii=True, default=decimal_default).encode()) > 18000:
             partial = True
             break
         results.append(record)

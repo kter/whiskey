@@ -55,6 +55,9 @@ def test_inline_tools_use_the_trusted_principal_and_resume_with_results():
     assert answer == "aliceのアランを飲みました。"
     assert tools.requests == [{"principal": {"user_id": "alice"}, "name": "get_drink_logs", "params": {"limit": 3}}]
     assert all(r["allowedTools"] == ["@search_whiskeys", "@get_drink_logs", "@search_drink_logs"] for r in harness.requests)
+    assert harness.requests[0]["runtimeSessionId"] == harness.requests[1]["runtimeSessionId"]
+    assert harness.requests[0]["messages"] == [{"role": "user", "content": [{"text": "最近の3件"}]}]
+    assert [m["role"] for m in harness.requests[1]["messages"]] == ["assistant", "user"]
 
 
 def test_stream_keeps_only_the_last_assistant_message():
@@ -99,7 +102,7 @@ def test_unknown_tools_are_not_executed_and_loop_is_bounded():
     assert tools.requests == []
 
 
-def test_runtime_sessions_are_separate_for_each_authenticated_user():
+def test_each_question_has_a_fresh_runtime_session_even_in_the_same_browser():
     class Answers:
         def __init__(self):
             self.sessions = []
@@ -110,5 +113,33 @@ def test_runtime_sessions_are_separate_for_each_authenticated_user():
     agent = worker.HarnessAgent(harness, ToolLambda(), "arn", "tools")
     for user in ("alice", "bob", "alice"):
         agent.run({"user_id": user, "message": "test", "history": [], "session_id": "same-browser-session"})
-    assert harness.sessions[0] == harness.sessions[2]
-    assert harness.sessions[0] != harness.sessions[1]
+    assert len(set(harness.sessions)) == 3
+
+
+def test_multi_tool_continuations_do_not_replay_bounded_browser_history():
+    class MultiTool:
+        def __init__(self):
+            self.requests = []
+        def invoke_harness(self, **request):
+            self.requests.append(request)
+            step = len(self.requests)
+            if step == 3:
+                return {"stream": text_stream("回答")}
+            return {"stream": [
+                {"contentBlockStart": {"contentBlockIndex": 0, "start": {"toolUse": {
+                    "toolUseId": f"call-{step}", "name": "get_drink_logs"}}}},
+                {"contentBlockDelta": {"contentBlockIndex": 0, "delta": {"toolUse": {"input": "{}"}}}},
+                {"messageStop": {"stopReason": "tool_use"}},
+            ]}
+    harness = MultiTool()
+    history = [{"role": "user", "text": "前の質問"}, {"role": "assistant", "text": "前の回答"}]
+    answer = worker.HarnessAgent(harness, ToolLambda(), "arn", "tools").run({
+        "user_id": "alice", "message": "続き", "history": history, "session_id": "same-browser-session"})
+    assert answer == "回答"
+    assert len(harness.requests[0]["messages"]) == 3
+    assert len({r["runtimeSessionId"] for r in harness.requests}) == 1
+    for step, request in enumerate(harness.requests[1:], 1):
+        assert len(request["messages"]) == 2
+        assistant, result = request["messages"]
+        assert assistant["content"][0]["toolUse"]["toolUseId"] == f"call-{step}"
+        assert result["content"][0]["toolResult"]["toolUseId"] == f"call-{step}"

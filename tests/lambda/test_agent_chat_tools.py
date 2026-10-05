@@ -1,5 +1,8 @@
 """Read-only chat tools with real catalog and Drink Log storage."""
 
+import io
+import json
+
 import boto3
 import pytest
 from moto import mock_aws
@@ -55,3 +58,23 @@ def test_catalog_search_reports_unsearched_data_instead_of_false_absence(directo
 def test_tool_validates_generated_limits_before_reading_logs(directory, params):
     service, _, _ = directory
     assert service.handle({"principal": {"user_id": "alice"}, "name": "get_drink_logs", "params": params}) == {"error": "Invalid tool input"}
+
+
+@pytest.mark.parametrize("note", ["あ" * 200, "🥃" * 200])
+def test_unicode_partial_results_fit_lambda_wire_encoding_and_worker_limit(note):
+    records = [{"id": str(i), "brand_text": "アラン", "store": "バー", "notes": note} for i in range(20)]
+    result = tools.bounded_result(records, False)
+    # Match the deployed Python 3.11 runtime's Unicode-escaped response format.
+    wire = json.dumps(result).encode()
+    assert result["partial"] is True
+    assert 0 < len(result["results"]) < len(records)
+    assert len(wire) <= 18000
+
+    class ToolLambda:
+        def invoke(self, **request):
+            return {"Payload": io.BytesIO(wire)}
+    worker = load_lambda_module("agent_chat_worker_unicode_tests", "lambda/agent-chat/worker.py")
+    resumed = worker.HarnessAgent(None, ToolLambda(), "arn", "tools").execute("alice", {
+        "toolUseId": "call-1", "name": "get_drink_logs", "input": {"limit": 20}})
+    assert resumed["toolResult"]["status"] == "success"
+    assert json.loads(resumed["toolResult"]["content"][0]["text"]) == result

@@ -1,10 +1,10 @@
 """Execute admitted chat jobs using AgentCore inline functions."""
 
 import json
-import hashlib
 import logging
 import os
 import time
+import uuid
 from pathlib import Path
 
 import boto3
@@ -111,17 +111,18 @@ class HarnessAgent:
         messages.append({"role": "user", "content": [{"text": job["message"]}]})
         deadline = min(float(job.get("deadline", time.time() + 110)), time.time() + 110)
         tool_count = 0
+        # Even with persistent Memory disabled, a runtime session retains turns.
+        # Seed a fresh question session once, then send only inline continuations.
+        session = str(uuid.uuid4())
         for _step in range(MAX_CALLS):
             remaining = int(deadline - time.time())
             if remaining < 3:
                 raise TimeoutError("Chat deadline exceeded")
-            session = hashlib.sha256(f"{job['user_id']}:{job['session_id']}".encode()).hexdigest()
             response = self.harness.invoke_harness(harnessArn=self.harness_arn, runtimeSessionId=session,
                 actorId=job["user_id"], messages=messages, tools=TOOL_SPECS,
                 allowedTools=[f"@{name}" for name in TOOL_NAMES],
                 maxIterations=1, maxTokens=1024, timeoutSeconds=min(remaining, 30), systemPrompt=SYSTEM)
             assistant, reason = read_stream(response["stream"])
-            messages.append(assistant)
             calls = [block["toolUse"] for block in assistant["content"] if "toolUse" in block]
             if reason == "end_turn" and not calls:
                 answer = "".join(block.get("text", "") for block in assistant["content"]).strip()
@@ -136,7 +137,9 @@ class HarnessAgent:
                     raise TimeoutError("Chat deadline exceeded")
                 results.append(self.execute(job["user_id"], call))
                 tool_count += 1
-            messages.append({"role": "user", "content": results})
+            # Harness does not persist an incomplete inline turn, so replay the
+            # matching toolUse and toolResult pair, but not previous messages.
+            messages = [assistant, {"role": "user", "content": results}]
         raise RuntimeError("Agent execution limit exceeded")
 
 

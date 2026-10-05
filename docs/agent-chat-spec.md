@@ -10,12 +10,15 @@ Agreed scope: a chat panel in `/logs`, backed by AgentCore managed harness and L
 - API Lambda queues work by asynchronous worker Lambda invocation. Worker atomically claims pending jobs, invokes the harness, executes returned inline functions using a separate tool Lambda, and saves the final answer. Retry delivery never repeats inference for a claimed job.
 - AppState job records expire after 15 minutes; explicit expiry checks apply before DynamoDB TTL cleanup. Jobs are transport state, not saved conversation history. A worker failure becomes a terminal error; a timed-out worker is reported as failed on polling.
 - Conversation lives in the chat component only. Reset/unmount/auth-user change discards history and prevents late responses from appearing. Reload starts a new session. AgentCore persistent Memory is explicitly disabled. Each question supplies bounded text history.
+- Each question uses a fresh Harness runtime session. The initial invocation supplies bounded browser history once; later inline-tool invocations send only the matching assistant toolUse/user toolResult pair. Memory-disabled runtimes still retain completed turns during a live session, so browser session IDs must not be reused as Harness runtime session IDs.
 
 ## Authorization and tools
 
 The API extracts the user from validated Cognito claims. Worker loads the trusted user from the owned job. Tool Lambda accepts that principal separately from model-generated parameters and is callable only by the worker role. The model cannot select a different user. Harness is restricted to the three declared inline tools; shell/filesystem tools are excluded.
 
 Tool output is bounded and contains only public whiskey/Drink Log fields. Return an explicit partial-results marker whenever a bounded search leaves more data unsearched. Answers use tool results rather than inventing missing catalog facts.
+
+Tool results are capped at 18KB using Unicode-escaped JSON size, matching the deployed Python 3.11 Lambda response encoding and staying below the worker's 24KB transport limit. Japanese and emoji results are shortened with `partial=true` before serialization when necessary.
 
 Inline tools use `@search_whiskeys`, `@get_drink_logs`, and `@search_drink_logs` in `allowedTools`. Plain names match builtins and hide these inline tools. This was verified against the dev harness: the plain name produced a text-only answer, while `@search_whiskeys` returned a real `tool_use` event.
 
@@ -48,3 +51,9 @@ Atomic admission limits: 20 questions/user/day, 50 globally/day, 300 globally/mo
 - Authenticated browser checks passed for all three tools in both environments. Production catalog search returned registered Bowmore names; recent-log lookup matched the latest displayed brand; brand-history search matched the three displayed Arran records. Production worker/tool execution logs contained no errors during these checks.
 - Conversation reset passed in both environments. Navigating away from dev `/logs` and returning produced an empty conversation. No Drink Logs were created or modified by these checks.
 - Current presentation limitation: tools pass stored ISO timestamps (UTC) through to the model; chat replies can omit the timezone and therefore differ from the list's local-time display. Exact local-time formatting is not enforced by this implementation.
+
+## Review fixes — 2026-10-05
+
+- Separate Harness runtime sessions per question and send only toolUse/toolResult pairs on continuations. A dev Harness check with synthetic data completed two sequential tools in one question; a second question with empty browser history returned no previous conversation.
+- Bound Unicode-escaped tool JSON before Lambda serialization. Japanese and emoji regression cases now return bounded partial results that the worker accepts; the live synthetic Japanese search also completed with `partial=true`.
+- Python: 440 passed, including 32 chat tests. These fixes are verified locally and against the dev Harness without deploying the updated Lambda functions. The deployment checks above describe the initial implementation.
