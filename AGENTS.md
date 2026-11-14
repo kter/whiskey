@@ -125,7 +125,9 @@ Claude Code on the web と Codex Cloud には AWS の認証情報が無い。こ
 - **完了条件:** CI の `Test / Lint / Build` と同じ確認がローカルで通り、PR の説明に実行したコマンドと結果を書いていること。
   確認コマンドは `.github/workflows/deploy.yml` の `ci` ジョブが正本。
   - `.venv/bin/python -m pytest tests`
-  - `cd infra && npm run build && npx jest && npx cdk synth -c env=dev --quiet`
+  - `cd infra && npm run build && npx jest && npm run synth:dev -- --quiet`
+    （CI の `npx cdk synth` は Lambda のバンドルに Docker デーモンを使う。クラウドではデーモンが動いていないので、
+    ローカルコピーでバンドルする `synth:dev`（`CDK_LOCAL_BUNDLING=1`）を使う。dockerd を起動しようとしない）
   - `cd frontend && npm run lint && npm run typecheck && npx vitest run`（`npm test` は watch で終わらない）
 - **人に戻すこと:** dev での実機確認、デプロイ、IAM・データ資源の変更判断。PR の説明に「未確認」として明記する。
 - **パイプで終了コードを隠さない:** 長いコマンドを `| tail` に流すと失敗が成功に見える。結果はファイルに書くか `set -o pipefail` を使う。
