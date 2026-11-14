@@ -424,3 +424,7 @@ The five canonical triage labels use their default names. See `docs/agents/triag
 ### Domain docs
 
 This repository uses a single-context domain documentation layout. See `docs/agents/domain.md`.
+
+### Cloud agents
+
+Claude Code on the web / Codex Cloud に作業を渡す流れ（Issue テンプレート、レビュー、マージ）は `docs/agents/cloud-workflow.md` を参照。
