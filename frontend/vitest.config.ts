@@ -12,7 +12,9 @@ export default defineConfig({
   test: {
     environment: 'happy-dom',
     globals: true,
-    setupFiles: ['./tests/setup.ts']
+    setupFiles: ['./tests/setup.ts'],
+    // Playwright specs live in e2e/ and run via `make e2e`, not Vitest.
+    exclude: ['**/node_modules/**', 'e2e/**']
   },
   resolve: {
     alias: {
