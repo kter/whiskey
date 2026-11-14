@@ -358,7 +358,7 @@ class WhiskeyDatabaseInserter:
     def process_file(self, input_file: str) -> Dict:
         """メイン処理フロー（重複排除をDB投入前に実行）"""
         print("=== ウイスキーデータDynamoDB投入開始 ===")
-        print(f"設定: 前処理重複排除")  # confidence関連の記述を削除
+        print("設定: 前処理重複排除")  # confidence関連の記述を削除
         
         try:
             # 1. 抽出結果読み込み（すでに展開済み）

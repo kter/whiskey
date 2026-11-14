@@ -46,10 +46,12 @@ from drink_log_store import (
     ValidationError,
 )
 import lifecycle as lifecycle_module
+# DrinkLogLifecycle と derive_drink_log_id はこのモジュールでは使わないが、テストが
+# `index.DrinkLogLifecycle` / `index.derive_drink_log_id` として参照する再エクスポート。
 from lifecycle import (
     CreateConflict,
-    DrinkLogLifecycle,
-    derive_drink_log_id,
+    DrinkLogLifecycle,  # noqa: F401 -- テスト向けの再エクスポート
+    derive_drink_log_id,  # noqa: F401 -- テスト向けの再エクスポート
 )
 
 UPDATE_FIELDS = {"brand_text", "store", "notes", "rating", "serving_style"}

@@ -10,7 +10,7 @@ clients = load_lambda_module(
     "whiskey_common_clients_tests",
     "lambda/common/python/whiskey_common/clients.py",
 )
-from whiskey_common import responses, scan_utils
+from whiskey_common import responses, scan_utils  # noqa: E402 -- load_lambda_module がレイヤを sys.path に足した後で import する
 
 
 def test_cors_echoes_only_allowed_origin_and_varies(monkeypatch):

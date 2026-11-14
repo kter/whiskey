@@ -108,7 +108,6 @@ venv/
 ENV/
 env.bak/
 venv.bak/
-.python-version
 
 # Editor directories and files
 .idea

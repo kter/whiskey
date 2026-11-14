@@ -1,6 +1,5 @@
 import json
 from io import StringIO
-from unittest.mock import patch
 
 from tests.lambda_module_loader import load_lambda_module
 

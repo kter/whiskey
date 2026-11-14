@@ -180,11 +180,11 @@ class DrinkLogLifecycle:
             "#store = :store",
             "#updated_at = :updated_at",
         ]
-        for field in ("whiskey_id", "ai", "rating", "notes"):
-            if field in completion:
-                names[f"#{field}"] = field
-                values[f":{field}"] = completion[field]
-                sets.append(f"#{field} = :{field}")
+        for attr in ("whiskey_id", "ai", "rating", "notes"):
+            if attr in completion:
+                names[f"#{attr}"] = attr
+                values[f":{attr}"] = completion[attr]
+                sets.append(f"#{attr} = :{attr}")
         try:
             response = self.table.update_item(
                 Key={"id": record["id"]},

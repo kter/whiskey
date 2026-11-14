@@ -116,7 +116,6 @@ def reconcile_log_objects(
     bucket_name: str,
     cutoff: datetime,
 ) -> int:
-    table = dynamodb.Table(drinklogs_table_name)
     lifecycle = DrinkLogLifecycle(
         dynamodb, s3, drinklogs_table_name, "", bucket_name, rfc3339
     )
