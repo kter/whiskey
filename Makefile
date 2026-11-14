@@ -72,6 +72,11 @@ local-down:
 	docker compose down
 
 check:
+	@for path in $(VENV_PYTHON) infra/node_modules frontend/node_modules; do \
+		if [ ! -e "$$path" ]; then \
+			echo "missing $$path: run 'bash scripts/agent/setup.sh' first" >&2; exit 1; \
+		fi; \
+	done
 	$(VENV_PYTHON) -m pytest tests
 	cd infra && npm run build
 	cd infra && npx jest

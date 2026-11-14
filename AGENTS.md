@@ -123,7 +123,7 @@ Claude Code on the web と Codex Cloud には AWS の認証情報が無い。こ
   Claude Code on the web では `.claude/settings.json` の SessionStart フックが自動で実行する。
   Codex Cloud では環境のセットアップスクリプトに同じコマンドを書く。
 - **完了条件:** CI の `Test / Lint / Build` と同じ確認がローカルで通り、PR の説明に実行したコマンドと結果を書いていること。
-  確認コマンドは `.github/workflows/deploy.yml` の `ci` ジョブが正本。
+  確認コマンドは `.github/workflows/deploy.yml` の `ci` ジョブが正本で、`make check` が同じ内容を（generate を除き）一度に実行する。
   - `.venv/bin/python -m pytest tests`
   - `cd infra && npm run build && npx jest && npm run synth:dev -- --quiet`
     （CI の `npx cdk synth` は Lambda のバンドルに Docker デーモンを使う。クラウドではデーモンが動いていないので、
@@ -138,7 +138,7 @@ Claude Code on the web と Codex Cloud には AWS の認証情報が無い。こ
 | --- | --- | --- |
 | Python / Node | 3.11 / 22（CI と一致） | 3.12 / 24。3.11・22 が要るなら `uv python install 3.11` と npm の `node@22` を作業領域に入れる |
 | Docker | CLI のみ。デーモンは停止 | デーモン稼働。ただし MinIO の固定イメージは Docker Hub・quay.io とも pull 拒否 |
-| `gh` | `GH_TOKEN` あり。PR 作成可 | GraphQL が Forbidden。Issue は GitHub コネクターで読む |
+| `gh` | `GH_TOKEN` あり。ただし GraphQL は 403（`gh pr comment`・`gh issue view` などが失敗）。REST の `gh api repos/...` か GitHub MCP を使う | GraphQL が Forbidden。Issue は GitHub コネクターで読む |
 | npm キャッシュ | 既定のまま可 | `$HOME` 側が書き込み不可。`setup.sh` がリポジトリ内に退避する |
 | 外部通信 | プロキシ経由。Docker のバンドルコンテナ内の pip はプロキシの CA を信頼せず失敗する | パッケージマネージャのドメインのみ |
 | AWS 系の環境変数 | サンドボックスが `AWS_ACCESS_KEY_ID` 等を注入している。環境設定では何も登録していない。**使わない** | なし |
