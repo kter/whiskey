@@ -77,8 +77,8 @@ npm run synth:dev     # Synthesize CloudFormation (lookup-free)
 python -m pytest tests
 
 # Local full stack（詳細は docs/LOCAL_DEV.md）
-docker compose up -d   # DynamoDB Local(:8001) + MinIO(:9000/9001)
-make local-init        # テーブル作成 + 銘柄シード
+make local-up          # moto: DynamoDB + S3 (:5000)、Docker 不要
+make local-init        # テーブル + S3 バケット/CORS 作成 + 銘柄シード
 make api               # FastAPI アダプタ(:8000)
 # フロントは frontend/ で npm run dev（localhost:3000 を使う）
 ```
@@ -137,14 +137,14 @@ Claude Code on the web と Codex Cloud には AWS の認証情報が無い。こ
 | 項目 | Claude Code on the web | Codex Cloud |
 | --- | --- | --- |
 | Python / Node | 3.11 / 22（CI と一致） | 3.12 / 24。3.11・22 が要るなら `uv python install 3.11` と npm の `node@22` を作業領域に入れる |
-| Docker | CLI のみ。デーモンは停止 | デーモン稼働。ただし MinIO の固定イメージは Docker Hub・quay.io とも pull 拒否 |
+| Docker | CLI のみ。デーモンは停止。ローカルスタックは moto のため不要 | デーモン稼働。ローカルスタックは moto のため不要 |
 | `gh` | `GH_TOKEN` あり。ただし GraphQL は 403（`gh pr comment`・`gh issue view` などが失敗）。REST の `gh api repos/...` か GitHub MCP を使う | GraphQL が Forbidden。Issue は GitHub コネクターで読む |
 | npm キャッシュ | 既定のまま可 | `$HOME` 側が書き込み不可。`setup.sh` がリポジトリ内に退避する |
 | 外部通信 | プロキシ経由。Docker のバンドルコンテナ内の pip はプロキシの CA を信頼せず失敗する | パッケージマネージャのドメインのみ |
 | AWS 系の環境変数 | サンドボックスが `AWS_ACCESS_KEY_ID` 等を注入している。環境設定では何も登録していない。**使わない** | なし |
 
 - `.python-version` は `.gitignore` の pyenv 用パターンに当たる。変更するときは追跡済みかを確認する。
-- 写真アップロードを含むローカルスタック（MinIO）は、どちらのクラウドでもまだ動かない。検索と画面表示までが確認できる範囲。
+- 写真アップロードを含むローカルスタックは moto 5.1.22 に統一。Docker は不要。Codex Cloud で検索・presigned POST・CORS preflight・記録完了まで確認済み。Claude Code on the web は移行後未実測。S3 とのポリシー検証の差は `docs/LOCAL_DEV.md` を参照。
 
 ## Architecture
 

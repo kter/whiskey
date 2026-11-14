@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create the DynamoDB Local tables needed by the application."""
+"""Create the local moto DynamoDB tables needed by the application."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 
 REGION = "ap-northeast-1"
-LOCAL_DYNAMODB_ENDPOINT = "http://127.0.0.1:8001"
+LOCAL_DYNAMODB_ENDPOINT = "http://127.0.0.1:5000"
 TABLE_DEFINITIONS: tuple[dict[str, Any], ...] = (
     {
         "TableName": "WhiskeySearch-local",

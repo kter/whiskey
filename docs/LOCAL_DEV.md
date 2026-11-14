@@ -1,26 +1,28 @@
 # ローカル開発環境
 
-DynamoDB Local、MinIO、既存 Lambda ハンドラを呼び出す FastAPI アダプタを使い、AWS プロファイルなしでバックエンドを起動できます。すべての公開ポートは loopback のみに bind されます。
+moto サーバー（DynamoDB + S3）、既存 Lambda ハンドラを呼び出す FastAPI アダプタを使い、AWS プロファイルなしでバックエンドを起動できます。すべての公開ポートは loopback のみに bind されます。
 
 ## 必要なもの
 
-- Docker Engine と Docker Compose v2
 - Python 3.11 以降（`venv` を利用可能であること）
+- Node.js 22、npm（`scripts/agent/setup.sh` でフロント・infra の依存も入れる場合）
 - `make`、`curl`
 
-実 AWS へのアクセスは不要です。ローカル環境では `minioadmin` / `minioadmin` を MinIO と boto3 の両方に使い、サービス別 endpoint だけを設定します。`AWS_ENDPOINT_URL` は使用しません。
+実 AWS へのアクセスは不要です。ローカル環境では `minioadmin` / `minioadmin` をローカル専用のダミー認証情報として使い、サービス別 endpoint だけを設定します。`AWS_ENDPOINT_URL` は使用しません。
 
 ## 起動
 
 ```bash
+bash scripts/agent/setup.sh  # クラウドでは先に Node 22 を PATH に設定
 make local-up
 make local-init
 make api
 ```
 
-`make local-up` は DynamoDB Local（`127.0.0.1:8001`）と MinIO API/Console（`127.0.0.1:9000` / `127.0.0.1:9001`）の healthcheck、および `whiskey-images-local` バケット作成の完了を待ちます。
+`make local-up` は固定版 moto 5.1.22 を `127.0.0.1:5000` の1プロセスでバックグラウンド起動し、応答まで待ちます。DynamoDB / S3 ともこの endpoint を使用します。Docker は不要です。
+ログは `.cache/moto/server.log`、PID とプロセス識別情報は `.cache/moto/server.pid`（いずれも git 管理外）。繰り返し起動は同じプロセスを使い、ポートが他のプロセスに使われている場合は失敗します。`make local-down` は記録したプロセスだけを停止します。データはメモリ上のみで、停止後は再初期化が必要です。
 
-`make local-init` は3テーブルを冪等に作成し、50銘柄を投入します。`.venv` と固定済み Python 依存も必要に応じて作成します。
+`make local-init` は3テーブルと `whiskey-images-local` バケットを冪等に作成し、`http://localhost:3000` 向けの CORS（GET / HEAD / POST）を設定し、カタログの全銘柄（現在51件）を投入します。`.venv` と固定済み Python 依存も必要に応じて作成します。
 
 `make api` は FastAPI を `http://127.0.0.1:8000` で起動します。API パスは API Gateway と同じく末尾スラッシュなしです。
 
@@ -31,32 +33,39 @@ curl --get --data-urlencode 'q=山崎' \
 
 ## テイスティング記録をローカルで動かす
 
-テイスティング記録も通常の起動手順で利用できます。
-`docker compose up -d`を直接実行する場合は、MinIOのバケット作成が完了してから初期化してください。
-
-```bash
-docker compose up -d
-make local-init
-make api
-```
-
-`make local-up`を使うとDynamoDB Local、MinIO、バケット作成の完了まで待つので、普段はこちらで大丈夫です。
+テイスティング記録も上記の起動手順で利用できます。
 
 ローカルAPIは`MOCK_AI=1`と`MOCK_PLACES=1`が既定です。
 写真解析は「モックウイスキー」、周辺店舗検索は「モックバー」を決定的に返すため、Bedrock、Google Places、Secrets Managerへはアクセスしません。
-写真のpresigned POST先はMinIOで、ブラウザからのアップロードはMinIOのCORS（`http://localhost:3000`）を経由します。
+写真のpresigned POST先は moto で、ブラウザからのアップロードは S3 バケットの CORS（`http://localhost:3000`）を経由します。
+
+### moto と実 S3 の差（5.1.22 で実測）
+
+モック認証で、英語・日本語検索 → upload-url → JPEG の multipart POST → analyze（モック）→ 記録作成（`status=complete`）→ 一覧表示を curl で確認しました。ブラウザ origin を付けた OPTIONS は 200 となり、`Access-Control-Allow-Origin: http://localhost:3000` と `Access-Control-Allow-Methods: GET, HEAD, POST` が返ります。
+
+ただし、moto の presigned POST 成功は実 S3 のポリシー検証を保証しません。発行されたポリシーには `Content-Type=image/jpeg`、固定 bucket/key、`content-length-range: 0..3670016`、有効期限120秒が入りますが、次の不正フォームもすべて **204** で受け入れられました。
+
+| 変更した条件 | moto の結果 | 実 S3 の要件 |
+| --- | --- | --- |
+| ファイルを3,670,017 bytes（上限+1）にする | 204 | サイズ範囲外は拒否 |
+| Content-Type を text/plain に変更 | 204 | ポリシー条件との不一致は拒否 |
+| key を別のキーに変更 | 204 | 固定 key との不一致は拒否 |
+| signature を invalid に変更 | 204 | 有効な署名が必要 |
+| 正しく署名した有効期限1秒のフォームで2秒待って転送 | 204 | 有効期限後は拒否 |
+
+上限・署名・有効期限などのセキュリティ検証は、このローカルスタックだけでは確認できません。アプリの入力検証・画像サニタイズのテストと、実 S3 での確認を別途行ってください。AWS 上での実測はこの移行では行っていません。
 
 ### 実Google Places APIを使う場合
 
 PlacesハンドラはAPIキーを環境変数から直接読まず、`PLACES_SECRET_NAME`のSecrets Manager JSONから読みます。
-そのため、実Placesを試す場合は別途ローカルのSecrets Manager互換エンドポイントを用意してください（現在の`docker-compose.yml`には含まれていません）。
+そのため、実Placesを試す場合は別途ローカルのSecrets Manager互換エンドポイントを用意してください（moto は Secrets Manager も提供します。利用時はサービス別 endpoint を明示してください）。
 
 未追跡の`.env.local`はこんな感じです。
 
 ```dotenv
 MOCK_PLACES=0
 PLACES_SECRET_NAME=whiskey-places-local
-AWS_ENDPOINT_URL_SECRETS_MANAGER=http://127.0.0.1:4566
+AWS_ENDPOINT_URL_SECRETS_MANAGER=http://127.0.0.1:5000
 PLACES_API_KEY=replace-with-your-key
 ```
 
@@ -91,7 +100,7 @@ make local-down
 
 ### モック認証
 
-`make api` は既定で `MOCK_AUTH=1` です。アダプタが固定ユーザー `local-test-user` の ID-token 相当 claims（`aud=local-client`、`token_use=id`）を API Gateway イベントへ注入します。Bearer token は不要です。
+`make api` は既定で `MOCK_AUTH=1` です。アダプタが固定ユーザー `local-user` の ID-token 相当 claims（`aud=local-client`、`token_use=id`）を API Gateway イベントへ注入します。Bearer token は不要です。
 
 テイスティング記録 API は固定ユーザーの記録として利用できます。
 
@@ -132,8 +141,8 @@ dev テーブルへのシードは事故防止のため `--target dev --profile 
 
 ## トラブルシューティング
 
-- 起動待ちが失敗する: `docker compose ps` と `docker compose logs dynamodb-local minio minio-init` を確認してください。8001、9000、9001 が別プロセスで使用中でないことも確認します。
-- API が DynamoDB 接続エラーになる: `make local-up` の後に `make local-init` を再実行してください。DynamoDB Local は in-memory のため、コンテナを作り直すと再初期化が必要です。
+- 起動待ちが失敗する: `.cache/moto/server.log` を確認してください。5000 が別プロセスで使用中でないことも確認します。
+- API が DynamoDB 接続エラーになる: `make local-up` の後に `make local-init` を再実行してください。moto は in-memory のため、再起動すると再初期化が必要です。
 - 検索結果が空になる: URL エンコードを避けるため、上記のように `curl --get --data-urlencode 'q=山崎'` を使ってください。
 - POST が `401` になる: モックなら API を `MOCK_AUTH=1 make api` で再起動します。実 Cognito なら ID token と2つの Cognito 環境変数を確認します。
 - 末尾スラッシュで `404` になる: 仕様どおりです。`/api/whiskeys/search` のように末尾スラッシュなしで呼び出してください。

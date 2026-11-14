@@ -32,7 +32,7 @@ from catalog.catalog import load_catalog, to_dynamodb_item  # noqa: E402
 
 DEV_ACCOUNT_ID = "031921999648"
 REGION = "ap-northeast-1"
-LOCAL_DYNAMODB_ENDPOINT = "http://127.0.0.1:8001"
+LOCAL_DYNAMODB_ENDPOINT = "http://127.0.0.1:5000"
 BRANDS_PATH = ROOT / "scripts" / "catalog" / "brands.json"
 EXPRESSIONS_PATH = ROOT / "scripts" / "catalog" / "expressions.json"
 CLIENT_CONFIG = Config(
