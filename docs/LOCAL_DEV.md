@@ -19,7 +19,7 @@ make local-init
 make api
 ```
 
-`make local-up` は固定版 moto 5.1.22 を `127.0.0.1:5000` の1プロセスでバックグラウンド起動し、応答まで待ちます。DynamoDB / S3 ともこの endpoint を使用します。Docker は不要です。
+`make local-up` は固定版 moto 5.2.3 を `127.0.0.1:5000` の1プロセスでバックグラウンド起動し、応答まで待ちます。DynamoDB / S3 ともこの endpoint を使用します。Docker は不要です。
 ログは `.cache/moto/server.log`、PID とプロセス識別情報は `.cache/moto/server.pid`（いずれも git 管理外）。繰り返し起動は同じプロセスを使い、ポートが他のプロセスに使われている場合は失敗します。`make local-down` は記録したプロセスだけを停止します。データはメモリ上のみで、停止後は再初期化が必要です。
 
 `make local-init` は3テーブルと `whiskey-images-local` バケットを冪等に作成し、`http://localhost:3000` 向けの CORS（GET / HEAD / POST）を設定し、カタログの全銘柄（現在51件）を投入します。`.venv` と固定済み Python 依存も必要に応じて作成します。
@@ -39,7 +39,7 @@ curl --get --data-urlencode 'q=山崎' \
 写真解析は「モックウイスキー」、周辺店舗検索は「モックバー」を決定的に返すため、Bedrock、Google Places、Secrets Managerへはアクセスしません。
 写真のpresigned POST先は moto で、ブラウザからのアップロードは S3 バケットの CORS（`http://localhost:3000`）を経由します。
 
-### moto と実 S3 の差（5.1.22 で実測）
+### moto と実 S3 の差（5.1.22 で実測。5.2.3 では再測定していない）
 
 モック認証で、英語・日本語検索 → upload-url → JPEG の multipart POST → analyze（モック）→ 記録作成（`status=complete`）→ 一覧表示を curl で確認しました。ブラウザ origin を付けた OPTIONS は 200 となり、`Access-Control-Allow-Origin: http://localhost:3000` と `Access-Control-Allow-Methods: GET, HEAD, POST` が返ります。
 

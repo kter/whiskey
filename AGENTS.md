@@ -147,7 +147,7 @@ Claude Code on the web と Codex Cloud には AWS の認証情報が無い。こ
 | Chromium（`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`） | `/usr/bin/google-chrome`（Chrome for Testing 153.0.8010.12）。`make e2e` 終了コード 0 を確認（#85） | `/usr/bin/chromium`（Debian の Chromium 156.0.8078.79）。`make e2e` 終了コード 0 を確認（#85）。Node 22 を作業領域に入れ、`npm_config_cache` をリポジトリ内に向けて `npm ci` してから実行 |
 | AWS 系の環境変数 | サンドボックスが `AWS_ACCESS_KEY_ID` 等を注入している。環境設定では何も登録していない。**使わない** | 環境が `AWS_PROFILE` / `AWS_DEFAULT_PROFILE` を注入する。`make check` は unexport するので、個別に pytest を流すときは `env -u AWS_PROFILE -u AWS_DEFAULT_PROFILE` を付ける |
 
-- 写真アップロードを含むローカルスタックは moto 5.1.22 に統一。Docker は不要。Codex Cloud と手元（Fedora）で、検索・presigned POST・CORS preflight・記録完了・一覧まで確認済み。Claude Code on the web でも #85 の `make e2e` でブラウザから記録完了・一覧・詳細まで確認した。S3 とのポリシー検証の差は `docs/LOCAL_DEV.md` を参照。
+- 写真アップロードを含むローカルスタックは moto 5.2.3 に統一。Docker は不要。5.1.22 の時点で、Codex Cloud と手元（Fedora）で検索・presigned POST・CORS preflight・記録完了・一覧まで、Claude Code on the web でも #85 の `make e2e` でブラウザから記録完了・一覧・詳細まで確認した。5.2.3 への更新（#90）では Claude Code on the web の `make e2e` だけを確認している。S3 とのポリシー検証の差は `docs/LOCAL_DEV.md` を参照。
 - **人の承認で止まるファイルがある。** Claude Code on the web では `.mcp.json` のような機密扱いのファイルを編集すると、Accept edits モードでも権限確認が出て作業が止まる（#79 で発生）。こうしたファイルを触るタスクは、承認する人がいる時間に渡すか、Issue に「承認が必要になる」と書いておく。エージェント側から承認を代行しない。
 
 ## Architecture
