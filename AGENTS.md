@@ -144,7 +144,7 @@ Claude Code on the web と Codex Cloud には AWS の認証情報が無い。こ
 | `gh` | `GH_TOKEN` あり。ただし GraphQL は 403（`gh pr comment`・`gh issue view` などが失敗）。REST の `gh api repos/...` か GitHub MCP を使う | GraphQL が Forbidden。Issue は GitHub コネクターで読む |
 | npm キャッシュ | 既定のまま可 | `$HOME` 側が書き込み不可。`setup.sh` がリポジトリ内に退避する |
 | 外部通信 | プロキシ経由。Docker のバンドルコンテナ内の pip はプロキシの CA を信頼せず失敗する | パッケージマネージャのドメインのみ |
-| Chromium（`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`） | `/usr/bin/google-chrome`（Chrome for Testing 153.0.8010.12）。`make e2e` 終了コード 0 を確認（#85） | Debian の chromium。**未実測**（`which chromium` で確認し、ここに追記する） |
+| Chromium（`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`） | `/usr/bin/google-chrome`（Chrome for Testing 153.0.8010.12）。`make e2e` 終了コード 0 を確認（#85） | `/usr/bin/chromium`（Debian の Chromium 156.0.8078.79）。`make e2e` 終了コード 0 を確認（#85）。Node 22 を作業領域に入れ、`npm_config_cache` をリポジトリ内に向けて `npm ci` してから実行 |
 | AWS 系の環境変数 | サンドボックスが `AWS_ACCESS_KEY_ID` 等を注入している。環境設定では何も登録していない。**使わない** | 環境が `AWS_PROFILE` / `AWS_DEFAULT_PROFILE` を注入する。`make check` は unexport するので、個別に pytest を流すときは `env -u AWS_PROFILE -u AWS_DEFAULT_PROFILE` を付ける |
 
 - 写真アップロードを含むローカルスタックは moto 5.1.22 に統一。Docker は不要。Codex Cloud と手元（Fedora）で、検索・presigned POST・CORS preflight・記録完了・一覧まで確認済み。Claude Code on the web でも #85 の `make e2e` でブラウザから記録完了・一覧・詳細まで確認した。S3 とのポリシー検証の差は `docs/LOCAL_DEV.md` を参照。
