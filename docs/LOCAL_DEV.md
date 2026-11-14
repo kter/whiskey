@@ -96,6 +96,39 @@ make api
 make local-down
 ```
 
+## ブラウザのスモークテスト（`make e2e`）
+
+Playwright（`frontend/e2e/`、設定は `frontend/playwright.config.ts`）で主要な操作をスマホ幅（390×844）の Chromium で確かめます。
+
+```bash
+# Chromium の取得（どちらか）
+export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome   # 既存の Chromium を使う
+(cd frontend && npx playwright install chromium)                     # 手元・CI: Playwright 管理の Chromium
+
+make e2e
+make e2e E2E_ARGS="--grep 検索"   # playwright test への追加引数
+```
+
+`make e2e`（`scripts/local/e2e.sh`）は次を順に行い、成功・失敗・中断のいずれでも自分が起動したプロセスを止めます。
+
+1. moto を起動（既に動いていれば再利用し、終了後も止めない）→ `make local-init`
+2. FastAPI アダプタを `127.0.0.1:8000` で起動（`--reload` なし。`MOCK_AUTH` / `MOCK_AI` / `MOCK_PLACES` は既定の `1`）
+3. `nuxt dev` を `localhost:3000` で起動（`NUXT_PUBLIC_MOCK_AUTH=1`）
+4. 各ルートを一度開いて Vite の依存最適化によるリロードを先に済ませてから、`playwright test` を実行
+
+3000 か 8000 が使用中なら、古いサーバーに対してテストしないよう失敗します。`make api` や `npm run dev` を止めてから実行してください。
+
+| シナリオ | 内容 |
+| --- | --- |
+| 検索 | `bowmore` と `山崎` で結果が表示される |
+| 記録 | `/logs/new` で JPEG をファイル入力から選ぶ → 解析（モック）→ 位置情報をエミュレートして店候補（モックバー）を選ぶ → 保存 |
+| 履歴 | `/logs` に保存した記録が表示され、`/logs/{id}` が開ける |
+
+- モック解析は銘柄候補を1件だけ返すため、銘柄の選択ボタン（2件以上のとき表示）は使わず、自動で入った銘柄を確認します。
+- ブラウザのコンソールエラーと未捕捉の例外はテストを失敗にします（`frontend/e2e/fixtures.ts`）。
+- ログは `.cache/e2e/`（`api.log`・`nuxt.log`・`local-init.log`）、失敗時のスクリーンショットとトレースは `.cache/e2e/test-results/` に残ります（git 管理外）。トレースは `cd frontend && npx playwright show-trace ../.cache/e2e/test-results/<テスト>/trace.zip` で開けます。
+- CI では `ci` とは別の `e2e` ジョブが同じ `make e2e` を実行し、失敗時は `.cache/e2e/` を成果物として保存します。
+
 ## 認証モード
 
 ### モック認証
