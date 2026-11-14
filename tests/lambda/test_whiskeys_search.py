@@ -14,7 +14,7 @@ service_module = load_lambda_module(
     "whiskey_search_service_tests",
     "lambda/whiskeys-search/python/whiskey_search_service.py",
 )
-from whiskey_common import scan_utils
+from whiskey_common import scan_utils  # noqa: E402 -- load_lambda_module がレイヤを sys.path に足した後で import する
 @pytest.fixture(autouse=True)
 def environment(monkeypatch):
     monkeypatch.setenv("ALLOWED_ORIGINS", "https://app.example")

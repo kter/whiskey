@@ -1,22 +1,23 @@
 import boto3
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Protocol
 import traceback
 
+# 以下の import は Lambda のソースを sys.path に足してからでないと解決できないため E402 を抑止する
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "lambda" / "whiskeys-search" / "python"))
-from whiskey_search_service import WhiskeySearchService
-from dataclasses import dataclass
-from typing import Any, Protocol
+from whiskey_search_service import WhiskeySearchService  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "lambda" / "common" / "python"))
 sys.path.insert(0, str(ROOT / "lambda" / "whiskeys-search" / "python"))
 sys.path.insert(0, str(ROOT / "lambda" / "drink-logs"))
 
-from whiskey_common.clients import get_dynamodb_resource, get_s3_client
+from whiskey_common.clients import get_dynamodb_resource, get_s3_client  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "lambda" / "drink-logs"))
-import drink_log_store
+import drink_log_store  # noqa: E402
 
 
 @dataclass(frozen=True)

@@ -6,3 +6,17 @@ python_files = ["test_*.py"]
 [tool.pyright]
 # Lambda レイヤと検索サービスは実行時に sys.path で足している。エディタの定義ジャンプ用に同じパスを教える
 extraPaths = ["lambda/common/python", "lambda/whiskeys-search/python"]
+
+[tool.ruff]
+target-version = "py311"
+# Python のコードはこの4ディレクトリにある。infra/・frontend/ の node_modules などは見ない
+include = [
+    "lambda/**/*.py",
+    "local_api/**/*.py",
+    "scripts/**/*.py",
+    "tests/**/*.py",
+]
+
+[tool.ruff.lint]
+# ruff の既定ルール（E4/E7/E9/F）から始める
+select = ["E4", "E7", "E9", "F"]

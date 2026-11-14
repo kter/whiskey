@@ -5,7 +5,6 @@
 """
 
 import os
-import sys
 import time
 import json
 import requests
@@ -255,7 +254,7 @@ def main():
         json.dump(result, f, ensure_ascii=False, indent=2)
     
     logger.info(f"API取得結果を {result_file} に保存しました")
-    logger.info(f"次のステップ: Bedrockでウイスキー名抽出処理を実行")
+    logger.info("次のステップ: Bedrockでウイスキー名抽出処理を実行")
 
 
 if __name__ == '__main__':

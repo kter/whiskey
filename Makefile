@@ -65,6 +65,7 @@ check:
 			echo "missing $$path: run 'bash scripts/agent/setup.sh' first" >&2; exit 1; \
 		fi; \
 	done
+	$(VENV_PYTHON) -m ruff check .
 	$(VENV_PYTHON) -m pytest tests
 	cd infra && npm run build
 	cd infra && npx jest

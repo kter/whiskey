@@ -3,7 +3,7 @@
     "awslabs.core-mcp-server": {
       "command": "uvx",
       "args": [
-        "awslabs.core-mcp-server@latest"
+        "awslabs.core-mcp-server@1.0.27"
       ],
       "env": {
         "FASTMCP_LOG_LEVEL": "ERROR"
@@ -14,46 +14,34 @@
     "awslabs.cdk-mcp-server": {
       "command": "uvx",
       "args": [
-        "awslabs.cdk-mcp-server@latest"
+        "awslabs.cdk-mcp-server@1.0.15"
       ],
       "env": {
-        "SHELL": "/usr/bin/zsh",
         "FASTMCP_LOG_LEVEL": "ERROR"
-      },
-      "autoApprove": [
-        ""
-      ]
+      }
     },
     "awslabs.cost-analysis-mcp-server": {
       "command": "uvx",
       "args": [
-        "awslabs.cost-analysis-mcp-server@latest"
+        "awslabs.cost-analysis-mcp-server@1.0.5"
       ],
       "env": {
-        "SHELL": "/usr/bin/zsh",
         "FASTMCP_LOG_LEVEL": "ERROR"
-      },
-      "autoApprove": [
-        ""
-      ]
+      }
     },
     "awslabs.aws-documentation-mcp-server": {
       "command": "uvx",
       "args": [
-        "awslabs.aws-documentation-mcp-server@latest"
+        "awslabs.aws-documentation-mcp-server@1.2.3"
       ],
       "env": {
-        "SHELL": "/usr/bin/zsh",
         "FASTMCP_LOG_LEVEL": "ERROR"
-      },
-      "autoApprove": [
-        ""
-      ]
+      }
     },
     "playwright-mcp": {
       "command": "npx",
       "args": [
-        "@playwright/mcp@latest"
+        "@playwright/mcp@0.0.83"
       ]
     }
   }
