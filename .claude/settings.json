@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ \"$CLAUDE_CODE_REMOTE\" = \"true\" ]; then bash \"$CLAUDE_PROJECT_DIR/scripts/agent/setup.sh\" && [ -n \"$CLAUDE_ENV_FILE\" ] && echo \"export PATH=$CLAUDE_PROJECT_DIR/.venv/bin:\\$PATH\" >> \"$CLAUDE_ENV_FILE\"; fi; exit 0",
+            "timeout": 900
+          }
+        ]
+      }
+    ]
+  }
+}

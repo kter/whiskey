@@ -5,6 +5,8 @@ VENV := .venv
 VENV_PYTHON := $(VENV)/bin/python
 REQUIREMENTS_STAMP := $(VENV)/.local-api-requirements.stamp
 
+# Local service settings must not leak into the CI checks (which use moto).
+ifeq ($(filter check,$(MAKECMDGOALS)),)
 export AWS_ACCESS_KEY_ID := minioadmin
 export AWS_SECRET_ACCESS_KEY := minioadmin
 export AWS_REGION := ap-northeast-1
@@ -13,13 +15,14 @@ export AWS_EC2_METADATA_DISABLED := true
 export AWS_ENDPOINT_URL_DYNAMODB := http://127.0.0.1:8001
 export AWS_ENDPOINT_URL_S3 := http://127.0.0.1:9000
 export ENVIRONMENT := local
-export WHISKEYS_TABLE := WhiskeySearch-local
 export WHISKEY_SEARCH_TABLE := WhiskeySearch-local
-export DRINK_LOGS_TABLE := DrinkLogs-local
+export DRINKLOGS_TABLE := DrinkLogs-local
 export APP_STATE_TABLE := AppState-local
 export IMAGES_BUCKET := whiskey-images-local
 export ALLOWED_ORIGINS := http://localhost:3000
 export MOCK_AUTH ?= 1
+endif
+
 unexport AWS_PROFILE
 unexport AWS_DEFAULT_PROFILE
 unexport AWS_SESSION_TOKEN
@@ -29,7 +32,7 @@ unexport AWS_CONTAINER_CREDENTIALS_RELATIVE_URI
 unexport AWS_CONTAINER_CREDENTIALS_FULL_URI
 unexport AWS_ENDPOINT_URL
 
-.PHONY: local-up local-init api local-down
+.PHONY: local-up local-init api local-down check
 
 $(VENV_PYTHON):
 	$(PYTHON) -m venv $(VENV)
@@ -67,3 +70,17 @@ api: $(REQUIREMENTS_STAMP)
 
 local-down:
 	docker compose down
+
+check:
+	@for path in $(VENV_PYTHON) infra/node_modules frontend/node_modules; do \
+		if [ ! -e "$$path" ]; then \
+			echo "missing $$path: run 'bash scripts/agent/setup.sh' first" >&2; exit 1; \
+		fi; \
+	done
+	$(VENV_PYTHON) -m pytest tests
+	cd infra && npm run build
+	cd infra && npx jest
+	cd infra && npm run synth:dev -- --quiet
+	cd frontend && npm run lint
+	cd frontend && npm run typecheck
+	cd frontend && npx vitest run

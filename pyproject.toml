@@ -2,3 +2,7 @@
 testpaths = ["tests"]
 addopts = "-ra"
 python_files = ["test_*.py"]
+
+[tool.pyright]
+# Lambda レイヤと検索サービスは実行時に sys.path で足している。エディタの定義ジャンプ用に同じパスを教える
+extraPaths = ["lambda/common/python", "lambda/whiskeys-search/python"]

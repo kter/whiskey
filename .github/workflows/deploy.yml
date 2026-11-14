@@ -13,9 +13,9 @@ on:
   push:
     branches:
       - main
+  # Every PR, whatever its base: stacked PRs from cloud agents target feature
+  # branches. The ci job has no AWS credentials, so this is safe.
   pull_request:
-    branches:
-      - main
 
 env:
   NODE_VERSION: '22'
