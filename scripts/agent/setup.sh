@@ -26,6 +26,14 @@ fi
 log "installing requirements-dev.txt"
 .venv/bin/python -m pip install --disable-pip-version-check -q -r requirements-dev.txt
 
+# Codex Cloud: the default npm cache under $HOME is not writable. Fall back to
+# a cache inside the repo (git-ignored) instead of failing npm ci.
+npm_cache=$(npm config get cache 2>/dev/null || echo "$HOME/.npm")
+if ! mkdir -p "$npm_cache" 2>/dev/null || [ ! -w "$npm_cache" ]; then
+  export npm_config_cache="$ROOT/.npm-cache"
+  log "npm cache $npm_cache is not writable; using $npm_config_cache"
+fi
+
 for dir in infra frontend; do
   log "npm ci in $dir"
   (cd "$dir" && npm ci --no-audit --no-fund --loglevel=error)

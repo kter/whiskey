@@ -190,3 +190,6 @@ brand-eval-results-*.json
 
 # CDK
 infra/cdk.out/
+
+# scripts/agent/setup.sh の npm キャッシュ退避先
+.npm-cache/
