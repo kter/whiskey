@@ -132,6 +132,20 @@ Claude Code on the web と Codex Cloud には AWS の認証情報が無い。こ
 - **人に戻すこと:** dev での実機確認、デプロイ、IAM・データ資源の変更判断。PR の説明に「未確認」として明記する。
 - **パイプで終了コードを隠さない:** 長いコマンドを `| tail` に流すと失敗が成功に見える。結果はファイルに書くか `set -o pipefail` を使う。
 
+### 各クラウドの実測（2026-11-14、#73・#74 の対応時に `scripts/agent/probe-env.sh` で確認）
+
+| 項目 | Claude Code on the web | Codex Cloud |
+| --- | --- | --- |
+| Python / Node | 3.11 / 22（CI と一致） | 3.12 / 24。3.11・22 が要るなら `uv python install 3.11` と npm の `node@22` を作業領域に入れる |
+| Docker | CLI のみ。デーモンは停止 | デーモン稼働。ただし MinIO の固定イメージは Docker Hub・quay.io とも pull 拒否 |
+| `gh` | `GH_TOKEN` あり。PR 作成可 | GraphQL が Forbidden。Issue は GitHub コネクターで読む |
+| npm キャッシュ | 既定のまま可 | `$HOME` 側が書き込み不可。`setup.sh` がリポジトリ内に退避する |
+| 外部通信 | プロキシ経由。Docker のバンドルコンテナ内の pip はプロキシの CA を信頼せず失敗する | パッケージマネージャのドメインのみ |
+| AWS 系の環境変数 | サンドボックスが `AWS_ACCESS_KEY_ID` 等を注入している。環境設定では何も登録していない。**使わない** | なし |
+
+- `.python-version` は `.gitignore` の pyenv 用パターンに当たる。変更するときは追跡済みかを確認する。
+- 写真アップロードを含むローカルスタック（MinIO）は、どちらのクラウドでもまだ動かない。検索と画面表示までが確認できる範囲。
+
 ## Architecture
 
 ### Serverless Microservices Architecture（費用最適化済み）
