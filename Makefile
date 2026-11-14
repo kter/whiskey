@@ -12,8 +12,8 @@ export AWS_SECRET_ACCESS_KEY := minioadmin
 export AWS_REGION := ap-northeast-1
 export AWS_DEFAULT_REGION := ap-northeast-1
 export AWS_EC2_METADATA_DISABLED := true
-export AWS_ENDPOINT_URL_DYNAMODB := http://127.0.0.1:8001
-export AWS_ENDPOINT_URL_S3 := http://127.0.0.1:9000
+export AWS_ENDPOINT_URL_DYNAMODB := http://127.0.0.1:5000
+export AWS_ENDPOINT_URL_S3 := http://127.0.0.1:5000
 export ENVIRONMENT := local
 export WHISKEY_SEARCH_TABLE := WhiskeySearch-local
 export DRINKLOGS_TABLE := DrinkLogs-local
@@ -41,21 +41,8 @@ $(REQUIREMENTS_STAMP): local_api/requirements.txt | $(VENV_PYTHON)
 	$(VENV_PYTHON) -m pip install --disable-pip-version-check -r local_api/requirements.txt
 	touch $(REQUIREMENTS_STAMP)
 
-local-up:
-	docker compose up -d
-	@for attempt in $$(seq 1 60); do \
-		dynamodb_status=$$(docker inspect --format '{{.State.Health.Status}}' "$$(docker compose ps -q dynamodb-local)" 2>/dev/null || true); \
-		minio_status=$$(docker inspect --format '{{.State.Health.Status}}' "$$(docker compose ps -q minio)" 2>/dev/null || true); \
-		init_status=$$(docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$$(docker compose ps -a -q minio-init)" 2>/dev/null || true); \
-		if [[ "$$dynamodb_status" == healthy && "$$minio_status" == healthy && "$$init_status" == exited:0 ]]; then \
-			echo "local services are healthy and whiskey-images-local exists"; \
-			exit 0; \
-		fi; \
-		sleep 1; \
-	done; \
-	docker compose ps; \
-	echo "local services did not become ready within 60 seconds" >&2; \
-	exit 1
+local-up: $(REQUIREMENTS_STAMP)
+	$(VENV_PYTHON) scripts/local/moto_server.py start
 
 local-init: $(REQUIREMENTS_STAMP)
 	@for attempt in $$(seq 1 10); do \
@@ -63,13 +50,14 @@ local-init: $(REQUIREMENTS_STAMP)
 		if [[ $$attempt -eq 10 ]]; then echo "table initialization failed after 10 attempts" >&2; exit 1; fi; \
 		sleep 2; \
 	done
+	$(VENV_PYTHON) scripts/local/init_bucket.py
 	$(VENV_PYTHON) scripts/local/seed_whiskeys.py --target local
 
 api: $(REQUIREMENTS_STAMP)
 	$(VENV_PYTHON) -m uvicorn local_api.main:app --host 127.0.0.1 --port 8000 --reload
 
 local-down:
-	docker compose down
+	$(VENV_PYTHON) scripts/local/moto_server.py stop
 
 check:
 	@for path in $(VENV_PYTHON) infra/node_modules frontend/node_modules; do \
