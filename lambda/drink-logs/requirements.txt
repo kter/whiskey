@@ -1,5 +1,5 @@
 boto3==1.43.108
 botocore==1.43.108
-Pillow==11.0.0
+Pillow==12.2.0
 PyJWT[crypto]==2.15.1
 requests==2.34.2
