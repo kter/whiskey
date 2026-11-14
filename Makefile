@@ -32,7 +32,7 @@ unexport AWS_CONTAINER_CREDENTIALS_RELATIVE_URI
 unexport AWS_CONTAINER_CREDENTIALS_FULL_URI
 unexport AWS_ENDPOINT_URL
 
-.PHONY: local-up local-init api local-down check
+.PHONY: local-up local-init api local-down check e2e
 
 $(VENV_PYTHON):
 	$(PYTHON) -m venv $(VENV)
@@ -55,6 +55,11 @@ local-init: $(REQUIREMENTS_STAMP)
 
 api: $(REQUIREMENTS_STAMP)
 	$(VENV_PYTHON) -m uvicorn local_api.main:app --host 127.0.0.1 --port 8000 --reload
+
+# Browser smoke tests: starts moto + API + nuxt dev, runs Playwright, stops them.
+# Chromium: $$PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH, else `npx playwright install chromium`.
+e2e: $(REQUIREMENTS_STAMP)
+	bash scripts/local/e2e.sh $(E2E_ARGS)
 
 local-down:
 	$(VENV_PYTHON) scripts/local/moto_server.py stop

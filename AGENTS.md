@@ -129,6 +129,9 @@ Claude Code on the web と Codex Cloud には AWS の認証情報が無い。こ
     （CI の `npx cdk synth` は Lambda のバンドルに Docker デーモンを使う。クラウドではデーモンが動いていないので、
     ローカルコピーでバンドルする `synth:dev`（`CDK_LOCAL_BUNDLING=1`）を使う。dockerd を起動しようとしない）
   - `cd frontend && npm run lint && npm run typecheck && npx vitest run`（`npm test` は watch で終わらない）
+  - `make e2e`（CI の `e2e` ジョブ。Playwright のブラウザスモークテスト。`make check` には含まない）。
+    クラウドでは `cdn.playwright.dev` に届かないので、下表の Chromium を `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` で渡す。
+    手元と CI は `cd frontend && npx playwright install chromium`。詳細は `docs/LOCAL_DEV.md`
 - **人に戻すこと:** dev での実機確認、デプロイ、IAM・データ資源の変更判断。PR の説明に「未確認」として明記する。
 - **パイプで終了コードを隠さない:** 長いコマンドを `| tail` に流すと失敗が成功に見える。結果はファイルに書くか `set -o pipefail` を使う。
 
@@ -141,9 +144,10 @@ Claude Code on the web と Codex Cloud には AWS の認証情報が無い。こ
 | `gh` | `GH_TOKEN` あり。ただし GraphQL は 403（`gh pr comment`・`gh issue view` などが失敗）。REST の `gh api repos/...` か GitHub MCP を使う | GraphQL が Forbidden。Issue は GitHub コネクターで読む |
 | npm キャッシュ | 既定のまま可 | `$HOME` 側が書き込み不可。`setup.sh` がリポジトリ内に退避する |
 | 外部通信 | プロキシ経由。Docker のバンドルコンテナ内の pip はプロキシの CA を信頼せず失敗する | パッケージマネージャのドメインのみ |
+| Chromium（`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`） | `/usr/bin/google-chrome`（Chrome for Testing 153.0.8010.12）。`make e2e` 終了コード 0 を確認（#85） | `/usr/bin/chromium`（Debian の Chromium 156.0.8078.79）。`make e2e` 終了コード 0 を確認（#85）。Node 22 を作業領域に入れ、`npm_config_cache` をリポジトリ内に向けて `npm ci` してから実行 |
 | AWS 系の環境変数 | サンドボックスが `AWS_ACCESS_KEY_ID` 等を注入している。環境設定では何も登録していない。**使わない** | 環境が `AWS_PROFILE` / `AWS_DEFAULT_PROFILE` を注入する。`make check` は unexport するので、個別に pytest を流すときは `env -u AWS_PROFILE -u AWS_DEFAULT_PROFILE` を付ける |
 
-- 写真アップロードを含むローカルスタックは moto 5.1.22 に統一。Docker は不要。Codex Cloud と手元（Fedora）で、検索・presigned POST・CORS preflight・記録完了・一覧まで確認済み。Claude Code on the web は移行後未実測。S3 とのポリシー検証の差は `docs/LOCAL_DEV.md` を参照。
+- 写真アップロードを含むローカルスタックは moto 5.1.22 に統一。Docker は不要。Codex Cloud と手元（Fedora）で、検索・presigned POST・CORS preflight・記録完了・一覧まで確認済み。Claude Code on the web でも #85 の `make e2e` でブラウザから記録完了・一覧・詳細まで確認した。S3 とのポリシー検証の差は `docs/LOCAL_DEV.md` を参照。
 - **人の承認で止まるファイルがある。** Claude Code on the web では `.mcp.json` のような機密扱いのファイルを編集すると、Accept edits モードでも権限確認が出て作業が止まる（#79 で発生）。こうしたファイルを触るタスクは、承認する人がいる時間に渡すか、Issue に「承認が必要になる」と書いておく。エージェント側から承認を代行しない。
 
 ## Architecture
