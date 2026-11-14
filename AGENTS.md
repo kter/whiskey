@@ -22,6 +22,13 @@ This is a photo-first whiskey drink-log application built with a cost-optimized 
 - **AWS Profile**: `dev`
 - **Region**: ap-northeast-1
 
+### Production Environment
+- **AWS Account ID**: 401731371959
+- **AWS Profile**: `prd`
+- **Region**: ap-northeast-1
+- **稼働中**: `whiskeybar.site` / `api.whiskeybar.site`。独自ドメイン・Google 認証とも有効。
+  `retainResources: true`（DynamoDB・S3 はスタック削除でも残る）。
+
 ### Deployment Commands
 CDK デプロイは**アカウント検証付きの `infra/scripts/deploy.sh` を通す**（生の `cdk deploy` は使わない）。
 スタック順序・フラグ運用は `infra/README.md` のランブック参照。
@@ -32,7 +39,23 @@ AWS_PROFILE=dev bash scripts/deploy.sh dev --observability   # アラーム
 AWS_PROFILE=dev bash scripts/deploy.sh dev --frontend        # フロント（generate + sync + invalidation）
 AWS_PROFILE=dev bash scripts/deploy.sh dev --base --diff-only # 無変更ドライラン
 ```
-> prd はスコープ外（アカウント確定後の別ブートストラップ）。
+
+prd も同じスクリプトで、環境名とプロファイルを差し替えるだけ。
+```bash
+AWS_PROFILE=prd bash scripts/deploy.sh prd --base --diff-only --no-confirm  # 先に必ず差分を見る
+AWS_PROFILE=prd bash scripts/deploy.sh prd --base --no-confirm
+AWS_PROFILE=prd bash scripts/deploy.sh prd --frontend --no-confirm
+```
+> **`--no-confirm` は必須。** 付けないと対話確認で止まり、非対話シェルでは無言の exit 1 になる。
+> 原因追跡が必要なら `bash -x`。
+
+**prd デプロイの作法**（2026-09-12 実施時に確立）:
+1. `main` で全検証を通す（`python -m pytest tests` / infra `npm run build` + `npx jest` / frontend `npm run lint`・`npx vitest run`・`npm run typecheck`）
+2. `--diff-only` で差分を確認する。コードアセット以外（IAM・データ資源・構成）が動くなら一旦止めて人に聞く
+3. `--base` → `--frontend` の順。`--base` だけで止めると「新 Lambda + 旧フロントバンドル」の混在状態になる
+4. デプロイ後、公開 API（英日検索・未認証 401）とブラウザで実機確認する
+5. prd は dev より古いことがある。`--diff-only` で list/search の資産まで動くなら、
+   そのデプロイは直近の変更だけでなく未反映分をまとめて載せている。何本分か把握してから進める
 
 ## Development Commands
 
@@ -79,7 +102,8 @@ PAGER=cat AWS_PROFILE=prd aws dynamodb scan --table-name WhiskeySearch-prd --sel
 ### Testing
 ```bash
 # Frontend tests
-cd frontend && npm test  # Run Vitest tests
+cd frontend && npx vitest run  # Run Vitest tests（`npm test` は watch モードで終わらない）
+cd frontend && npm run typecheck  # lint と vitest が緑でも CI は型で落ちる
 
 # Infrastructure tests
 cd infra && npm test  # Run CDK tests
@@ -162,6 +186,33 @@ curl "https://api.dev.whiskeybar.site/api/whiskeys/search/?q=%E3%83%9C%E3%82%A6%
 ### Lambda Functions
 - `lambda/whiskeys-search/index.py`: Multi-language search with manual filtering
 - `lambda/whiskeys-list/index.py`: Whiskey listing functionality
+- `lambda/drink-logs/index.py`: ルーティングと入力検証のみ。AWS 配線は持たない
+- `lambda/drink-logs/drink_log_store.py`: `DrinkLogStore`。クライアントとテーブル名を
+  **構築時に一度だけ**束縛し、Drink Log の操作をドメイン語彙で公開する
+- `lambda/drink-logs/lifecycle.py`: `DrinkLogLifecycle`。pending → complete → deleting の遷移と補償。
+  tombstone は reconciler が孤児画像に作る deleting レコード。リクエスト経路と reconciler の共通の正本
+- `lambda/drink-log-analyze/index.py`: `AnalysisReader` ポート（Bedrock / ローカル）
+- `lambda/drink-log-analyze/places.py`: `PlaceDirectory` ポート（Google / ローカル）
+
+### 共通モジュール（`lambda/common/python/whiskey_common/`）
+Lambda レイヤとして各関数に付く。**同じことを各 Lambda で再実装しないこと。**
+- `cost_guard.py`: `UsageBudget`。AppState の原子カウンタ。単独書き込みと
+  トランザクション片の両方を返せる
+- `candidate_resolution.py`: `BrandCatalog`。銘柄照合。**本番と `scripts/eval/` の共通の正本**
+- `mock_guard.py`: `MOCK_AI` / `MOCK_PLACES` の検査と `local_fixture_enabled`
+- `images.py` / `normalize.py` / `jwt_utils.py` / `responses.py` / `logger.py` /
+  `clients.py` / `scan_utils.py` / `transactions.py` / `decimal_utils.py`
+
+### 設計・ドメインの参照先
+- `CONTEXT.md`: ドメイン用語集（Drink Log / Recording Session / Analysis Result /
+  Whiskey Candidate / Usage Budget / Completion）。**コードの命名はここに従う**
+- `docs/agents/domain.md`: ドメイン文書の読み方
+
+### 跨言語の定数
+`tests/test_drink_log_contract.py` が、Python・TypeScript・CDK にまたがる
+`UPLOAD_MAX_BYTES` / `IMAGE_MAX_BYTES` / 店名プレースホルダの一致を検証する。
+**真実源は `infra/lib/whiskey-infra-stack.ts`**（実際に Lambda を構成するため）。
+値を変えるときは全箇所を揃えること。定数を移動・改名した場合もこのテストが落ちる。
 
 ### Frontend Structure
 - `frontend/nuxt.config.ts`: Nuxt configuration
@@ -322,3 +373,17 @@ PAGER=cat AWS_PROFILE=dev aws dynamodb scan --table-name WhiskeySearch-dev --lim
 3. **Search performance**: 手動フィルタリングは768件以下で最適化済み
 
 Always run lint/typecheck commands after making changes, and test search functionality with both English and Japanese queries.
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked in the `kter/whiskey` GitHub repository. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage labels use their default names. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This repository uses a single-context domain documentation layout. See `docs/agents/domain.md`.
