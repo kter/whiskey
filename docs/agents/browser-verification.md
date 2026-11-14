@@ -16,10 +16,10 @@
    ```bash
    make local-up && make local-init
    make api &                                   # 127.0.0.1:8000
-   (cd frontend && NUXT_PUBLIC_MOCK_AUTH=1 NUXT_PUBLIC_API_BASE_URL=http://localhost:8000 npm run dev -- --host 127.0.0.1) &
+   (cd frontend && NUXT_PUBLIC_MOCK_AUTH=1 NUXT_PUBLIC_API_BASE_URL=http://localhost:8000 npx nuxt dev --port 3000 --host localhost) &
    ```
 
-   origin は `http://localhost:3000` を使う（API と S3 の CORS がこの origin だけを許可している）。
+   起動の仕方は `scripts/local/e2e.sh` と揃えてある。origin は `http://localhost:3000` を使う（API と S3 の CORS がこの origin だけを許可している）。`--host 127.0.0.1` にすると、`localhost` が `::1` に解決される環境で繋がらないことがある。
 3. Playwright（スクリプトか Playwright MCP）で、変更した画面を下の観点で操作し、スクリーンショットを撮る。
 4. 終わったら自分が起動したプロセスだけを止め、`make local-down` で moto を止める。`pkill -f` はシェル自身に当たることがあるので使わない。
 
