@@ -5,6 +5,8 @@ VENV := .venv
 VENV_PYTHON := $(VENV)/bin/python
 REQUIREMENTS_STAMP := $(VENV)/.local-api-requirements.stamp
 
+# Local service settings must not leak into the CI checks (which use moto).
+ifeq ($(filter check,$(MAKECMDGOALS)),)
 export AWS_ACCESS_KEY_ID := minioadmin
 export AWS_SECRET_ACCESS_KEY := minioadmin
 export AWS_REGION := ap-northeast-1
@@ -28,8 +30,9 @@ unexport AWS_WEB_IDENTITY_TOKEN_FILE
 unexport AWS_CONTAINER_CREDENTIALS_RELATIVE_URI
 unexport AWS_CONTAINER_CREDENTIALS_FULL_URI
 unexport AWS_ENDPOINT_URL
+endif
 
-.PHONY: local-up local-init api local-down
+.PHONY: local-up local-init api local-down check
 
 $(VENV_PYTHON):
 	$(PYTHON) -m venv $(VENV)
@@ -67,3 +70,12 @@ api: $(REQUIREMENTS_STAMP)
 
 local-down:
 	docker compose down
+
+check:
+	$(VENV_PYTHON) -m pytest tests
+	cd infra && npm run build
+	cd infra && npx jest
+	cd infra && npm run synth:dev -- --quiet
+	cd frontend && npm run lint
+	cd frontend && npm run typecheck
+	cd frontend && npx vitest run
