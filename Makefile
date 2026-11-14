@@ -22,6 +22,8 @@ export APP_STATE_TABLE := AppState-local
 export IMAGES_BUCKET := whiskey-images-local
 export ALLOWED_ORIGINS := http://localhost:3000
 export MOCK_AUTH ?= 1
+endif
+
 unexport AWS_PROFILE
 unexport AWS_DEFAULT_PROFILE
 unexport AWS_SESSION_TOKEN
@@ -30,7 +32,6 @@ unexport AWS_WEB_IDENTITY_TOKEN_FILE
 unexport AWS_CONTAINER_CREDENTIALS_RELATIVE_URI
 unexport AWS_CONTAINER_CREDENTIALS_FULL_URI
 unexport AWS_ENDPOINT_URL
-endif
 
 .PHONY: local-up local-init api local-down check
 
