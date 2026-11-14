@@ -34,9 +34,17 @@ updates:
           - minor
           - patch
 
-  # Python tooling / Lambda test dependencies.
+  # Python tooling, test dependencies, and the Lambda runtime dependencies.
+  # The Lambda directories share this entry (and its group) on purpose: the
+  # test pins in requirements-dev.txt / local_api mirror the Lambda runtime
+  # pins, so one grouped PR must bump both sides together.
+  # tests/test_requirements_parity.py fails CI if they drift apart.
+  # Add new Lambda directories that ship a requirements.txt here.
   - package-ecosystem: pip
-    directory: /
+    directories:
+      - /
+      - /lambda/drink-logs
+      - /lambda/drink-log-analyze
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
