@@ -703,22 +703,25 @@ describe('Lambda bundling and shared layer', () => {
     const common = fs.readFileSync(path.join(lambdaRoot, 'common', 'requirements.txt'), 'utf8');
     const logs = fs.readFileSync(path.join(lambdaRoot, 'drink-logs', 'requirements.txt'), 'utf8');
     const analyze = fs.readFileSync(path.join(lambdaRoot, 'drink-log-analyze', 'requirements.txt'), 'utf8');
-    for (const requirement of ['boto3==1.43.108', 'botocore==1.43.108']) {
+    // Checks that each package is pinned, not which version: Dependabot bumps the
+    // versions, and tests/test_requirements_parity.py keeps them equal to the test pins.
+    const pins = (text: string, requirement: string) =>
+      new RegExp(`^${requirement.replace(/[[\]]/g, '\\$&')}==\\S+`, 'mi').test(text);
+    for (const requirement of ['boto3', 'botocore']) {
       // The new functions bundle their own SDK; the shared layer must NOT pin boto3
       // so the list/search functions keep runtime-provided boto3.
-      expect(common).not.toContain(requirement);
-      expect(logs).toContain(requirement);
-      expect(analyze).toContain(requirement);
+      expect(pins(common, requirement)).toBe(false);
+      expect(pins(logs, requirement)).toBe(true);
+      expect(pins(analyze, requirement)).toBe(true);
     }
-    expect(logs).toContain('Pillow==12.2.0');
-    expect(analyze).toContain('Pillow==12.2.0');
-    expect(analyze).toContain('requests==2.34.2');
+    expect(pins(logs, 'Pillow')).toBe(true);
+    expect(pins(analyze, 'Pillow')).toBe(true);
     // whiskey_common.jwt_utils imports `jwt` and `requests` at module load, so every
     // function bundling it (via the shared layer) must pin PyJWT[crypto] and requests
     // or the Lambda fails at import with "No module named 'jwt'". Regression guard.
-    for (const requirement of ['PyJWT[crypto]==2.15.1', 'requests==2.34.2']) {
-      expect(logs).toContain(requirement);
-      expect(analyze).toContain(requirement);
+    for (const requirement of ['PyJWT[crypto]', 'requests']) {
+      expect(pins(logs, requirement)).toBe(true);
+      expect(pins(analyze, requirement)).toBe(true);
     }
   });
 });
