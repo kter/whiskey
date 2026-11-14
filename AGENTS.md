@@ -113,6 +113,23 @@ curl "https://api.dev.whiskeybar.site/api/whiskeys/search/?q=bowmore"
 curl "https://api.dev.whiskeybar.site/api/whiskeys/search/?q=%E3%83%9C%E3%82%A6%E3%83%A2%E3%82%A2"  # Japanese
 ```
 
+## クラウドのエージェントで作業するとき
+
+Claude Code on the web と Codex Cloud には AWS の認証情報が無い。これは意図した状態だ。
+
+- **やらないこと:** AWS CLI・boto3 で実環境に触る、`infra/scripts/deploy.sh` や `cdk deploy` を実行する、
+  dev・prd の URL に書き込みを伴うリクエストを送る、main へ直接 push する（ブランチ保護で拒否される）。
+- **準備:** `bash scripts/agent/setup.sh` が CI と同じ依存を入れる。Python は `.venv/bin/python` を使う。
+  Claude Code on the web では `.claude/settings.json` の SessionStart フックが自動で実行する。
+  Codex Cloud では環境のセットアップスクリプトに同じコマンドを書く。
+- **完了条件:** CI の `Test / Lint / Build` と同じ確認がローカルで通り、PR の説明に実行したコマンドと結果を書いていること。
+  確認コマンドは `.github/workflows/deploy.yml` の `ci` ジョブが正本。
+  - `.venv/bin/python -m pytest tests`
+  - `cd infra && npm run build && npx jest && npx cdk synth -c env=dev --quiet`
+  - `cd frontend && npm run lint && npm run typecheck && npx vitest run`（`npm test` は watch で終わらない）
+- **人に戻すこと:** dev での実機確認、デプロイ、IAM・データ資源の変更判断。PR の説明に「未確認」として明記する。
+- **パイプで終了コードを隠さない:** 長いコマンドを `| tail` に流すと失敗が成功に見える。結果はファイルに書くか `set -o pipefail` を使う。
+
 ## Architecture
 
 ### Serverless Microservices Architecture（費用最適化済み）
