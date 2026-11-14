@@ -1,29 +1,18 @@
 {
   "mcpServers": {
-    "awslabs.core-mcp-server": {
+    "awslabs.aws-iac-mcp-server": {
       "command": "uvx",
       "args": [
-        "awslabs.core-mcp-server@1.0.27"
-      ],
-      "env": {
-        "FASTMCP_LOG_LEVEL": "ERROR"
-      },
-      "autoApprove": [],
-      "disabled": false
-    },
-    "awslabs.cdk-mcp-server": {
-      "command": "uvx",
-      "args": [
-        "awslabs.cdk-mcp-server@1.0.15"
+        "awslabs.aws-iac-mcp-server@1.0.26"
       ],
       "env": {
         "FASTMCP_LOG_LEVEL": "ERROR"
       }
     },
-    "awslabs.cost-analysis-mcp-server": {
+    "awslabs.aws-pricing-mcp-server": {
       "command": "uvx",
       "args": [
-        "awslabs.cost-analysis-mcp-server@1.0.5"
+        "awslabs.aws-pricing-mcp-server@1.1.1"
       ],
       "env": {
         "FASTMCP_LOG_LEVEL": "ERROR"
