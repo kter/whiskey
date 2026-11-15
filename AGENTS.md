@@ -64,8 +64,8 @@ AWS_PROFILE=prd bash scripts/deploy.sh prd --frontend --no-confirm
   スタックごとの論理 ID・型・操作（add / modify / replace / remove など）と件数、
   IAM 変更・データ資源の置換や削除・Lambda 環境変数の変更の有無だけを載せる。
   全文が要るときは、オーナーが手元で `--diff-only` を流す。CI と同じ変更か確かめるには、
-  手元の `infra/` で `npx cdk diff <stack> --exclusively --method template --no-color -c env=<env> --profile <env> > diff.txt 2>&1`
-  を取り、`python3 scripts/summarize-diff.py --diff diff.txt --sha <SHA> --env <env>` の
+  手元の `infra/` で `npx cdk diff <stacks> --exclusively --method template --no-color -c env=<env> --profile <env> > diff.txt 2>&1`
+  を取り（`<stacks>` は CI と同じ組み合わせを1回で渡す。`target=all` なら `WhiskeyApp-<Env> WhiskeyObservability-<Env>`）、`python3 scripts/summarize-diff.py --diff diff.txt --sha <SHA> --env <env>` の
   「Change fingerprint」とコミット SHA を Summary と比べる（`diff.txt sha256` は npm などの出力を含むので一致しない）。
 - 3 は、`target=all` で `--base --observability --frontend` を1回の deploy.sh で順に流す。途中で失敗すれば後ろは走らない。
 - deploy ジョブは環境 `deploy-<env>` の承認待ちで止まる。承認はオーナーだけが行う。
