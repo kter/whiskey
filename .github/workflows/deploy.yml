@@ -3,11 +3,10 @@ name: CI / Deploy
 # CI (tests, lint, typecheck, build, synth) runs on every PR and push.
 # Jobs that assume the AWS OIDC role run ONLY on push to main and only after CI
 # passes, so a pull request (including from a fork) can never obtain AWS
-# credentials. CDK infrastructure is deployed MANUALLY via infra/scripts/deploy.sh
-# (see infra/README.md); this workflow deploys only the frontend on push to main.
-# prd is out of scope here: it will get its own workflow after the prd account is
-# finalized. Third-party actions are pinned to commit SHAs (Dependabot keeps them
-# current via .github/dependabot.yml).
+# credentials. CDK infrastructure is deployed via infra/scripts/deploy.sh, either
+# locally or through the approval-gated cdk-deploy.yml (see infra/README.md); this
+# workflow deploys only the dev frontend on push to main. Third-party actions are
+# pinned to commit SHAs (Dependabot keeps them current via .github/dependabot.yml).
 
 on:
   push:

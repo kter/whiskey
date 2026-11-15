@@ -1,0 +1,43 @@
+Installing locked dependencies and validating TypeScript...
+added 412 packages, and audited 413 packages in 6s
+Bundling asset WhiskeyApp-Dev/DrinkLogsFunction/Code/Stage...
+
+Stack [1mWhiskeyApp-Dev[22m (031921999648/ap-northeast-1)
+[4m[1mIAM Statement Changes[22m[24m
+┌───┬────────────────────────────┬────────┬────────────────┬──────────────────────────────┬───────────┐
+│   │ Resource                   │ Effect │ Action         │ Principal                    │ Condition │
+├───┼────────────────────────────┼────────┼────────────────┼──────────────────────────────┼───────────┤
+│ + │ arn:aws:secretsmanager:FAKE-IAM-TABLE-VALUE │ Allow  │ secretsmanager:GetSecretValue │ AWS:${DrinkLogsRole} │           │
+└───┴────────────────────────────┴────────┴────────────────┴──────────────────────────────┴───────────┘
+[33m(NOTE: There may be security-related changes not in this list. See https://github.com/aws/aws-cdk/issues/1299)[39m
+
+[4m[1mParameters[22m[24m
+[33m[~][39m Parameter AssetParameters: [31moldParamValueXYZ[39m to [32mnewParamValueXYZ[39m
+
+[4m[1mResources[22m[24m
+[32m[+][39m AWS::IAM::Policy DrinkLogsRole/DefaultPolicy [90mDrinkLogsRoleDefaultPolicyAB12CD34[39m 
+[33m[~][39m AWS::Lambda::Function DrinkLogsFunction [90mDrinkLogsFunction5E6F7A8B[39m 
+ ├─ [~] Code
+ │   └─ [~] .S3Key:
+ │       ├─ [-] [31maaaa.zip[39m
+ │       └─ [+] [32mbbbb.zip[39m
+ └─ [~] Environment
+     └─ [~] .Variables:
+         └─ [+] Added: .PLACES_API_KEY
+             └─ [32msk-live-SUPERSECRET-0123456789[39m
+[33m[~][39m AWS::DynamoDB::Table DrinkLogsTable [90mDrinkLogsTable1234ABCD[39m [31m[1mreplace[22m[39m
+ └─ [~] TableName (requires replacement)
+     ├─ [-] [31mDrinkLogs-dev[39m
+     └─ [+] [32mDrinkLogs-dev-v2[39m
+[31m[-][39m AWS::S3::Bucket OldBucket [90mOldBucketDEADBEEF[39m [33morphan[39m
+[33m[~][39m AWS::Cognito::UserPool UserPool [90mUserPool6BA7E5F2[39m [33mmay be replaced[39m
+ └─ [~] Schema (may cause replacement)
+[31m[-][39m AWS::SSM::Parameter LegacyParam [90mLegacyParamC0FFEE00[39m [31m[1mdestroy[22m[39m
+
+[4m[1mOutputs[22m[24m
+[33m[~][39m Output ApiGatewayUrl: {"Value":"https://old-output-value.example"} to {"Value":"https://new-output-value.example"}
+
+Stack [1mWhiskeyObservability-Dev[22m (031921999648/ap-northeast-1)
+[32mThere were no differences[39m
+
+✨  Number of stacks with differences: 1

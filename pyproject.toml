@@ -15,6 +15,7 @@ include = [
     "local_api/**/*.py",
     "scripts/**/*.py",
     "tests/**/*.py",
+    "infra/scripts/**/*.py",
 ]
 
 [tool.ruff.lint]

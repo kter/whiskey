@@ -3,6 +3,7 @@ import { environments } from '../config/environments';
 import { CertificateStack } from './certificate-stack';
 import { contextBoolean } from './context';
 import { DNS_ACCOUNT, DnsStack } from './dns-stack';
+import { GithubDeployStack } from './github-deploy-stack';
 import { GithubOidcStack } from './github-oidc-stack';
 import { NotificationsStack } from './notifications-stack';
 import { ObservabilityStack } from './observability-stack';
@@ -11,6 +12,7 @@ import { WhiskeyInfraStack } from './whiskey-infra-stack';
 export interface AppStacks {
   dnsStack: DnsStack;
   oidcStack?: GithubOidcStack;
+  githubDeployStack: GithubDeployStack;
   certificateStack?: CertificateStack;
   appStack: WhiskeyInfraStack;
   budgetNotifications: NotificationsStack;
@@ -61,6 +63,16 @@ export function buildApp(app: cdk.App): AppStacks {
     });
     oidcStack.addDependency(dnsStack);
   }
+
+  // Roles for .github/workflows/cdk-deploy.yml. One per account, both environments, no
+  // dependencies: the owner applies it locally with `deploy.sh <env> --ci-roles`.
+  const githubDeployStack = new GithubDeployStack(app, `WhiskeyGithubDeploy-${environmentName}`, {
+    env: { account, region: 'ap-northeast-1' },
+    terminationProtection: true,
+    environment,
+    account,
+    tags,
+  });
 
   let certificateStack: CertificateStack | undefined;
   if (enableCustomDomain && envConfig.domain) {
@@ -127,6 +139,7 @@ export function buildApp(app: cdk.App): AppStacks {
   return {
     dnsStack,
     oidcStack,
+    githubDeployStack,
     certificateStack,
     appStack,
     budgetNotifications,
