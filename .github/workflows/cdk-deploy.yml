@@ -2,7 +2,7 @@ name: CDK Deploy
 
 # Manual, approval-gated deploy of the CDK stacks and the frontend (dev or prd).
 #
-#   plan   (environment plan-<env>,   no reviewer) : read-only cdk diff through the CDK
+#   plan   (environment plan-<env>; plan-prd needs owner review): read-only cdk diff through the CDK
 #          lookup role; publishes a values-free Job Summary (the repository is public).
 #   deploy (environment deploy-<env>, owner review): runs infra/scripts/deploy.sh with the
 #          deploy role. Approval of this environment is the owner's decision only.

@@ -222,7 +222,7 @@ aws cloudformation describe-stacks \
 - `.github/workflows/deploy.yml`: PR と push で CI を回し、`main` への push で dev のフロントだけを配る。
   ロールは `WhiskeyGithubOidc`（dev アカウントのみ、`whiskey-github-actions-role-dev`）で、GitHub 環境 `dev` に結び付く。
 - `.github/workflows/cdk-deploy.yml`: 手動起動（`workflow_dispatch`）で、`env`（dev / prd）と
-  `target`（base / observability / frontend / all）を選ぶ。plan ジョブ（環境 `plan-<env>`、承認なし）が
+  `target`（base / observability / frontend / all）を選ぶ。plan ジョブ（環境 `plan-<env>`。dev は承認なし、prd はオーナーの承認が必要）が
   lookup ロール経由の読み取り専用の `cdk diff` を取り、値を含まない要約を Job Summary に出す。
   deploy ジョブ（環境 `deploy-<env>`、オーナーの承認が必要）が `deploy.sh` を実行する。
   ロールは `WhiskeyGithubDeploy-<Env>`（`whiskey-gha-plan-<env>` / `whiskey-gha-deploy-<env>`）。
@@ -261,7 +261,7 @@ aws cloudformation describe-stacks \
    | 環境 | 必須レビュアー | `AWS_ROLE_ARN` |
    |------|---------------|----------------|
    | `plan-dev` | なし | `WhiskeyGithubDeploy-Dev` の `PlanRoleArn` |
-   | `plan-prd` | なし | `WhiskeyGithubDeploy-Prd` の `PlanRoleArn` |
+   | `plan-prd` | `kter` | `WhiskeyGithubDeploy-Prd` の `PlanRoleArn` |
    | `deploy-dev` | `kter` | `WhiskeyGithubDeploy-Dev` の `DeployRoleArn` |
    | `deploy-prd` | `kter` | `WhiskeyGithubDeploy-Prd` の `DeployRoleArn` |
 
