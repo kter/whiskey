@@ -57,6 +57,20 @@ AWS_PROFILE=prd bash scripts/deploy.sh prd --frontend --no-confirm
 5. prd は dev より古いことがある。`--diff-only` で list/search の資産まで動くなら、
    そのデプロイは直近の変更だけでなく未反映分をまとめて載せている。何本分か把握してから進める
 
+**GitHub Actions からのデプロイ**（`.github/workflows/cdk-deploy.yml`、`workflow_dispatch`）:
+上の作法と同じ順序を、ワークフローが次のように実行する。
+- 1 は、`deploy.yml` の `Test / Lint / Build` がその SHA で成功していることを plan ジョブが確かめる。
+- 2 の差分は plan ジョブの Job Summary で見る。リポジトリが公開なので、Summary には値を出さず、
+  スタックごとの論理 ID・型・操作（add / modify / replace / remove など）と件数、
+  IAM 変更・データ資源の置換や削除・Lambda 環境変数の変更の有無だけを載せる。
+  全文が要るときは、オーナーが手元で `--diff-only` を流す。CI と同じ変更か確かめるには、
+  手元の `infra/` で `npx cdk diff <stacks> --exclusively --method template --no-color -c env=<env> --profile <env> > diff.txt 2>&1`
+  を取り（`<stacks>` は CI と同じ組み合わせを1回で渡す。`target=all` なら `WhiskeyApp-<Env> WhiskeyObservability-<Env>`）、`python3 scripts/summarize-diff.py --diff diff.txt --sha <SHA> --env <env>` の
+  「Change fingerprint」とコミット SHA を Summary と比べる（`diff.txt sha256` は npm などの出力を含むので一致しない）。
+- 3 は、`target=all` で `--base --observability --frontend` を1回の deploy.sh で順に流す。途中で失敗すれば後ろは走らない。
+- deploy ジョブは環境 `deploy-<env>` の承認待ちで止まる。承認はオーナーだけが行う。
+- 4 の実機確認は、デプロイ後に人が行う。
+
 ## Development Commands
 
 ### Local Development
@@ -119,6 +133,14 @@ Claude Code on the web と Codex Cloud には AWS の認証情報が無い。こ
 
 - **やらないこと:** AWS CLI・boto3 で実環境に触る、`infra/scripts/deploy.sh` や `cdk deploy` を実行する、
   dev・prd の URL に書き込みを伴うリクエストを送る、main へ直接 push する（ブランチ保護で拒否される）。
+- **デプロイを始めるとき:** 自分では実行せず、`main` のワークフローを起動する。
+  `gh api -X POST repos/kter/whiskey/actions/workflows/cdk-deploy.yml/dispatches -f ref=main -f 'inputs[env]=dev' -f 'inputs[target]=all'`
+  （`env` は dev / prd、`target` は base / observability / frontend / all）。
+  応答は 204 で本文が無いので、
+  `gh api 'repos/kter/whiskey/actions/workflows/cdk-deploy.yml/runs?event=workflow_dispatch&per_page=1' --jq '.workflow_runs[0].html_url'`
+  で実行の URL を取り、報告する。承認はオーナーが行う。エージェントは承認や
+  `pending_deployments` の API を呼ばない。Codex Cloud は gh の REST も Forbidden になり起動できないので、
+  起動してほしい `env` と `target` を書いて人に戻す。
 - **準備:** `bash scripts/agent/setup.sh` が CI と同じ依存を入れる。Python は `.venv/bin/python` を使う。
   Claude Code on the web では `.claude/settings.json` の SessionStart フックが自動で実行する。
   Codex Cloud では環境のセットアップスクリプトに同じコマンドを書く。
@@ -132,7 +154,7 @@ Claude Code on the web と Codex Cloud には AWS の認証情報が無い。こ
   - `make e2e`（CI の `e2e` ジョブ。Playwright のブラウザスモークテスト。`make check` には含まない）。
     クラウドでは `cdn.playwright.dev` に届かないので、下表の Chromium を `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` で渡す。
     手元と CI は `cd frontend && npx playwright install chromium`。詳細は `docs/LOCAL_DEV.md`
-- **人に戻すこと:** dev での実機確認、デプロイ、IAM・データ資源の変更判断。PR の説明に「未確認」として明記する。
+- **人に戻すこと:** dev での実機確認、デプロイの承認、IAM・データ資源の変更判断。PR の説明に「未確認」として明記する。
 - **パイプで終了コードを隠さない:** 長いコマンドを `| tail` に流すと失敗が成功に見える。結果はファイルに書くか `set -o pipefail` を使う。
 
 ### 各クラウドの実測（2026-11-14、#73・#74 の対応時に `scripts/agent/probe-env.sh` で確認）

@@ -1140,3 +1140,159 @@ describe('application builder environment wiring', () => {
       .toBe('dev.whiskeybar.site.');
   });
 });
+
+describe('GitHub Actions deploy roles (WhiskeyGithubDeploy-<Env>)', () => {
+  type Statement = { Effect: string; Action: string | string[]; Resource: string | string[] };
+
+  function deployStackTemplate(environment: 'dev' | 'prd') {
+    const app = new cdk.App({ context: { env: environment } });
+    const stacks = buildApp(app);
+    const assembly = app.synth();
+    const artifact = assembly.getStackArtifact(stacks.githubDeployStack.artifactId);
+    return { stacks, artifact, json: artifact.template as Synthesized };
+  }
+
+  function role(json: Synthesized, roleName: string): Resource {
+    const matches = resourcesOf(json, 'AWS::IAM::Role')
+      .filter(([, resource]) => resource.Properties?.RoleName === roleName);
+    expect(matches).toHaveLength(1);
+    return matches[0][1];
+  }
+
+  function roleStatements(json: Synthesized, roleName: string): Statement[] {
+    const [logicalId] = resourcesOf(json, 'AWS::IAM::Role')
+      .find(([, resource]) => resource.Properties?.RoleName === roleName)!;
+    return resourcesOf(json, 'AWS::IAM::Policy')
+      .filter(([, policy]) => (policy.Properties?.Roles ?? [])
+        .some((ref: { Ref?: string }) => ref.Ref === logicalId))
+      .flatMap(([, policy]) => policy.Properties!.PolicyDocument.Statement as Statement[]);
+  }
+
+  const asList = (value: string | string[]) => (Array.isArray(value) ? value : [value]);
+
+  function resourcesFor(statements: Statement[], action: string): string[] {
+    return statements
+      .filter((statement) => asList(statement.Action).includes(action))
+      .flatMap((statement) => asList(statement.Resource))
+      .sort();
+  }
+
+  function allActions(statements: Statement[]): string[] {
+    return [...new Set(statements.flatMap((statement) => asList(statement.Action)))].sort();
+  }
+
+  const bootstrapRoles = (account: string, kinds: string[]) => kinds
+    .flatMap((kind) => ['ap-northeast-1', 'us-east-1']
+      .map((region) => `arn:aws:iam::${account}:role/cdk-hnb659fds-${kind}-role-${account}-${region}`))
+    .sort();
+
+  const cases = [
+    { environment: 'dev' as const, account: DEV_ACCOUNT, Env: 'Dev' },
+    { environment: 'prd' as const, account: PRD_ACCOUNT, Env: 'Prd' },
+  ];
+
+  test.each(cases)('$environment: stack lives in its own account with termination protection',
+    ({ environment, account, Env }) => {
+      const { stacks, artifact, json } = deployStackTemplate(environment);
+      expect(stacks.githubDeployStack.stackName).toBe(`WhiskeyGithubDeploy-${Env}`);
+      expect(artifact.environment.account).toBe(account);
+      expect(artifact.environment.region).toBe('ap-northeast-1');
+      expect(artifact.terminationProtection).toBe(true);
+      // Only its own asset manifest; no other stack.
+      expect(artifact.dependencies.map((dep) => dep.id))
+        .toEqual([`WhiskeyGithubDeploy-${Env}.assets`]);
+      // The provider is referenced by ARN, never created or imported.
+      expect(resourcesOf(json, 'AWS::IAM::OIDCProvider')).toHaveLength(0);
+      expect(resourcesOf(json, 'Custom::AWSCDKOpenIdConnectProvider')).toHaveLength(0);
+      expect(Object.keys(json.Outputs ?? {}).sort()).toEqual(['DeployRoleArn', 'PlanRoleArn']);
+    });
+
+  test.each(cases)('$environment: trust policies match the GitHub environment exactly',
+    ({ environment, account }) => {
+      const { json } = deployStackTemplate(environment);
+      const trust = (githubEnvironment: string) => ({
+        Version: '2012-10-17',
+        Statement: [{
+          Action: 'sts:AssumeRoleWithWebIdentity',
+          Effect: 'Allow',
+          Principal: {
+            Federated: `arn:aws:iam::${account}:oidc-provider/token.actions.githubusercontent.com`,
+          },
+          Condition: {
+            StringEquals: {
+              'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',
+              'token.actions.githubusercontent.com:sub':
+                `repo:kter/whiskey:environment:${githubEnvironment}`,
+            },
+          },
+        }],
+      });
+      const plan = role(json, `whiskey-gha-plan-${environment}`);
+      const deploy = role(json, `whiskey-gha-deploy-${environment}`);
+      expect(plan.Properties?.AssumeRolePolicyDocument).toEqual(trust(`plan-${environment}`));
+      expect(deploy.Properties?.AssumeRolePolicyDocument).toEqual(trust(`deploy-${environment}`));
+      expect(plan.Properties?.MaxSessionDuration).toBe(3600);
+      expect(deploy.Properties?.MaxSessionDuration).toBe(3600);
+      expect(plan.Properties?.ManagedPolicyArns).toBeUndefined();
+      expect(deploy.Properties?.ManagedPolicyArns).toBeUndefined();
+    });
+
+  test.each(cases)('$environment: plan role can only reach the lookup role and bootstrap version',
+    ({ environment, account }) => {
+      const { json } = deployStackTemplate(environment);
+      const statements = roleStatements(json, `whiskey-gha-plan-${environment}`);
+      expect(statements.every((statement) => statement.Effect === 'Allow')).toBe(true);
+      expect(allActions(statements)).toEqual(['ssm:GetParameter', 'sts:AssumeRole']);
+      const assumable = resourcesFor(statements, 'sts:AssumeRole');
+      expect(assumable).toEqual(bootstrapRoles(account, ['lookup']));
+      expect(assumable.some((arn) => /-(deploy|file-publishing|image-publishing)-role-/.test(arn)))
+        .toBe(false);
+      expect(resourcesFor(statements, 'ssm:GetParameter')).toEqual([
+        `arn:aws:ssm:ap-northeast-1:${account}:parameter/cdk-bootstrap/hnb659fds/version`,
+        `arn:aws:ssm:us-east-1:${account}:parameter/cdk-bootstrap/hnb659fds/version`,
+      ]);
+    });
+
+  test.each(cases)('$environment: deploy role is limited to bootstrap roles and deploy.sh --frontend calls',
+    ({ environment, account, Env }) => {
+      const { json } = deployStackTemplate(environment);
+      const statements = roleStatements(json, `whiskey-gha-deploy-${environment}`);
+      expect(statements.every((statement) => statement.Effect === 'Allow')).toBe(true);
+      expect(allActions(statements)).toEqual([
+        'cloudformation:DescribeStacks',
+        'cloudfront:CreateInvalidation',
+        's3:AbortMultipartUpload',
+        's3:DeleteObject',
+        's3:GetObject',
+        's3:ListBucket',
+        's3:PutObject',
+        'ssm:GetParameter',
+        'sts:AssumeRole',
+      ]);
+      expect(resourcesFor(statements, 'sts:AssumeRole')).toEqual(
+        bootstrapRoles(account, ['deploy', 'file-publishing', 'image-publishing', 'lookup']));
+      expect(resourcesFor(statements, 'cloudformation:DescribeStacks')).toEqual([
+        `arn:aws:cloudformation:ap-northeast-1:${account}:stack/WhiskeyApp-${Env}/*`,
+      ]);
+      const bucket = `arn:aws:s3:::whiskey-webapp-${environment}-${account}`;
+      expect(resourcesFor(statements, 's3:ListBucket')).toEqual([bucket]);
+      for (const action of ['s3:GetObject', 's3:PutObject', 's3:DeleteObject']) {
+        expect(resourcesFor(statements, action)).toEqual([`${bucket}/*`]);
+      }
+      expect(resourcesFor(statements, 'cloudfront:CreateInvalidation')).toEqual([
+        `arn:aws:cloudfront::${account}:distribution/*`,
+      ]);
+      expect(statements.flatMap((statement) => asList(statement.Resource))).not.toContain('*');
+    });
+
+  test('the webapp bucket name the deploy role targets matches the application stack', () => {
+    for (const { environment, account } of cases) {
+      const app = new cdk.App({ context: { env: environment } });
+      const stacks = buildApp(app);
+      const appJson = app.synth().getStackArtifact(stacks.appStack.artifactId).template as Synthesized;
+      const bucketNames = resourcesOf(appJson, 'AWS::S3::Bucket')
+        .map(([, bucket]) => bucket.Properties?.BucketName);
+      expect(bucketNames).toContain(`whiskey-webapp-${environment}-${account}`);
+    }
+  });
+});

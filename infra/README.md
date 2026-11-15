@@ -19,7 +19,7 @@ AWS CDK (TypeScript) を使用したウィスキーアプリケーションの�
   - `DrinkLogs`（GSI: UserDatetimeIndex）
   - `AppState`（濫用/コスト防御の原子カウンタ、PK `pk`、TTL）
 - **Bedrock**: 銘柄/飲み方判別（Nova Lite 既定、APAC 域内固定プロファイル）
-- **IAM**: 関数ごとの最小権限ロール、GitHub Actions 用 OIDC ロール（保護スタック）
+- **IAM**: 関数ごとの最小権限ロール、GitHub Actions 用 OIDC ロール（`WhiskeyGithubOidc`、`WhiskeyGithubDeploy-<Env>`。保護スタック）
 - **Secrets Manager**: アプリ機密（`whiskey-app-secrets`）+ Places キー（`whiskey-places-{env}`）
 
 ### 🌍 環境
@@ -64,7 +64,7 @@ npx cdk bootstrap
 
 ```
 Usage: ./scripts/deploy.sh <dev|prd> <target> [target ...] [options]
-targets: --dns --oidc --cert --base --notifications --observability --frontend
+targets: --dns --oidc --cert --base --notifications --observability --ci-roles --frontend
 options: --diff --diff-only --no-confirm --destroy
          -c KEY=VALUE, --context KEY=VALUE（複数回指定可、env は上書き不可）
 ```
@@ -78,6 +78,12 @@ options: --diff --diff-only --no-confirm --destroy
 | `--notifications` | `WhiskeyNotifications`(us-east-1 Budgets) + `-Tokyo`(アラーム用トピック)。SSM `/whiskey/notifications/email` を両リージョンに要求 |
 | `--observability` | `WhiskeyObservability-<Env>`（S3/リコンサイラのアラーム。**base + notifications-Tokyo の後**にデプロイ） |
 | `--frontend` | スタック出力 → `.env` 生成 → `generate` → `s3 sync --delete` → CloudFront invalidation |
+| `--ci-roles` | `WhiskeyGithubDeploy-<Env>`（`cdk-deploy.yml` 用の plan / deploy ロール。dev・prd とも可、termination protection、`--destroy` 不可。ワークフローの認証情報では適用できない） |
+
+`DEPLOY_CREDENTIALS=env` を付けると `--profile` を外し、環境変数の認証情報（GitHub Actions の OIDC）を使う。
+アカウント検証はそのまま行う。このモードでは `cdk bootstrap` を実行せず、bootstrap の版が足りなければ失敗する。
+`--diff-only` は `cdk diff --method template` になり、lookup ロールだけで済む読み取り専用の比較になる。
+手元で使うことは想定していない。
 
 ### 初回構築の順序（dev）
 ```bash
@@ -211,30 +217,56 @@ aws cloudformation describe-stacks \
 
 ## 🔗 GitHub Actions設定
 
-### 1. OIDC プロバイダーの設定
+ワークフローは2本ある。
 
-```bash
-# 一度だけ実行が必要
-aws iam create-open-id-connect-provider \
-  --url https://token.actions.githubusercontent.com \
-  --client-id-list sts.amazonaws.com \
-  --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1
-```
+- `.github/workflows/deploy.yml`: PR と push で CI を回し、`main` への push で dev のフロントだけを配る。
+  ロールは `WhiskeyGithubOidc`（dev アカウントのみ、`whiskey-github-actions-role-dev`）で、GitHub 環境 `dev` に結び付く。
+- `.github/workflows/cdk-deploy.yml`: 手動起動（`workflow_dispatch`）で、`env`（dev / prd）と
+  `target`（base / observability / frontend / all）を選ぶ。plan ジョブ（環境 `plan-<env>`。dev は承認なし、prd はオーナーの承認が必要）が
+  lookup ロール経由の読み取り専用の `cdk diff` を取り、値を含まない要約を Job Summary に出す。
+  deploy ジョブ（環境 `deploy-<env>`、オーナーの承認が必要）が `deploy.sh` を実行する。
+  ロールは `WhiskeyGithubDeploy-<Env>`（`whiskey-gha-plan-<env>` / `whiskey-gha-deploy-<env>`）。
 
-### 2. GitHub Secrets設定
+どちらのロールも、OIDC トークンの `aud` と `sub`（`repo:kter/whiskey:environment:<GitHub 環境名>`）の完全一致で信頼する。
+`sub` にブランチは入らないので、GitHub 環境の「保護ブランチのみ」の設定が、別ブランチからの起動を止める唯一の境界になる。
 
-```bash
-# デプロイ後に表示されるロールARNをGitHub Secretsに設定
-AWS_ROLE_ARN: <GitHubActionsRoleArn>
-```
+### 初回セットアップ（オーナーが一度だけ）
 
-### 3. リポジトリ名の制限
+1. 各アカウントに GitHub の OIDC プロバイダがあることを確かめる。スタックは作成も import もせず、ARN で参照するだけなので、
+   無ければデプロイ後の AssumeRole が失敗する。
+   ```bash
+   PAGER=cat aws iam list-open-id-connect-providers --profile dev
+   PAGER=cat aws iam list-open-id-connect-providers --profile prd
+   # arn:aws:iam::<account>:oidc-provider/token.actions.githubusercontent.com が出ること
+   ```
+   prd に無い場合は、ここで止めて作り方を決める（CDK に import はしない）。
+2. ロールのスタックを手元から適用する。
+   ```bash
+   cd infra
+   AWS_PROFILE=dev bash scripts/deploy.sh dev --ci-roles --diff-only
+   AWS_PROFILE=dev bash scripts/deploy.sh dev --ci-roles
+   AWS_PROFILE=prd bash scripts/deploy.sh prd --ci-roles --diff-only --no-confirm
+   AWS_PROFILE=prd bash scripts/deploy.sh prd --ci-roles --no-confirm
+   ```
+3. 出力の `PlanRoleArn` と `DeployRoleArn` を控える。
+   ```bash
+   PAGER=cat aws cloudformation describe-stacks --stack-name WhiskeyGithubDeploy-Dev --profile dev \
+     --query 'Stacks[0].Outputs[*].[OutputKey,OutputValue]' --output table
+   PAGER=cat aws cloudformation describe-stacks --stack-name WhiskeyGithubDeploy-Prd --profile prd \
+     --query 'Stacks[0].Outputs[*].[OutputKey,OutputValue]' --output table
+   ```
+4. GitHub の Settings → Environments で4つの環境を作り、それぞれに環境変数 `AWS_ROLE_ARN` を置く。
+   どの環境も Deployment branches は「Protected branches only」にする（必須）。
 
-`lib/whiskey-infra-stack.ts` の以下の行を修正：
+   | 環境 | 必須レビュアー | `AWS_ROLE_ARN` |
+   |------|---------------|----------------|
+   | `plan-dev` | なし | `WhiskeyGithubDeploy-Dev` の `PlanRoleArn` |
+   | `plan-prd` | `kter` | `WhiskeyGithubDeploy-Prd` の `PlanRoleArn` |
+   | `deploy-dev` | `kter` | `WhiskeyGithubDeploy-Dev` の `DeployRoleArn` |
+   | `deploy-prd` | `kter` | `WhiskeyGithubDeploy-Prd` の `DeployRoleArn` |
 
-```typescript
-'token.actions.githubusercontent.com:sub': 'repo:your-username/your-repo:*'
-```
+   既存の環境 `dev`（`deploy.yml` 用）と `prd` はそのまま残す。
+5. Actions タブから `CDK Deploy` を `env=dev`、`target=base` で起動し、plan の Summary と承認待ちを確かめる。
 
 ## 🌐 フロントエンド環境変数
 
@@ -341,8 +373,9 @@ npx cdk destroy -c env=dev
    - S3バケット名にアカウントIDを含めているため通常は回避可能
 
 4. **GitHub Actions権限エラー**
-   - OIDC プロバイダーが設定されているか確認
-   - リポジトリ名の制限が正しく設定されているか確認
+   - アカウントに `token.actions.githubusercontent.com` の OIDC プロバイダがあるか確認
+   - GitHub 環境名がロールの `sub` 条件（`repo:kter/whiskey:environment:<環境名>`）と一致しているか、
+     環境変数 `AWS_ROLE_ARN` がその環境のロールを指しているか確認
 
 ### デバッグ
 

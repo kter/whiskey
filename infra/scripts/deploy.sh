@@ -13,11 +13,18 @@ show_usage() {
   echo
   echo "Targets (at least one is required):"
   echo "  --dns --oidc --cert --base --notifications --observability"
+  echo "  --ci-roles        WhiskeyGithubDeploy-<Env> (GitHub Actions plan/deploy roles)"
   echo "  --frontend        Generate and deploy the frontend"
   echo
   echo "Options:"
   echo "  --diff --diff-only --no-confirm --destroy"
   echo "  -c KEY=VALUE, --context KEY=VALUE (repeatable; env cannot be overridden)"
+  echo
+  echo "Credentials:"
+  echo "  By default every AWS call uses --profile <env>."
+  echo "  DEPLOY_CREDENTIALS=env uses the ambient credentials instead (GitHub Actions OIDC)."
+  echo "  In that mode cdk bootstrap never runs, --diff-only is read-only (cdk diff"
+  echo "  --method template, lookup role only) and --ci-roles is refused."
   exit 1
 }
 
@@ -43,6 +50,7 @@ SELECT_BASE=false
 SELECT_NOTIFICATIONS=false
 SELECT_OBSERVABILITY=false
 SELECT_FRONTEND=false
+SELECT_CI_ROLES=false
 TARGET_COUNT=0
 CDK_CONTEXT=(-c "env=$ENVIRONMENT")
 
@@ -55,6 +63,7 @@ while [[ $# -gt 0 ]]; do
     --notifications) SELECT_NOTIFICATIONS=true; TARGET_COUNT=$((TARGET_COUNT + 1)) ;;
     --observability) SELECT_OBSERVABILITY=true; TARGET_COUNT=$((TARGET_COUNT + 1)) ;;
     --frontend) SELECT_FRONTEND=true; TARGET_COUNT=$((TARGET_COUNT + 1)) ;;
+    --ci-roles) SELECT_CI_ROLES=true; TARGET_COUNT=$((TARGET_COUNT + 1)) ;;
     --diff) SHOW_DIFF=true ;;
     --diff-only) SHOW_DIFF=true; DIFF_ONLY=true ;;
     --no-confirm) NO_CONFIRM=true ;;
@@ -85,8 +94,9 @@ if [[ $TARGET_COUNT -eq 0 ]]; then
   echo -e "${RED}Error: select at least one deployment target.${NC}"
   show_usage
 fi
-if [[ "$DESTROY" == true && ("$SELECT_DNS" == true || "$SELECT_OIDC" == true) ]]; then
-  echo -e "${RED}Error: WhiskeyDns and WhiskeyGithubOidc cannot be destroyed by this script.${NC}"
+if [[ "$DESTROY" == true && ("$SELECT_DNS" == true || "$SELECT_OIDC" == true \
+  || "$SELECT_CI_ROLES" == true) ]]; then
+  echo -e "${RED}Error: WhiskeyDns, WhiskeyGithubOidc and WhiskeyGithubDeploy cannot be destroyed by this script.${NC}"
   exit 2
 fi
 if [[ "$DESTROY" == true && "$SELECT_FRONTEND" == true ]]; then
@@ -98,9 +108,31 @@ if [[ "$ENVIRONMENT" == "prd" && "$SELECT_OIDC" == true ]]; then
   exit 2
 fi
 
+# Credential source. Local runs use the named profile; the GitHub Actions workflow sets
+# DEPLOY_CREDENTIALS=env and supplies OIDC credentials through the environment.
+DEPLOY_CREDENTIALS=${DEPLOY_CREDENTIALS:-profile}
+case "$DEPLOY_CREDENTIALS" in
+  profile)
+    PROFILE=$ENVIRONMENT
+    PROFILE_ARGS=(--profile "$PROFILE")
+    CREDENTIAL_LABEL="profile $PROFILE"
+    ;;
+  env)
+    PROFILE_ARGS=()
+    CREDENTIAL_LABEL="environment credentials"
+    ;;
+  *)
+    echo -e "${RED}Error: DEPLOY_CREDENTIALS must be unset, 'profile' or 'env'.${NC}"
+    exit 2
+    ;;
+esac
+if [[ "$DEPLOY_CREDENTIALS" == env && "$SELECT_CI_ROLES" == true ]]; then
+  echo -e "${RED}Error: --ci-roles changes the workflow's own trust; apply it locally with a profile.${NC}"
+  exit 2
+fi
+
 cd "$(dirname "$0")/.."
-PROFILE=$ENVIRONMENT
-CDK_CONTEXT+=(--profile "$PROFILE")
+CDK_CONTEXT+=("${PROFILE_ARGS[@]}")
 
 command -v aws >/dev/null || { echo -e "${RED}Error: AWS CLI is not installed.${NC}"; exit 1; }
 command -v npm >/dev/null || { echo -e "${RED}Error: npm is not installed.${NC}"; exit 1; }
@@ -118,34 +150,51 @@ if [[ -z "$EXPECTED_ACCOUNT" ]]; then
 fi
 
 CALLER_ACCOUNT=$(aws sts get-caller-identity \
-  --profile "$PROFILE" \
+  "${PROFILE_ARGS[@]}" \
   --query Account \
   --output text)
 if [[ "$CALLER_ACCOUNT" != "$EXPECTED_ACCOUNT" ]]; then
-  echo -e "${RED}Error: profile $PROFILE resolves to $CALLER_ACCOUNT, expected $EXPECTED_ACCOUNT.${NC}"
+  echo -e "${RED}Error: $CREDENTIAL_LABEL resolves to $CALLER_ACCOUNT, expected $EXPECTED_ACCOUNT.${NC}"
   exit 1
 fi
 
 bootstrap_region() {
   local region=$1
   local version
+  if [[ "$DEPLOY_CREDENTIALS" == env ]]; then
+    # Workflow credentials never bootstrap: a missing or old bootstrap stack is the owner's
+    # call. SSM errors are not swallowed so an access problem is not mistaken for "absent".
+    if ! version=$(aws ssm get-parameter \
+      --name /cdk-bootstrap/hnb659fds/version \
+      --region "$region" \
+      --query Parameter.Value \
+      --output text); then
+      echo -e "${RED}Error: could not read the CDK bootstrap version in $region.${NC}"
+      exit 1
+    fi
+    if [[ ! "$version" =~ ^[0-9]+$ || "$version" -lt "$MIN_BOOTSTRAP_VERSION" ]]; then
+      echo -e "${RED}Error: CDK bootstrap in $EXPECTED_ACCOUNT/$region is missing or older than v$MIN_BOOTSTRAP_VERSION. Bootstrap it locally with a profile.${NC}"
+      exit 1
+    fi
+    return 0
+  fi
   version=$(aws ssm get-parameter \
     --name /cdk-bootstrap/hnb659fds/version \
     --region "$region" \
-    --profile "$PROFILE" \
+    "${PROFILE_ARGS[@]}" \
     --query Parameter.Value \
     --output text 2>/dev/null || true)
   if [[ ! "$version" =~ ^[0-9]+$ || "$version" -lt "$MIN_BOOTSTRAP_VERSION" ]]; then
     echo -e "${YELLOW}Bootstrapping $EXPECTED_ACCOUNT/$region...${NC}"
     npx cdk bootstrap "aws://$EXPECTED_ACCOUNT/$region" \
-      --profile "$PROFILE" \
+      "${PROFILE_ARGS[@]}" \
       -c "env=$ENVIRONMENT"
   fi
 }
 
 if [[ "$SELECT_DNS" == true || "$SELECT_OIDC" == true || "$SELECT_CERT" == true \
   || "$SELECT_BASE" == true || "$SELECT_NOTIFICATIONS" == true \
-  || "$SELECT_OBSERVABILITY" == true ]]; then
+  || "$SELECT_OBSERVABILITY" == true || "$SELECT_CI_ROLES" == true ]]; then
   bootstrap_region ap-northeast-1
   bootstrap_region us-east-1
 fi
@@ -155,7 +204,7 @@ if [[ "$SELECT_NOTIFICATIONS" == true ]]; then
     if ! aws ssm get-parameter \
       --name /whiskey/notifications/email \
       --region "$region" \
-      --profile "$PROFILE" >/dev/null 2>&1; then
+      "${PROFILE_ARGS[@]}" >/dev/null 2>&1; then
       echo -e "${RED}Error: /whiskey/notifications/email is missing in $region.${NC}"
       exit 1
     fi
@@ -172,10 +221,18 @@ if [[ "$SELECT_NOTIFICATIONS" == true ]]; then
 fi
 [[ "$SELECT_BASE" == true ]] && STACKS+=("WhiskeyApp-$ENV_NAME")
 [[ "$SELECT_OBSERVABILITY" == true ]] && STACKS+=("WhiskeyObservability-$ENV_NAME")
+[[ "$SELECT_CI_ROLES" == true ]] && STACKS+=("WhiskeyGithubDeploy-$ENV_NAME")
+
+# With workflow credentials the diff must stay read-only: compare templates through the
+# lookup role instead of creating a change set through the deploy role.
+DIFF_ARGS=()
+if [[ "$DEPLOY_CREDENTIALS" == env ]]; then
+  DIFF_ARGS=(--method template --no-color)
+fi
 
 if [[ "$SHOW_DIFF" == true ]]; then
   if [[ ${#STACKS[@]} -gt 0 ]]; then
-    npx cdk diff "${STACKS[@]}" --exclusively "${CDK_CONTEXT[@]}"
+    npx cdk diff "${STACKS[@]}" --exclusively "${DIFF_ARGS[@]}" "${CDK_CONTEXT[@]}"
   else
     echo -e "${YELLOW}No CDK stacks selected; there is no infrastructure diff for --frontend.${NC}"
   fi
@@ -209,7 +266,7 @@ if [[ "$SELECT_FRONTEND" == true ]]; then
   STACK_OUTPUTS=$(aws cloudformation describe-stacks \
     --stack-name "$APP_STACK" \
     --region ap-northeast-1 \
-    --profile "$PROFILE" \
+    "${PROFILE_ARGS[@]}" \
     --query 'Stacks[0].Outputs' \
     --output json)
 
@@ -302,14 +359,14 @@ if [[ "$SELECT_FRONTEND" == true ]]; then
     echo -e "${YELLOW}Syncing generated assets to s3://$WEB_APP_BUCKET...${NC}"
     aws s3 sync .output/public "s3://$WEB_APP_BUCKET" --delete \
       --region ap-northeast-1 \
-      --profile "$PROFILE"
+      "${PROFILE_ARGS[@]}"
   )
 
   echo -e "${YELLOW}Invalidating CloudFront distribution $DISTRIBUTION_ID...${NC}"
   aws cloudfront create-invalidation \
     --distribution-id "$DISTRIBUTION_ID" \
     --paths '/*' \
-    --profile "$PROFILE"
+    "${PROFILE_ARGS[@]}"
 
   STACKS+=(frontend)
 fi

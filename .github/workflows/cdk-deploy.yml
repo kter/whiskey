@@ -1,0 +1,215 @@
+name: CDK Deploy
+
+# Manual, approval-gated deploy of the CDK stacks and the frontend (dev or prd).
+#
+#   plan   (environment plan-<env>; plan-prd needs owner review): read-only cdk diff through the CDK
+#          lookup role; publishes a values-free Job Summary (the repository is public).
+#   deploy (environment deploy-<env>, owner review): runs infra/scripts/deploy.sh with the
+#          deploy role. Approval of this environment is the owner's decision only.
+#
+# The IAM roles come from WhiskeyGithubDeploy-<Env> (infra/lib/github-deploy-stack.ts), which
+# the owner applies locally. Both GitHub environments must be restricted to protected branches:
+# the OIDC subject carries no ref, so the environment branch rule is what keeps a dispatch from
+# another branch (with an edited copy of this file) away from the roles.
+# Third-party actions are pinned to the same commit SHAs as deploy.yml.
+
+on:
+  workflow_dispatch:
+    inputs:
+      env:
+        description: Target environment
+        type: choice
+        required: true
+        options:
+          - dev
+          - prd
+      target:
+        description: What to deploy (all = base, observability, then frontend)
+        type: choice
+        required: true
+        options:
+          - base
+          - observability
+          - frontend
+          - all
+
+run-name: CDK deploy ${{ inputs.env }} / ${{ inputs.target }}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ inputs.env }}
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: '3.11'
+  AWS_REGION: ap-northeast-1
+
+jobs:
+  plan:
+    name: Plan
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: plan-${{ inputs.env }}
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    outputs:
+      flags: ${{ steps.targets.outputs.flags }}
+    steps:
+      - name: Resolve targets
+        id: targets
+        env:
+          TARGET_ENV: ${{ inputs.env }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          set -euo pipefail
+          case "$TARGET_ENV" in
+            dev|prd) ;;
+            *) echo "Unknown environment" >&2; exit 1 ;;
+          esac
+          case "$TARGET" in
+            base) flags="--base"; names="base" ;;
+            observability) flags="--observability"; names="observability" ;;
+            frontend) flags="--frontend"; names="frontend" ;;
+            all) flags="--base --observability --frontend"; names="base observability frontend" ;;
+            *) echo "Unknown target" >&2; exit 1 ;;
+          esac
+          {
+            echo "flags=$flags"
+            echo "names=$names"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Require green CI for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # The "Test / Lint / Build" job of deploy.yml on the push to main for this SHA.
+          # Checked per job: e2e or the dev frontend deploy may fail while CI is green.
+          run_ids=$(gh api \
+            "repos/$REPO/actions/workflows/deploy.yml/runs?head_sha=$SHA&event=push&per_page=20" \
+            --jq '.workflow_runs[].id')
+          for run_id in $run_ids; do
+            state=$(gh api "repos/$REPO/actions/runs/$run_id/jobs?per_page=100" \
+              --jq '[.jobs[] | select(.name == "Test / Lint / Build")] | first | "\(.status)/\(.conclusion)"')
+            if [[ "$state" == "completed/success" ]]; then
+              echo "CI passed for $SHA (run $run_id)."
+              exit 0
+            fi
+          done
+          echo "::error::No successful 'Test / Lint / Build' run of deploy.yml for $SHA (missing, failed, or still running)."
+          exit 1
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Configure AWS credentials (plan role)
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHubActions-Plan-${{ github.run_id }}
+
+      - name: cdk diff (values stay in the runner)
+        env:
+          TARGET_ENV: ${{ inputs.env }}
+          FLAGS: ${{ steps.targets.outputs.flags }}
+          NAMES: ${{ steps.targets.outputs.names }}
+          SHA: ${{ github.sha }}
+          DEPLOY_CREDENTIALS: env
+        run: |
+          set -uo pipefail
+          read -r -a flag_array <<< "$FLAGS"
+          # All output goes to a file that is never printed or uploaded: it holds template values.
+          bash infra/scripts/deploy.sh "$TARGET_ENV" "${flag_array[@]}" --diff-only --no-confirm \
+            > "$RUNNER_TEMP/diff.txt" 2>&1
+          rc=$?
+          python -I infra/scripts/summarize-diff.py \
+            --diff "$RUNNER_TEMP/diff.txt" \
+            --sha "$SHA" \
+            --env "$TARGET_ENV" \
+            --targets "$NAMES" \
+            --exit-code "$rc" >> "$GITHUB_STEP_SUMMARY"
+          if [[ $rc -ne 0 ]]; then
+            echo "::error::deploy.sh --diff-only failed with exit code $rc. Details are withheld; run it locally."
+            exit 1
+          fi
+          echo "Plan summary written to the Job Summary."
+
+  deploy:
+    name: Deploy
+    needs: plan
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: deploy-${{ inputs.env }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Configure AWS credentials (deploy role)
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHubActions-Deploy-${{ github.run_id }}
+
+      - name: deploy.sh
+        env:
+          TARGET_ENV: ${{ inputs.env }}
+          FLAGS: ${{ needs.plan.outputs.flags }}
+          DEPLOY_CREDENTIALS: env
+        run: |
+          set -euo pipefail
+          read -r -a flag_array <<< "$FLAGS"
+          # One invocation keeps the order base -> observability -> frontend and stops at the
+          # first failure, so prd never gets the frontend without the stacks it needs.
+          bash infra/scripts/deploy.sh "$TARGET_ENV" "${flag_array[@]}" --no-confirm
+
+      - name: Deploy summary
+        if: always()
+        env:
+          TARGET_ENV: ${{ inputs.env }}
+          TARGET: ${{ inputs.target }}
+          SHA: ${{ github.sha }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          {
+            echo "## CDK deploy: $TARGET_ENV ($TARGET)"
+            echo
+            echo "- Commit: \`$SHA\`"
+            echo "- Result: $JOB_STATUS"
+          } >> "$GITHUB_STEP_SUMMARY"
