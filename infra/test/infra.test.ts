@@ -579,7 +579,7 @@ describe('Lambda bundling and shared layer', () => {
     for (const [name, handler, memory, timeout, concurrency] of expected) {
       const fn = lambdaByName(json, name);
       expect(fn.Properties).toEqual(expect.objectContaining({
-        Runtime: 'python3.11',
+        Runtime: 'python3.13',
         Architectures: ['x86_64'],
         Handler: handler,
         MemorySize: memory,

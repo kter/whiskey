@@ -161,7 +161,7 @@ Claude Code on the web と Codex Cloud には AWS の認証情報が無い。こ
 
 | 項目 | Claude Code on the web | Codex Cloud |
 | --- | --- | --- |
-| Python / Node | 3.11 / 22（CI と一致） | 3.12 / 24。3.11・22 が要るなら `uv python install 3.11` と npm の `node@22` を作業領域に入れる |
+| Python / Node | 3.11 / 22（測定時の CI と一致。CI は 2026-11-21 から 3.13） | 3.12 / 24。3.11・22 が要るなら `uv python install 3.11` と npm の `node@22` を作業領域に入れる |
 | Docker | CLI のみ。デーモンは停止。ローカルスタックは moto のため不要 | デーモン稼働。ローカルスタックは moto のため不要 |
 | `gh` | `GH_TOKEN` あり。ただし GraphQL は 403（`gh pr comment`・`gh issue view` などが失敗）。REST の `gh api repos/...` か GitHub MCP を使う | GraphQL が Forbidden。Issue は GitHub コネクターで読む |
 | npm キャッシュ | 既定のまま可 | `$HOME` 側が書き込み不可。`setup.sh` がリポジトリ内に退避する |

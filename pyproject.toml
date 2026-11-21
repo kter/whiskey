@@ -8,7 +8,7 @@ python_files = ["test_*.py"]
 extraPaths = ["lambda/common/python", "lambda/whiskeys-search/python"]
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py313"
 # Python のコードはこの4ディレクトリにある。infra/・frontend/ の node_modules などは見ない
 include = [
     "lambda/**/*.py",

@@ -16,7 +16,7 @@ cd "$ROOT"
 log() { printf '[agent-setup] %s\n' "$*"; }
 
 PYTHON=${PYTHON:-python3}
-if command -v python3.11 >/dev/null 2>&1; then PYTHON=python3.11; fi
+if command -v python3.13 >/dev/null 2>&1; then PYTHON=python3.13; fi
 log "python: $($PYTHON --version 2>&1), node: $(node --version 2>&1)"
 
 if [ ! -x .venv/bin/python ]; then

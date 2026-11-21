@@ -30,8 +30,8 @@ show "disk (cwd)" sh -c "df -h . | awk 'NR==2 {print \$4\" free\"}'"
 show "uid" id -u
 if sudo -n true 2>/dev/null; then echo "sudo                   passwordless OK"; else echo "sudo                   not available"; fi
 
-section "Toolchain (CI uses Python 3.11 / Node 22)"
-for cmd in python3 python3.11 node npm npx java git gh docker uv pyenv; do
+section "Toolchain (CI uses Python 3.13 / Node 22)"
+for cmd in python3 python3.13 node npm npx java git gh docker uv pyenv; do
   if have "$cmd"; then
     case $cmd in
       java) show "$cmd" sh -c 'java -version 2>&1' ;;
