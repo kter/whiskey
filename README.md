@@ -132,7 +132,7 @@ cd frontend && npm run dev     # Nuxt dev(:3000)  ※ localhost:3000 を使う�
 ```
 
 ### 前提条件
-- Node.js 22+ / Python 3.11+ / AWS CLI v2 / AWS CDK / Docker
+- Node.js 22+ / Python 3.13+ / AWS CLI v2 / AWS CDK / Docker
 
 ### フロントエンド環境変数（`frontend/.env`）
 ```bash

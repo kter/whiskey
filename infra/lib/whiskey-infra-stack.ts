@@ -391,12 +391,12 @@ export class WhiskeyInfraStack extends cdk.Stack {
       const sourceDirectory = path.join(__dirname, '..', '..', 'lambda', directory);
       return lambda.Code.fromAsset(sourceDirectory, {
         bundling: {
-          image: lambda.Runtime.PYTHON_3_11.bundlingImage,
+          image: lambda.Runtime.PYTHON_3_13.bundlingImage,
           platform: 'linux/amd64',
           command: ['bash', '-c', BUNDLING_COMMAND],
           // Jest and template-only npm synth commands copy sources locally so they
           // remain usable where the Docker daemon is intentionally unavailable.
-          // deploy.sh does not set CDK_LOCAL_BUNDLING and keeps the Python 3.11
+          // deploy.sh does not set CDK_LOCAL_BUNDLING and keeps the Python 3.13
           // Docker bundling path for deployable assets.
           ...(process.env.NODE_ENV === 'test' || process.env.CDK_LOCAL_BUNDLING === '1' ? {
             local: {
@@ -420,7 +420,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
       layerVersionName: `whiskey-common-${environment}`,
       description: 'Shared logging, responses, JWT, normalization, and AWS clients',
       compatibleArchitectures: [lambda.Architecture.X86_64],
-      compatibleRuntimes: [lambda.Runtime.PYTHON_3_11],
+      compatibleRuntimes: [lambda.Runtime.PYTHON_3_13],
       code: bundledPythonCode('common'),
     });
 
@@ -436,7 +436,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
 
     const whiskeyListLambda = new lambda.Function(this, 'WhiskeyListFunction', {
       functionName: lambdaFunctionNames.whiskeyList,
-      runtime: lambda.Runtime.PYTHON_3_11,
+      runtime: lambda.Runtime.PYTHON_3_13,
       architecture: lambda.Architecture.X86_64,
       handler: 'index.lambda_handler',
       code: bundledPythonCode('whiskeys-list'),
@@ -457,7 +457,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
 
     const whiskeySearchLambda = new lambda.Function(this, 'WhiskeySearchFunction', {
       functionName: lambdaFunctionNames.whiskeySearch,
-      runtime: lambda.Runtime.PYTHON_3_11,
+      runtime: lambda.Runtime.PYTHON_3_13,
       architecture: lambda.Architecture.X86_64,
       handler: 'index.lambda_handler',
       code: bundledPythonCode('whiskeys-search'),
@@ -479,7 +479,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
 
     const drinkLogsLambda = new lambda.Function(this, 'DrinkLogsFunction', {
       functionName: lambdaFunctionNames.drinkLogs,
-      runtime: lambda.Runtime.PYTHON_3_11,
+      runtime: lambda.Runtime.PYTHON_3_13,
       architecture: lambda.Architecture.X86_64,
       handler: 'index.lambda_handler',
       code: bundledPythonCode('drink-logs'),
@@ -507,7 +507,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
     const analyzeLimits = envConfig.analyzeLimits ?? DEFAULT_ANALYZE_LIMITS;
     const drinkLogAnalyzeLambda = new lambda.Function(this, 'DrinkLogAnalyzeFunction', {
       functionName: lambdaFunctionNames.drinkLogAnalyze,
-      runtime: lambda.Runtime.PYTHON_3_11,
+      runtime: lambda.Runtime.PYTHON_3_13,
       architecture: lambda.Architecture.X86_64,
       handler: 'index.lambda_handler',
       code: bundledPythonCode('drink-log-analyze'),
@@ -537,7 +537,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
 
     const drinkLogPlacesLambda = new lambda.Function(this, 'DrinkLogPlacesFunction', {
       functionName: lambdaFunctionNames.drinkLogPlaces,
-      runtime: lambda.Runtime.PYTHON_3_11,
+      runtime: lambda.Runtime.PYTHON_3_13,
       architecture: lambda.Architecture.X86_64,
       handler: 'places.lambda_handler',
       code: bundledPythonCode('drink-log-analyze'),
@@ -558,7 +558,7 @@ export class WhiskeyInfraStack extends cdk.Stack {
 
     const drinkLogReconcilerLambda = new lambda.Function(this, 'DrinkLogReconcilerFunction', {
       functionName: lambdaFunctionNames.drinkLogReconciler,
-      runtime: lambda.Runtime.PYTHON_3_11,
+      runtime: lambda.Runtime.PYTHON_3_13,
       architecture: lambda.Architecture.X86_64,
       handler: 'reconciler.lambda_handler',
       code: bundledPythonCode('drink-logs'),

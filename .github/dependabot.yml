@@ -58,11 +58,3 @@ updates:
       python-major:
         update-types:
           - major
-    ignore:
-      # The python3.11 Lambda runtime is Amazon Linux 2 (glibc 2.26). Pillow
-      # 12.3.0 and later ship no manylinux2014 wheel for cp311, so they would
-      # not install there (see #100). Lift this when the Lambdas move to
-      # python3.12 or later (Amazon Linux 2023).
-      - dependency-name: pillow
-        versions:
-          - ">=12.3.0"
