@@ -43,7 +43,8 @@ jobs:
           upload-artifact: false
 
       - name: Show SBOM contents
-        run: jq -r '"components: \(.components | length)", (.components[] | "  \(.purl // .name)")' bom.json
+        run: |
+          jq -r '"components: \(.components | length)", (.components[] | "  \(.purl // .name)")' bom.json
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
