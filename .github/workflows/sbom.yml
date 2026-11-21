@@ -32,7 +32,7 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Generate SBOM
         uses: anchore/sbom-action@v0
@@ -46,7 +46,7 @@ jobs:
         run: |
           jq -r '"components: \(.components | length)", (.components[] | "  \(.purl // .name)")' bom.json
 
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.SBOM_CI_ROLE_ARN }}
           aws-region: ap-northeast-1
