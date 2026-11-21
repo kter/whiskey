@@ -1,6 +1,7 @@
 # Scope of the SBOM sent to SBOM Tracker: only what runs in production
 # (frontend npm packages and Lambda Python requirements).
 exclude:
+  - ./.github/**
   - ./infra/**
   - ./local_api/**
   - ./scripts/**
