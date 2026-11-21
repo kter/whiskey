@@ -1,8 +1,8 @@
-fastapi==0.142.2
+fastapi==0.163.2
 uvicorn==0.54.0
-boto3==1.43.108
-botocore==1.43.108
+boto3==1.44.5
+botocore==1.44.5
 PyJWT[crypto]==2.15.1
 requests==2.34.2
 Pillow==13.0.0
-moto[server]==5.2.3
+moto[server]==5.2.5
