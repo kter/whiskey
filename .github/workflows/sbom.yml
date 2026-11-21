@@ -1,0 +1,57 @@
+# Generate a CycloneDX SBOM of the runtime dependencies and send it to SBOM Tracker
+# (https://sbom-tracker.dev.devtools.site). What goes into the SBOM is set in .syft.yaml.
+#
+# Repository settings (Settings > Secrets and variables > Actions):
+#   secret   SBOM_CI_ROLE_ARN  - CiRoleArn output of the SBOM Tracker stack
+#   secret   SBOM_BUCKET       - SbomBucketName output of the SBOM Tracker stack
+#   variable SBOM_PROJECT_ID   - project id shown on the project page
+# The role ARN and bucket are secrets only so that they are masked in public logs.
+name: sbom
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  # Run once when the workflow or the SBOM scope itself changes in a pull request.
+  pull_request:
+    paths:
+      - .github/workflows/sbom.yml
+      - .syft.yaml
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: sbom-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  upload:
+    # OIDC tokens are not issued to pull requests from forks; skip them.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: bom.json
+          upload-artifact: false
+
+      - name: Show SBOM contents
+        run: jq -r '"components: \(.components | length)", (.components[] | "  \(.purl // .name)")' bom.json
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.SBOM_CI_ROLE_ARN }}
+          aws-region: ap-northeast-1
+
+      - name: Upload SBOM
+        run: >
+          aws s3 cp bom.json
+          "s3://${{ secrets.SBOM_BUCKET }}/sboms/${{ vars.SBOM_PROJECT_ID }}/${{ github.run_id }}-${{ github.run_attempt }}.json"
+          --content-type application/json
